@@ -121,26 +121,26 @@ This does everything in one go:
 - Reads your Word file
 - Pulls in any photos from `drop-images/`
 - Uploads the photos so they're publicly visible
-- Builds the email and opens it in your web browser
+- Builds the email
+- **Opens a draft email in your default email app** with the newsletter already in the body and the subject line filled in
 
-When the browser opens, you'll see exactly what the email will look like.
+### Step 5 — Pick recipients and send
 
-### Step 5 — Send the email
+What happens depends on which email app your computer is set up to use by default — the toolkit detects this automatically:
 
-You have two options:
+- **If your default is Microsoft Outlook (desktop):** Outlook pops up a new draft message. The newsletter is already in the body and the subject line is filled in. **You only have to type the recipients in the To: field and click Send.**
 
-**Option A — Paste into Gmail or Outlook (easiest):**
+- **If your default is Apple Mail, Thunderbird, Gmail in your browser, or anything else:** the toolkit copies the formatted newsletter to your clipboard and opens a new blank message in your usual email app, with the subject line filled in. Click in the message body, press `Ctrl+V` (or `⌘+V` on macOS) to paste the newsletter, type the recipients, and click Send.
 
-1. In your web browser (showing the preview), select all the page (`Ctrl+A` on Windows, `⌘+A` on macOS).
-2. Copy it (`Ctrl+C` / `⌘+C`).
-3. Open Gmail or Outlook, click **Compose**, and paste into the message body (`Ctrl+V` / `⌘+V`).
-4. Add the recipients and a subject line, then send.
+**Not sure which one your computer uses?** Run this to find out:
 
-**Option B — Send the HTML file:**
-
-The file `dist/issue-3.html` is a self-contained email. You can also forward it as an attachment, or upload it to a mailing platform that accepts HTML.
+```
+python build_newsletter.py detect-mail
+```
 
 That's it!
+
+> **Tip:** if Outlook doesn't open or the wrong app shows up, see "Common questions" below.
 
 ---
 
@@ -167,6 +167,15 @@ In the `dist/` folder. For issue 3, it's `dist/issue-3.html`. You can open it an
 **❓ Where do my drop-folder photos end up?**
 In `assets/issue-3/` (for issue 3). They're also pushed to GitHub so they have a public web address.
 
+**❓ Which email app will the toolkit use?**
+Whichever one your computer is configured to use by default for the `mailto:` links you click on websites. Run `python build_newsletter.py detect-mail` to see what the toolkit detected. To change it: open Windows Settings → *Apps* → *Default apps* → *Email*. On macOS: open the Mail app → *Preferences* → *General* → *Default email reader*.
+
+**❓ My default is Outlook but the toolkit opened my browser instead.**
+This sometimes happens if Outlook isn't currently running, or if a recent Office update changed the integration. As a workaround, run `python build_newsletter.py all ... --backend default` — that uses the same fallback path as for non-Outlook clients (clipboard + blank draft). Or open Outlook first, then re-run the command.
+
+**❓ The email opened but the newsletter isn't in the body — I just see a blank message.**
+You're using the non-Outlook path. The newsletter is on your clipboard — click into the message body and press `Ctrl+V` (or `⌘+V` on macOS).
+
 **❓ I'm getting an error message I don't understand.**
 Copy the full red text and send it to the developer. Most errors are clear about what went wrong (e.g. "image filename doesn't match the convention").
 
@@ -179,7 +188,9 @@ Copy the full red text and send it to the developer. Most errors are clear about
 | Make a newsletter for issue N (full routine) | `python build_newsletter.py all --input issue-N.docx --issue N` |
 | Just rebuild the email without uploading | `python build_newsletter.py build --input issue-N.docx --issue N --no-remote-check` |
 | Open the latest preview in your browser | `python build_newsletter.py preview --issue N` |
+| Open the email draft (after a previous build) | `python build_newsletter.py compose --issue N --input issue-N.docx` |
 | Re-upload only the photos | `python build_newsletter.py publish-images --issue N` |
+| Check which email app the toolkit will use | `python build_newsletter.py detect-mail` |
 
 (Replace `N` with the issue number every time.)
 

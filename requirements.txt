@@ -7,3 +7,7 @@ click==8.1.7
 lxml==5.3.0
 pytest==8.3.3
 pytest-cov==5.0.0
+
+# Optional: enables Outlook draft + HTML clipboard on Windows.
+# (Pre-installed on most Windows Python distributions.)
+pywin32==308; platform_system == "Windows"
