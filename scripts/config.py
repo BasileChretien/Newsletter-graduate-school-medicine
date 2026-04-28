@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +40,18 @@ DEAN_PHOTO_PLACEHOLDER = "[ Photo ]"
 DEAN_NAME = "Prof. Masahisa Katsuno"
 DEAN_NAME_PLAIN = "Masahisa Katsuno"      # signature form, with ", MD, PhD" appended
 DEAN_TITLE = "Dean, Graduate School of Medicine, Nagoya University"
+
+
+# Sub-section headings within the 7 main sections. Keep in sync with the
+# template's text (these strings drive both the docx restyle and the parser
+# block detection -- one place to edit, two consumers).
+SUBHEAD_TEXTS: frozenset[str] = frozenset({
+    "Notable Publications", "Grants & Funding Awarded",
+    "New Programs / Curriculum Updates", "New Partnerships & MOUs",
+    "Visiting Scholars & Exchange", "Student Awards & Honors",
+    "Thesis Defenses & Graduations", "Student Club & Community Activities",
+    "New Faculty & Staff Welcome", "Deadlines & Notices",
+})
 
 
 # Brand palette (mirrors DOCX)
@@ -76,9 +94,57 @@ class RepoConfig:
         )
 
 
-# Default — can be overridden from CLI / env
-DEFAULT_REPO = RepoConfig(
+# Fallback if neither env vars nor `git remote` reveal the repo.
+_FALLBACK_REPO = RepoConfig(
     user="BasileChretien",
     repo="Newsletter-graduate-school-medicine",
     branch="main",
 )
+
+
+_GIT_REMOTE_RE = re.compile(
+    r"^(?:https?://github\.com/|git@github\.com:)"
+    r"(?P<user>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?/?$"
+)
+
+
+def _resolve_repo_config(cwd: Path = PROJECT_ROOT) -> RepoConfig:
+    """Resolve the GitHub repo coordinates used to build raw image URLs.
+
+    Resolution order:
+      1. Env vars MERIDIAN_REPO_USER / MERIDIAN_REPO_NAME / MERIDIAN_REPO_BRANCH
+      2. `git remote get-url origin` (parsed for github.com/<user>/<repo>)
+      3. Hard-coded fallback (project's original home)
+
+    Forks, renames and clones into a different account all "just work"
+    without code edits.
+    """
+    env_user = os.environ.get("MERIDIAN_REPO_USER")
+    env_repo = os.environ.get("MERIDIAN_REPO_NAME")
+    env_branch = os.environ.get("MERIDIAN_REPO_BRANCH")
+    if env_user and env_repo:
+        return RepoConfig(
+            user=env_user, repo=env_repo, branch=env_branch or "main",
+        )
+
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=str(cwd), capture_output=True, text=True,
+            timeout=5, check=False,
+        )
+        url = (result.stdout or "").strip()
+        m = _GIT_REMOTE_RE.match(url)
+        if m:
+            return RepoConfig(
+                user=m.group("user"),
+                repo=m.group("repo"),
+                branch=env_branch or "main",
+            )
+    except Exception as e:
+        log.debug("Could not auto-detect repo from git remote: %s", e)
+
+    return _FALLBACK_REPO
+
+
+DEFAULT_REPO = _resolve_repo_config()

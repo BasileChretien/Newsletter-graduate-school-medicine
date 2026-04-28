@@ -31,6 +31,7 @@ from scripts.config import (
     MERIDIAN_TEMPLATE,
     ORIGINAL_TEMPLATE,
     PALETTE,
+    SUBHEAD_TEXTS,
     SUBTITLE,
     TAGLINE,
     TITLE,
@@ -228,13 +229,7 @@ def restyle_section_heading(p) -> None:
 
 
 # ---------- subhead (Notable Publications, etc.) ----------
-SUBHEAD_TEXTS = {
-    "Notable Publications", "Grants & Funding Awarded",
-    "New Programs / Curriculum Updates", "New Partnerships & MOUs",
-    "Visiting Scholars & Exchange", "Student Awards & Honors",
-    "Thesis Defenses & Graduations", "Student Club & Community Activities",
-    "New Faculty & Staff Welcome", "Deadlines & Notices",
-}
+# SUBHEAD_TEXTS imported from scripts.config (single source of truth)
 
 
 def restyle_subhead(p) -> None:

@@ -214,13 +214,7 @@ def _detect_section(text: str) -> tuple[int, str] | None:
     return None
 
 
-SUBHEAD_TEXTS = frozenset({
-    "Notable Publications", "Grants & Funding Awarded",
-    "New Programs / Curriculum Updates", "New Partnerships & MOUs",
-    "Visiting Scholars & Exchange", "Student Awards & Honors",
-    "Thesis Defenses & Graduations", "Student Club & Community Activities",
-    "New Faculty & Staff Welcome", "Deadlines & Notices",
-})
+from scripts.config import SUBHEAD_TEXTS  # single source of truth
 
 
 # ---------- table → block ----------

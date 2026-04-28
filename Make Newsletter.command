@@ -64,6 +64,14 @@ if [[ -z "${ISSUE// /}" ]]; then
     read -r -p "Press Enter to close..."
     exit 1
 fi
+# Reject anything that is not a pure positive integer.
+if ! [[ "$ISSUE" =~ ^[0-9]+$ ]]; then
+    echo
+    echo "  ERROR: \"$ISSUE\" is not a valid issue number."
+    echo "  Please enter a positive integer like 3 or 12."
+    read -r -p "Press Enter to close..."
+    exit 1
+fi
 
 DEFAULT_DOCX="issue-${ISSUE}.docx"
 if [[ -f "$DEFAULT_DOCX" ]]; then

@@ -37,12 +37,23 @@ def test_ingest_drop_folder_creates_structure(tmp_path: Path):
     drop = tmp_path / "drop-images"
     drop.mkdir()
     (drop / "s1_01_dean.jpg").write_bytes(b"\xff\xd8\xff\xe0fake")
-    (drop / "s4_02_partner.png").write_bytes(b"\x89PNGfake")
+    (drop / "s4_02_partner.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
     dest = tmp_path / "assets" / "issue-1"
     out = ingest_drop_folder(drop, dest)
     assert len(out) == 2
     assert {d.section for d in out} == {1, 4}
     assert all(d.dst_path.exists() for d in out)
+
+
+def test_ingest_drop_folder_rejects_non_image(tmp_path: Path):
+    """A file that matches the naming convention but isn't a real image
+    (e.g. an SVG renamed to .png) must be rejected, not published."""
+    drop = tmp_path / "drop-images"
+    drop.mkdir()
+    # SVG content with .png extension -- magic bytes won't match raster.
+    (drop / "s1_01_evil.png").write_bytes(b"<svg><script>x</script></svg>")
+    with pytest.raises(ValueError, match="not a recognised raster image"):
+        ingest_drop_folder(drop, tmp_path / "assets")
 
 
 def test_ingest_drop_folder_rejects_invalid_name(tmp_path: Path):

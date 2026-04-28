@@ -215,13 +215,39 @@ def _copy_html_windows(html: str) -> bool:
 
 
 def _copy_html_macos(html: str) -> bool:
-    safe = html.replace('"', '\\"')
-    proc = subprocess.run(
-        ["osascript", "-e",
-         f'set the clipboard to "{safe}" as «class HTML»'],
-        capture_output=True,
-    )
-    return proc.returncode == 0
+    """Set the macOS clipboard to HTML.
+
+    Uses a temp-file + AppleScript hand-off so the HTML never enters
+    the shell command line -- avoids string-injection (backticks,
+    backslashes, double-quotes, AppleScript continuation chars) and
+    keeps the implementation safe for arbitrary editor content.
+    """
+    import tempfile
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".html", delete=False, encoding="utf-8",
+        ) as tf:
+            tf.write(html)
+            tf_path = tf.name
+        script = (
+            'set theFile to POSIX file "' + tf_path + '"\n'
+            'set theHTML to read theFile as «class utf8»\n'
+            'set the clipboard to theHTML as «class HTML»\n'
+        )
+        proc = subprocess.run(
+            ["osascript", "-"],
+            input=script.encode("utf-8"),
+            capture_output=True, timeout=10,
+        )
+        return proc.returncode == 0
+    except Exception as e:
+        log.debug("macOS HTML clipboard failed: %s", e)
+        return False
+    finally:
+        try:
+            Path(tf_path).unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def _copy_html_linux(html: str) -> bool:

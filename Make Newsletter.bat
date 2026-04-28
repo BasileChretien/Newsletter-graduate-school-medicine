@@ -59,6 +59,16 @@ if "!ISSUE!"=="" (
     pause
     exit /b 1
 )
+REM Reject anything that is not a pure integer (defence-in-depth: stops
+REM whitespace / extra args / shell metachars from reaching the python CLI).
+echo !ISSUE! | findstr /r "^[0-9][0-9]*$" >nul
+if errorlevel 1 (
+    echo.
+    echo  ERROR: "!ISSUE!" is not a valid issue number.
+    echo  Please enter a positive integer like 3 or 12.
+    pause
+    exit /b 1
+)
 
 set "DEFAULT_DOCX=issue-!ISSUE!.docx"
 set "DOCX="

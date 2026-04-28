@@ -29,6 +29,35 @@ DROP_NAME_RE = re.compile(
 )
 
 
+# Magic-byte signatures of supported raster image formats. SVG, HTML, PDF,
+# executables and anything else are silently dropped (a malicious DOCX could
+# embed an SVG with <script>, which renders in some email clients).
+_IMAGE_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xd8\xff",        "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n",   "image/png"),
+    (b"GIF87a",              "image/gif"),
+    (b"GIF89a",              "image/gif"),
+    (b"RIFF",                "image/webp"),  # RIFF...WEBP -- second check below
+    (b"BM",                  "image/bmp"),
+)
+
+
+def _is_supported_image(path: Path) -> bool:
+    """Return True if `path`'s magic bytes match a supported raster format."""
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        return False
+    for sig, _mime in _IMAGE_MAGIC:
+        if head.startswith(sig):
+            if sig == b"RIFF":
+                # RIFF must be followed by WEBP at byte 8.
+                return head[8:12] == b"WEBP"
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class DropImage:
     section: int
@@ -43,7 +72,12 @@ def issue_dir(assets_dir: Path, issue: int) -> Path:
 
 
 def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
-    """Extract images from word/media/ into dest_dir. Return {basename: path}."""
+    """Extract images from word/media/ into dest_dir. Return {basename: path}.
+
+    Files whose magic bytes don't match a supported raster format are
+    rejected -- this prevents a crafted DOCX from smuggling SVG, HTML,
+    or executables into the public assets/issue-N/ directory.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     out: dict[str, Path] = {}
     with zipfile.ZipFile(docx_path) as z:
@@ -54,6 +88,13 @@ def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
             target = dest_dir / base
             with z.open(name) as src, target.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
+            if not _is_supported_image(target):
+                log.warning(
+                    "Rejected embedded file %s (not a supported image format)",
+                    base,
+                )
+                target.unlink(missing_ok=True)
+                continue
             out[base] = target
     return out
 
@@ -76,6 +117,12 @@ def ingest_drop_folder(drop_dir: Path, dest_dir: Path) -> list[DropImage]:
             )
         dst = dest_dir / src.name.lower()
         shutil.copy2(src, dst)
+        if not _is_supported_image(dst):
+            dst.unlink(missing_ok=True)
+            raise ValueError(
+                f"Drop image '{src.name}' is not a recognised raster image "
+                f"(jpg/png/gif/webp/bmp). Refusing to publish."
+            )
         results.append(DropImage(
             section=int(m.group("section")),
             order=int(m.group("order")),
