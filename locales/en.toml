@@ -1,0 +1,35 @@
+# English UI strings for the launcher and CLI status messages.
+# To localise, copy to e.g. locales/ja.toml and translate the values.
+
+[launcher]
+banner = "MERIDIAN  -  Newsletter Builder"
+
+[setup]
+heading = "FIRST-TIME SETUP IN PROGRESS"
+body_1 = "Installing toolkit dependencies. This takes"
+body_2 = "about 1-2 minutes. You only see this once."
+do_not_close = "*** PLEASE DO NOT CLOSE THIS WINDOW ***"
+do_not_close_2 = "Even if it looks frozen for up to 2 minutes,"
+do_not_close_3 = "it is still working. Just wait."
+done = "Setup complete. (You will not see this message again.)"
+
+[prompts]
+issue_number = "Issue number (e.g. 3)"
+docx_filename_default = "Word file"
+docx_filename_explicit = "Word file name (e.g. issue-{n}.docx)"
+
+[errors]
+no_python = "ERROR: Python is not installed or not on PATH."
+no_python_hint_1 = "Install Python from https://www.python.org/downloads/"
+no_python_hint_2 = "On the first install screen, tick \"Add Python to PATH\"."
+no_python_hint_3 = "Then re-run this launcher."
+no_issue = "No issue number entered -- exiting."
+bad_issue = "ERROR: that is not a valid issue number. Please enter a positive integer like 3 or 12."
+no_filename = "No file name entered -- exiting."
+file_not_found = "ERROR: file not found:"
+file_not_found_hint = "Make sure your filled-in Word file is in this same folder."
+
+[outcomes]
+done_ok = "Done. Your email draft should now be open."
+done_fail = "Something went wrong. See the messages above."
+press_enter = "Press Enter to close..."

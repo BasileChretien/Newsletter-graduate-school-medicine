@@ -1,0 +1,36 @@
+# Japanese UI strings for the launcher and CLI status messages.
+# Reviewed translations welcome -- editorial nuance always wins over
+# literal accuracy.
+
+[launcher]
+banner = "MERIDIAN  -  ニュースレター作成ツール"
+
+[setup]
+heading = "初回セットアップを実行中"
+body_1 = "ツールの依存関係をインストールしています。"
+body_2 = "1〜2分かかります。表示されるのはこの一度だけです。"
+do_not_close = "*** このウィンドウを閉じないでください ***"
+do_not_close_2 = "最大2分間、固まっているように見える場合があります。"
+do_not_close_3 = "正常に動作中ですので、そのままお待ちください。"
+done = "セットアップ完了。(このメッセージは次回以降表示されません)"
+
+[prompts]
+issue_number = "号数 / Issue number (例 3)"
+docx_filename_default = "Wordファイル / Word file"
+docx_filename_explicit = "Wordファイル名 (例 issue-{n}.docx)"
+
+[errors]
+no_python = "エラー: Pythonがインストールされていないか、PATHが通っていません。"
+no_python_hint_1 = "https://www.python.org/downloads/ からPythonをインストールしてください。"
+no_python_hint_2 = "最初の画面で「Add Python to PATH」のチェックを入れてください。"
+no_python_hint_3 = "その後、このランチャーをもう一度実行してください。"
+no_issue = "号数が入力されていません。終了します。"
+bad_issue = "エラー: 有効な号数ではありません。3 や 12 のような正の整数を入力してください。"
+no_filename = "ファイル名が入力されていません。終了します。"
+file_not_found = "エラー: ファイルが見つかりません:"
+file_not_found_hint = "Wordファイルがこのフォルダ内にあることを確認してください。"
+
+[outcomes]
+done_ok = "完了。メールの下書きが開いているはずです。"
+done_fail = "問題が発生しました。上のメッセージをご確認ください。"
+press_enter = "Enter キーで閉じる..."

@@ -1,0 +1,21 @@
+# MERIDIAN newsletter recipients
+# ------------------------------
+# Copy this file to `recipients.txt` (in the same folder) and fill in the
+# real email addresses, one per line. The toolkit reads `recipients.txt`
+# every time you make a newsletter and pre-fills the BCC field of the
+# Outlook draft so you never miss anyone.
+#
+# `recipients.txt` is gitignored and stays on your computer only.
+#
+# Format:
+#   - one email address per line
+#   - lines starting with # are comments
+#   - blank lines are ignored
+#
+# Example:
+#
+# faculty@med.nagoya-u.ac.jp
+# alumni@med.nagoya-u.ac.jp
+# partners@example.org
+
+# (delete the example block above and add your real list below)

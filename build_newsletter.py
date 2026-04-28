@@ -20,7 +20,9 @@ from pathlib import Path
 import click
 
 from scripts import build_template as bt
-from scripts.composer import compose as compose_email, detect_default_mail_handler
+from scripts.composer import (
+    compose as compose_email, detect_default_mail_handler, load_recipients,
+)
 from scripts.config import (
     ASSETS_DIR, DEFAULT_REPO, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
     ORIGINAL_TEMPLATE, PROJECT_ROOT, TITLE,
@@ -30,8 +32,11 @@ from scripts.image_handler import (
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
 )
 from scripts.inliner import inline
+from scripts.manifest import write_manifest
 from scripts.renderer import attach_image_urls, render
 from scripts.validator import report, validate
+
+RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -94,7 +99,22 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool):
     out_html.write_text(final_html, encoding="utf-8")
     click.echo(f"Wrote: {out_html}")
 
-    # 8) Validate
+    # 8) Manifest -- audit trail for what was published when.
+    subject = _subject_for(issue, input_path)
+    try:
+        manifest = write_manifest(
+            issue=issue,
+            asset_dir=asset_dir,
+            source_docx=input_path,
+            subject=subject,
+            output_html=out_html,
+        )
+        log.info("Manifest: %s files (sha %s...)",
+                 manifest.file_count, manifest.docx_sha256[:8])
+    except Exception as e:
+        log.warning("Could not write manifest: %s", e)
+
+    # 9) Validate
     result = validate(final_html, check_remote=validate_remote)
     click.echo(report(result))
     if not result.ok:
@@ -187,10 +207,14 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
         sys.exit(1)
     html = out.read_text(encoding="utf-8")
     subject = _subject_for(issue, Path(input_path) if input_path else None)
+    bcc = "; ".join(load_recipients(RECIPIENTS_PATH)) or None
     used = compose_email(html, subject=subject, backend=backend,
-                         preview_path=out)
+                         preview_path=out, bcc=bcc)
     click.echo(f"Email draft opened via: {used}")
     click.echo(f"Subject: {subject}")
+    if bcc:
+        n = len(load_recipients(RECIPIENTS_PATH))
+        click.echo(f"BCC pre-filled with {n} recipient(s) from recipients.txt")
 
 
 @cli.command("all")
@@ -227,11 +251,15 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
 
     html = out.read_text(encoding="utf-8")
     subject = _subject_for(issue, Path(input_path))
+    bcc = "; ".join(load_recipients(RECIPIENTS_PATH)) or None
     try:
         used = compose_email(html, subject=subject, backend=backend,
-                             preview_path=out)
+                             preview_path=out, bcc=bcc)
         click.echo(f"Email draft opened via: {used}")
         click.echo(f"Subject: {subject}")
+        if bcc:
+            n = len(load_recipients(RECIPIENTS_PATH))
+            click.echo(f"BCC pre-filled with {n} recipient(s) from recipients.txt")
     except Exception as e:
         click.echo(f"Could not open email draft ({e}). Opening preview instead.",
                    err=True)

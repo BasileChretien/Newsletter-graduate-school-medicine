@@ -2,6 +2,8 @@
 
 > **MERIDIAN** — *Where medicine meets the world.*
 
+> 🇯🇵 [日本語版はこちら](README.ja.md)
+
 Welcome! This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It does two things for you:
 
 1. Gives you a **beautiful Word template** (`Meridian_Newsletter_Template.docx`) — already styled with the school's colors, fonts, logo, and Dean photo.
@@ -143,6 +145,16 @@ What you see depends on which email app your computer is set up to use by defaul
 That's it!
 
 > **Tip:** if the wrong email app shows up or Outlook doesn't open, see "Common questions" below.
+
+### Optional — save your distribution list
+
+If you send the newsletter to the same group of people every issue, you can avoid typing 50 addresses every time:
+
+1. Copy `recipients.example.txt` to a new file called `recipients.txt` (in this same folder).
+2. Open `recipients.txt` in any text editor and put one email address per line.
+3. From now on, when the toolkit opens the Outlook draft, it pre-fills the **BCC** field with everyone on the list.
+
+`recipients.txt` is gitignored — it stays only on your computer, never on GitHub. To change recipients, just edit the file. Lines starting with `#` are comments.
 
 ---
 
