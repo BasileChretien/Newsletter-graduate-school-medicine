@@ -18,15 +18,17 @@ Do all four steps in order. Don't skip any.
 
 1. Go to <https://github.com/signup>.
 2. Pick a username, type your email, choose a password, and finish the sign-up.
-3. **Send your GitHub username** to the toolkit administrator (Basile Chrétien) so they can give you permission to upload photos. **You can't move on to Step 2 until they confirm.**
+3. **Send your GitHub username** to the toolkit administrator so they can give you write access to the repository (this is what lets you upload photos). The administrator usually confirms within **one business day**. **You can't move on to Step 2 until they confirm.**
 
 > **What is GitHub?** It's just where the toolkit lives. Your account gives you permission to upload your newsletter's photos. You don't need to learn how GitHub works — the toolkit does everything for you.
+
+> **Working on a hospital PC where you can't install software?** Steps 2 and 4 below need admin rights to install GitHub Desktop and Python. If your IT department restricts installations on your machine, **show them this README** and ask them to install both for you. Show them this section in particular — they will recognise the requirements.
 
 ### Step 2 — Install GitHub Desktop
 
 1. Go to <https://desktop.github.com> and click **Download for Windows** (or **macOS**).
 2. Run the installer. Default settings are fine.
-3. When GitHub Desktop opens, click **Sign in to GitHub.com** and sign in with the account you just made in Step 1.
+3. When GitHub Desktop opens, click **Sign in to GitHub.com**. Your web browser will open and ask you to authorize GitHub Desktop. Click **Authorize**. The browser will hand control back to GitHub Desktop automatically — return to that window.
 
 ### Step 3 — Download (clone) the toolkit
 

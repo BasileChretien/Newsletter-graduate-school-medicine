@@ -34,7 +34,26 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 2. Dependency check (install on first run) ------------------------------
+REM 2a. Setup self-check ----------------------------------------------------
+REM A quick "is this folder set up correctly?" check before we build.
+REM If the editor downloaded the ZIP instead of cloning via GitHub
+REM Desktop, the build will succeed but photos won't upload to the web,
+REM and recipients will see broken-image icons. Surface the problem
+REM here so they know what to fix.
+if not exist ".git" (
+    echo  WARNING: this folder is not a git checkout.
+    echo  Photos in your newsletter will NOT be uploaded to the web,
+    echo  and recipients will see broken-image icons.
+    echo.
+    echo  Please follow the README Steps 2 and 3:
+    echo    1. Install GitHub Desktop from https://desktop.github.com
+    echo    2. In GitHub Desktop, click File -^> Clone repository
+    echo       and clone this project fresh into a new folder.
+    echo.
+    pause
+)
+
+REM 2b. Dependency check (install on first run) ------------------------------
 python -c "import docx, jinja2, click, css_inline" >nul 2>&1
 if errorlevel 1 (
     echo ================================================

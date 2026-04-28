@@ -88,7 +88,35 @@ else
     exit 1
 fi
 
-# 2. Dependency check --------------------------------------------------------
+# 2a. Setup self-check -------------------------------------------------------
+# A quick "is this folder set up correctly?" check before we build.
+# If the editor downloaded the ZIP instead of cloning via GitHub Desktop,
+# the build will succeed but photos won't upload to the web.
+if [[ ! -d ".git" ]]; then
+    if [[ $JP -eq 1 ]]; then
+        echo "  警告: このフォルダは git クローンではありません。"
+        echo "  写真は Web にアップロードされず、受信者には壊れた画像"
+        echo "  アイコンが表示されます。"
+        echo "  README のステップ 2 と 3 に従ってください:"
+        echo "    1. https://desktop.github.com から GitHub Desktop"
+        echo "       をインストール"
+        echo "    2. GitHub Desktop で File -> Clone repository をクリック"
+        echo "       し、このプロジェクトを新しいフォルダに複製"
+    else
+        echo "  WARNING: this folder is not a git checkout."
+        echo "  Photos in your newsletter will NOT be uploaded to the web,"
+        echo "  and recipients will see broken-image icons."
+        echo
+        echo "  Please follow the README Steps 2 and 3:"
+        echo "    1. Install GitHub Desktop from https://desktop.github.com"
+        echo "    2. In GitHub Desktop, click File -> Clone repository"
+        echo "       and clone this project fresh into a new folder."
+    fi
+    echo
+    read -r -p "$PRESS_ENTER" _
+fi
+
+# 2b. Dependency check -------------------------------------------------------
 if ! "$PY" -c "import docx, jinja2, click, css_inline" >/dev/null 2>&1; then
     echo "================================================"
     echo " $MSG_SETUP_HEADING"
