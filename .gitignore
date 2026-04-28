@@ -27,6 +27,12 @@ issue-*.docx
 # (Allow .gitkeep so the assets/ directory itself is preserved.)
 assets/issue-*/manifest.previous.json
 
+# issue-0 is the conventional local sandbox / scratch directory used
+# during development -- never commit its contents (test images,
+# manifest with PII). The publisher refuses to commit issue <= 0
+# anyway, but belt-and-braces.
+assets/issue-0/
+
 # IDE
 .vscode/
 .idea/

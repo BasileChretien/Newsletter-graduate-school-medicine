@@ -18,11 +18,21 @@ import build_newsletter as bn
 def _set_masthead_lines(cell, lines: list[str]) -> None:
     """python-docx's `cell.text = "a\\nb"` makes ONE paragraph with line
     breaks; the parser expects four separate paragraphs in the right
-    masthead cell. Add them explicitly."""
+    masthead cell. Add them explicitly.
+
+    Asserts the resulting paragraph count matches the input count, so
+    a future python-docx behaviour change can't silently produce a
+    malformed fixture (which would make the negative `_build_pipeline`
+    tests pass for the wrong reason).
+    """
     # Clear the auto-created empty paragraph and add real ones.
     cell.text = lines[0]
     for line in lines[1:]:
         cell.add_paragraph(line)
+    assert len(cell.paragraphs) == len(lines), (
+        f"Fixture: masthead cell has {len(cell.paragraphs)} paragraphs "
+        f"but {len(lines)} were requested -- python-docx behaviour drift?"
+    )
 
 
 def _make_unfilled_docx(tmp_path: Path) -> Path:
@@ -99,3 +109,91 @@ def test_build_pipeline_writes_when_validation_passes(
     out_html = tmp_path / "dist" / "issue-2.html"
     assert out_html.exists()
     assert "MERIDIAN" in out_html.read_text(encoding="utf-8")
+
+
+# ---------- Bundle 26: stale-HTML cleanup on validation failure ----------
+
+def test_build_pipeline_deletes_stale_html_on_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When a previous run left `dist/issue-1.html` on disk and the
+    NEW run fails validation, the stale file must be removed -- so
+    the editor doesn't double-click the old one thinking it's the
+    new one.
+
+    Regression guard for round-8 UX H3."""
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    stale = dist_dir / "issue-1.html"
+    stale.write_text("<!doctype html><body>old broken file</body>")
+
+    monkeypatch.setattr(bn, "DIST_DIR", dist_dir)
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "assets")
+    monkeypatch.setattr(bn, "DROP_DIR", tmp_path / "drop-images")
+
+    docx_path = _make_unfilled_docx(tmp_path)
+    result = bn._build_pipeline(docx_path, issue=1, validate_remote=False)
+
+    assert result.exit_code != 0
+    assert not stale.exists(), (
+        "Stale dist/issue-1.html from previous run must be cleaned up "
+        "on validation failure to prevent double-click confusion."
+    )
+
+
+def test_build_pipeline_does_not_create_empty_dist_on_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When the very first run fails (no prior dist/), we should not
+    create an empty `dist/` directory -- contradicts the 'no stale
+    state on failure' intent.
+
+    Regression guard for round-8 python-reviewer M1."""
+    monkeypatch.setattr(bn, "DIST_DIR", tmp_path / "dist")
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "assets")
+    monkeypatch.setattr(bn, "DROP_DIR", tmp_path / "drop-images")
+
+    docx_path = _make_unfilled_docx(tmp_path)
+    result = bn._build_pipeline(docx_path, issue=99, validate_remote=False)
+
+    assert result.exit_code != 0
+    assert not (tmp_path / "dist").exists(), (
+        "DIST_DIR.mkdir was deferred to after validation; an empty "
+        "dist/ directory should NOT exist after a failed first build."
+    )
+
+
+# ---------- Bundle 26: subject-line hardening ----------------------------
+
+def test_subject_from_masthead_handles_none() -> None:
+    """A None masthead should never throw -- falls back to generic."""
+    out = bn._subject_from_masthead(7, None)
+    assert "Issue 7" in out
+
+
+def test_subject_from_masthead_handles_non_string_issue_line() -> None:
+    """A non-string `issue_line` (schema drift) used to raise TypeError
+    in `sanitize_subject` and short-circuit validate-before-write.
+    Bundle 26 wraps it; it should fall back to generic.
+
+    Regression guard for round-8 architect H2 / python-reviewer H3."""
+    class FakeMasthead:
+        title = "MERIDIAN"
+        tagline = ""
+        subtitle = ""
+        issue_line = 12345  # not a string
+    out = bn._subject_from_masthead(7, FakeMasthead())
+    assert "Issue 7" in out  # generic fallback, no crash
+
+
+def test_subject_from_masthead_strips_invisibles() -> None:
+    """Bundle 25 fix; pinned by a fresh test."""
+    class FakeMasthead:
+        title = "MERIDIAN"
+        tagline = ""
+        subtitle = ""
+        issue_line = "VOL. 12 | ISSUE NO. 3 | MARCH 2026"  # NBSP
+    out = bn._subject_from_masthead(3, FakeMasthead())
+    # NFKC folds NBSP to ASCII space.
+    assert "VOL. 12 | ISSUE NO. 3 | MARCH 2026" in out
+    assert " " not in out

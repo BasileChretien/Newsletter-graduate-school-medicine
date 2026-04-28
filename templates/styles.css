@@ -204,10 +204,18 @@ table.highlights td.card {
   font-size: 13px;
   line-height: 1.5;
   color: #1C1C1E;
-  width: 285px;
+  /* The section's <td> is 600px wide minus 28px L/R padding => 544px
+     usable. Two cards + 16px gutter must fit inside 544px:
+     (544 - 16) / 2 = 264px each. Hardcoding 264px (instead of 285)
+     prevents Outlook desktop from falling back to its own column
+     math, which produced a slight horizontal scroll in earlier rounds. */
+  width: 264px;
 }
 table.highlights td.gutter {
   width: 16px;
+  /* font-size:0 / line-height:0 are the classic Gmail anti-gap trick.
+     Safe HERE because the gutter cell contains no text or images --
+     just an empty spacer between the two card cells. */
   font-size: 0;
   line-height: 0;
 }

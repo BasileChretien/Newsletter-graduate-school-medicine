@@ -91,29 +91,46 @@ fi
 # 2a. Setup self-check -------------------------------------------------------
 # A quick "is this folder set up correctly?" check before we build.
 # If the editor downloaded the ZIP instead of cloning via GitHub Desktop,
-# the build will succeed but photos won't upload to the web.
+# the build would succeed but photos wouldn't upload to the web -- and
+# recipients would see broken-image icons. HARD-FAIL here so the editor
+# fixes the setup before drafting an email (mirrors Make Newsletter.bat).
 if [[ ! -d ".git" ]]; then
     if [[ $JP -eq 1 ]]; then
-        echo "  警告: このフォルダは git クローンではありません。"
-        echo "  写真は Web にアップロードされず、受信者には壊れた画像"
-        echo "  アイコンが表示されます。"
+        echo "  エラー: このフォルダは git クローンではありません。"
+        echo
+        echo "  ZIP をダウンロード/展開した可能性があります。この状態では"
+        echo "  写真が Web にアップロードされず、受信者には壊れた画像"
+        echo "  アイコンが表示されてしまいます。メール下書きを作成する前に"
+        echo "  設定を直すため、ここで停止します。"
+        echo
         echo "  README のステップ 2 と 3 に従ってください:"
-        echo "    1. https://desktop.github.com から GitHub Desktop"
-        echo "       をインストール"
-        echo "    2. GitHub Desktop で File -> Clone repository をクリック"
-        echo "       し、このプロジェクトを新しいフォルダに複製"
+        echo "    1. https://desktop.github.com から GitHub Desktop をインストール"
+        echo "    2. GitHub Desktop で File -> Clone repository をクリックし、"
+        echo "       このプロジェクトを新しいフォルダに複製"
+        echo "    3. 複製した新しいフォルダの中から、このランチャーを再実行"
+        echo "    4. (任意) 新しい複製が動作したら、この古いフォルダは削除"
+        echo "       してください。両方を残すと次回どちらをダブルクリック"
+        echo "       したのか分からなくなります。"
     else
-        echo "  WARNING: this folder is not a git checkout."
-        echo "  Photos in your newsletter will NOT be uploaded to the web,"
-        echo "  and recipients will see broken-image icons."
+        echo "  ERROR: this folder is not a git checkout."
+        echo
+        echo "  You probably extracted a ZIP. The build would succeed, but"
+        echo "  photos in your newsletter would NOT upload to the web -- and"
+        echo "  recipients would see broken-image icons. Aborting now so you"
+        echo "  fix the setup before drafting an email."
         echo
         echo "  Please follow the README Steps 2 and 3:"
         echo "    1. Install GitHub Desktop from https://desktop.github.com"
         echo "    2. In GitHub Desktop, click File -> Clone repository"
         echo "       and clone this project fresh into a new folder."
+        echo "    3. Re-run this launcher from inside the cloned folder."
+        echo "    4. (Optional) Delete THIS folder once the new clone works"
+        echo "       -- keeping both copies side-by-side will confuse you"
+        echo "       next month about which launcher to double-click."
     fi
     echo
     read -r -p "$PRESS_ENTER" _
+    exit 1
 fi
 
 # 2b. Dependency check -------------------------------------------------------

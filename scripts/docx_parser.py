@@ -42,12 +42,23 @@ NUMBERED_HEAD_RE = re.compile(
 #      Separator is mandatory here.
 LEGACY_HEAD_RE = re.compile(
     r"^\s*(?:"
-    r"(?:Section|Sec\.?)\s+(?P<en_num>\d+)\s*[\.:—–\-]?\s*"
+    # English: "Section 5: Title" / "Sec. 5 — Title".
+    # Separator IS required -- without it, "Section 5 research was
+    # presented" (a body sentence starting with "Section") would
+    # mis-classify as section 5 titled "research was presented".
+    # The "Section" prefix is the marker; the separator preserves
+    # the "this is a heading, not prose" intent.
+    r"(?:Section|Sec\.?)\s+(?P<en_num>\d+)\s*[\.:—–\-]\s+"
     r"(?P<en_title>.+?)"
     r"|"
+    # Japanese: 第N章/号/節 Title -- the 第 prefix IS the marker.
+    # Both kanji suffix and separator optional, since this form
+    # rarely uses ASCII punctuation and never accidentally appears
+    # at the start of body prose in the same way.
     r"第\s*(?P<jp_num>\d+)\s*[章号節]?\s*[\.:—–\-]?\s*"
     r"(?P<jp_title>.+?)"
     r"|"
+    # Bare numeric: separator REQUIRED (same reason as English).
     r"(?P<num>\d+)\s*[\.:—–\-]\s+(?P<title>.+?)"
     r")\s*$"
 )

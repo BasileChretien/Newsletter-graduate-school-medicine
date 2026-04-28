@@ -63,7 +63,22 @@ def publish_assets(issue: int, *, push: bool = True,
 
     Returns the commit SHA if a commit was created; None if there was
     nothing to commit.
+
+    Issue numbers <= 0 are rejected: `issue-0` is the conventional
+    sandbox / scratch directory used during development, and pushing
+    its contents (test images, manifest.json with PII like dean name +
+    subject snippets) to the public repo is almost never intentional.
+    Editors number real issues from 1.
     """
+    if issue <= 0:
+        raise ValueError(
+            f"Refusing to publish issue {issue}: real issues are "
+            "numbered from 1. issue-0 is reserved for local "
+            "development sandbox; publishing it would push test "
+            "artefacts (images + manifest with names) to the "
+            "public repository."
+        )
+
     rel = f"assets/issue-{issue}"
     asset_dir = cwd / rel
     if not asset_dir.exists():

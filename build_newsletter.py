@@ -27,7 +27,7 @@ from scripts.config import (
     ASSETS_DIR, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
     ORIGINAL_TEMPLATE, PROJECT_ROOT, TITLE, get_default_repo,
 )
-from scripts.docx_parser import ImageRef, parse
+from scripts.docx_parser import ImageRef, Masthead, parse
 from scripts.image_handler import (
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
 )
@@ -39,10 +39,21 @@ from scripts.validator import report, validate
 
 RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
 
+# Subject lines beyond this length wrap in many clients and elevate
+# spam scores (Mimecast / Proofpoint heuristic). Soft warn, never block.
+_SUBJECT_SOFT_LIMIT_CHARS = 78
+
 
 @dataclass(frozen=True)
 class BuildResult:
-    """Return value of `_build_pipeline` -- replaces `(int, str)` tuple."""
+    """Return value of `_build_pipeline`.
+
+    Fields:
+      * `exit_code`  -- 0 on success, non-zero when validation hard-blocks.
+      * `subject`    -- sanitized email subject line (NFKC, no invisibles).
+      * `html_path`  -- intended location of the rendered HTML. Only
+                        guaranteed to exist on disk when `exit_code == 0`.
+    """
     exit_code: int
     subject: str
     html_path: Path
@@ -91,26 +102,53 @@ def _friendly_used(used: str) -> str:
     return f"Email draft opened via: {used}"
 
 
-def _subject_from_masthead(issue: int, masthead) -> str:
+def _subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
     """Build the email subject from an already-parsed masthead.
 
     Runs the issue line through `sanitize_subject` so Word-pasted
     invisibles (ZWSP, NBSP, BOM, RLO, ...) never reach the wire --
     otherwise the inbox preview displays one string while logs/audit
     trail show another.
+
+    Defends against a non-string `issue_line` (schema drift / bug)
+    by falling back to the generic subject -- a TypeError here used
+    to short-circuit the validate-before-write guard, so we keep
+    subject derivation total.
     """
-    issue_line = (masthead.issue_line or "") if masthead else ""
-    issue_line = sanitize_subject(issue_line)
+    try:
+        issue_line = (masthead.issue_line or "") if masthead else ""
+        issue_line = sanitize_subject(issue_line)
+    except (AttributeError, TypeError) as e:
+        log.warning(
+            "Could not derive subject from masthead (%s); "
+            "falling back to generic subject.", e)
+        issue_line = ""
     if issue_line:
         return f"{TITLE} — {issue_line}"
     return f"{TITLE} — Issue {issue}"
+
+
+def _delete_stale_html(out_html: Path) -> None:
+    """Remove a previous-run HTML file from disk.
+
+    Called when validation fails so the editor doesn't accidentally
+    double-click last month's `dist/issue-N.html` thinking it's the
+    current build. Best-effort: any OSError is logged and ignored.
+    """
+    if not out_html.exists():
+        return
+    try:
+        out_html.unlink()
+        log.info("Removed stale %s (validation failed; no fresh "
+                 "HTML to replace it).", out_html.name)
+    except OSError as e:
+        log.warning("Could not remove stale %s: %s", out_html, e)
 
 
 def _build_pipeline(input_path: Path, issue: int, *,
                     validate_remote: bool) -> BuildResult:
     """Run the build pipeline. Returns a `BuildResult`."""
     out_html = DIST_DIR / f"issue-{issue}.html"
-    DIST_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1) Parse DOCX
     newsletter = parse(input_path)
@@ -152,12 +190,31 @@ def _build_pipeline(input_path: Path, issue: int, *,
     result = validate(final_html, check_remote=validate_remote)
     click.echo(report(result))
     if not result.ok:
+        # Remove last issue's HTML so the editor doesn't double-click
+        # it thinking it's the new one. Validation failed, so there's
+        # nothing fresh to leave on disk.
+        _delete_stale_html(out_html)
         click.echo(click.style(
-            "Validation failed -- no file written. Fix the issues "
-            "above and re-run.", fg="red"))
+            "Validation failed -- no file written. Any older "
+            f"{out_html.name} from a previous run was removed so you "
+            "don't accidentally open it. Fix the issues above and "
+            "re-run.", fg="red"))
         return BuildResult(1, subject, out_html)
 
-    # 8) Write -- only reached when validation passes.
+    # Soft warning when subject would wrap or score for spam.
+    if len(subject) > _SUBJECT_SOFT_LIMIT_CHARS:
+        click.echo(click.style(
+            f"Heads up: subject is {len(subject)} characters "
+            f"(> {_SUBJECT_SOFT_LIMIT_CHARS}). Many mail clients "
+            "wrap long subjects in the inbox preview, and some "
+            "spam filters score them higher. Consider shortening "
+            "the issue line.", fg="yellow"))
+
+    # 8) Write -- only reached when validation passes. mkdir is here
+    # rather than at the top of the pipeline so a hard-block doesn't
+    # leave behind an empty `dist/` (cosmetic, but matches the
+    # "no stale state on failure" intent).
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
     out_html.write_text(final_html, encoding="utf-8")
     click.echo(f"Wrote: {out_html}")
 
@@ -222,6 +279,9 @@ def _subject_for(issue: int, input_path: Path | None = None) -> str:
 
     Resolution order:
       1. The manifest written by `_build_pipeline` (cheap; one JSON read).
+         Older manifests pre-dating the subject sanitizer are re-sanitized
+         on read so a stale invisibles-laden subject doesn't escape via
+         the cached path.
       2. Re-parse the DOCX masthead (only when no manifest exists, e.g.
          a `compose --issue N` invocation against an issue that was
          built on another machine).

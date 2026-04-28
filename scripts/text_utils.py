@@ -24,30 +24,54 @@ import unicodedata
 
 
 # Unicode "Cf" (format) and "Cc" (control) categories cover ZWSP, ZWNJ,
-# ZWJ, LRM, RLM, LRE, RLE, LRO, RLO, PDF, WJ, BOM, etc., plus C0/C1
-# controls. We keep `\n` and `\t` because some legitimate body text
-# contains them; the subject sanitizer collapses them via the
-# `\s+` -> single-space pass below.
-_KEEP_CONTROLS = {"\n", "\t", "\r"}
+# LRM, RLM, LRE, RLE, LRO, RLO, PDF, WJ, BOM, etc., plus C0/C1 controls.
+#
+# Preserved characters:
+#   * `\n`, `\t`        -- legitimate structural whitespace; downstream
+#                          callers collapse to single space if needed.
+#   * U+200D ZWJ        -- intentional in compound emoji (family / job
+#                          emoji) and several Indic / Arabic scripts.
+#                          Removing it shatters multi-codepoint glyphs
+#                          into separate Unicode characters.
+#
+# `\r` is intentionally NOT preserved: it's harmful in subject lines
+# (would let an injected CR survive into Outlook COM property
+# assignment) and unhelpful elsewhere -- the recipients reader splits
+# on lines BEFORE this function runs, so a stray `\r` mid-string is
+# always a paste artefact, never a real line break.
+_KEEP_CHARS = frozenset({"\n", "\t", "‍"})
+_STRIP_CATEGORIES = frozenset({"Cf", "Cc"})
 
 
 def strip_invisibles(s: str) -> str:
     """Drop Unicode invisible/bidi/control characters from `s`.
 
-    Keeps `\\n` / `\\t` / `\\r` so callers that operate on multi-line
-    input (e.g. body text) don't lose structure -- those are handled
-    separately if/when the caller normalizes whitespace.
+    Preserves `\\n`, `\\t`, and ZWJ (U+200D, used in compound emoji and
+    several non-Latin scripts). All other Cf/Cc category characters
+    -- ZWSP, BOM, RLO, LRM, RLE, etc. -- are removed.
     """
     return "".join(
         ch for ch in s
-        if ch in _KEEP_CONTROLS or
-        unicodedata.category(ch) not in {"Cf", "Cc"}
+        if ch in _KEEP_CHARS or unicodedata.category(ch) not in _STRIP_CATEGORIES
     )
 
 
 def normalize_compatibility(s: str) -> str:
     """NFKC-normalize: folds NBSP to space, fullwidth digits to ASCII, etc."""
     return unicodedata.normalize("NFKC", s)
+
+
+def normalize_for_match(s: str) -> str:
+    """Pipeline shared by the subject sanitizer and the validator's
+    masthead-token check: NFKC-fold + collapse runs of whitespace
+    (no leading/trailing strip, so callers that do substring matching
+    on the result preserve token boundaries).
+
+    Use this whenever you need to compare user-provided text against
+    a fixed-string token in a way that's robust to NBSP, fullwidth
+    punctuation, and double-spacing artefacts from Word.
+    """
+    return re.sub(r"\s+", " ", normalize_compatibility(s))
 
 
 def sanitize_subject(s: str) -> str:
@@ -65,5 +89,6 @@ def sanitize_subject(s: str) -> str:
 __all__ = [
     "strip_invisibles",
     "normalize_compatibility",
+    "normalize_for_match",
     "sanitize_subject",
 ]

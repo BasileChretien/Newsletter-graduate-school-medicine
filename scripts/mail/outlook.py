@@ -11,6 +11,7 @@ import logging
 import platform
 
 from scripts.mail.base import DraftEmail, MailHandler
+from scripts.mail.plaintext import html_to_plaintext
 
 log = logging.getLogger(__name__)
 
@@ -33,12 +34,27 @@ def compose_outlook(html: str, subject: str, *,
                     reply_to: str | None = None,
                     attachments=(),
                     ) -> None:
-    """Create an Outlook mail draft with HTML body + optional headers."""
+    """Create an Outlook mail draft with HTML body + optional headers.
+
+    We set BOTH `HTMLBody` and `Body` so Outlook serializes a
+    `multipart/alternative` MIME message: HTML for clients that
+    render it, plaintext for clients that don't (and as a hint to
+    spam filters that this isn't HTML-only mail). Mimecast /
+    Proofpoint / MS Defender all score HTML-only mail higher.
+    """
     import win32com.client
     outlook = win32com.client.Dispatch("Outlook.Application")
     mail = outlook.CreateItem(0)  # 0 = olMailItem
     mail.Subject = subject
+    # Plaintext FIRST, then HTMLBody -- Outlook's Body is replaced
+    # by an auto-generated text version when you set HTMLBody, so
+    # if we want a real plaintext alternative we set HTMLBody first
+    # then overwrite Body with our cleaner conversion.
     mail.HTMLBody = html
+    try:
+        mail.Body = html_to_plaintext(html)
+    except Exception as e:  # noqa: BLE001 -- plaintext is best-effort
+        log.debug("plaintext fallback failed: %s", e)
     if to:
         mail.To = to
     if cc:

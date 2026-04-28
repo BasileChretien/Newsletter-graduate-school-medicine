@@ -109,6 +109,85 @@ def test_validate_blocks_collapsed_whitespace_masthead():
     assert any("VOL. XX" in e for e in r.errors)
 
 
+# ---------- Bundle 26: hidden-content false-positive guard ---------------
+
+def test_validate_ignores_display_none_masthead_token():
+    """Tokens inside `display:none` blocks are not visible to recipients
+    in their inbox preview, so they shouldn't fire the hard-block.
+
+    This guards against templates that legitimately include the literal
+    "VOL. XX" string inside a hidden preheader as a documentation /
+    fallback (e.g. screen-reader-only text that the editor never sees)."""
+    html = (
+        "<html><body>"
+        "<div style='display:none'>VOL. XX | ISSUE NO. XX | MONTH YEAR</div>"
+        "<p>VOL. 12 | ISSUE NO. 3 | MARCH 2026</p>"
+        "</body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert r.ok, (
+        "display:none should NOT trip the unfilled-masthead block; "
+        f"got errors: {r.errors}"
+    )
+
+
+def test_validate_ignores_visibility_hidden_masthead_token():
+    """Same logic for `visibility: hidden`."""
+    html = (
+        "<html><body>"
+        "<span style='visibility:hidden'>VOL. XX</span>"
+        "<p>VOL. 12 | ISSUE NO. 3 | MARCH 2026</p>"
+        "</body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert r.ok
+
+
+def test_validate_ignores_hidden_attribute_masthead_token():
+    """The HTML5 `hidden` attribute is also recipient-invisible."""
+    html = (
+        "<html><body>"
+        "<div hidden>VOL. XX</div>"
+        "<p>VOL. 12 | ISSUE NO. 3 | MARCH 2026</p>"
+        "</body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert r.ok
+
+
+def test_validate_still_blocks_visible_token_when_hidden_present():
+    """A hidden block alongside a visible unfilled token must still
+    fail -- we filter the hidden block, but the visible one still
+    has to trigger."""
+    html = (
+        "<html><body>"
+        "<div style='display:none'>(harmless hidden text)</div>"
+        "<p>Welcome to ISSUE NO. XX of our newsletter.</p>"
+        "</body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert not r.ok
+    assert any("ISSUE NO. XX" in e for e in r.errors)
+
+
+# ---------- Bundle 26: HTML comment is not a token leak ------------------
+
+def test_validate_html_comment_does_not_false_positive():
+    """The template's explanatory `<!-- ... VOL. XX ... -->` comment
+    must not trigger the hard-block: it's documentation, not visible
+    content. BeautifulSoup's get_text() already drops comments; this
+    test pins the contract."""
+    html = (
+        "<html><body>"
+        "<!-- NEVER include the placeholder issue-line tokens "
+        "(VOL. XX | ISSUE NO. XX | MONTH YEAR) here. -->"
+        "<p>VOL. 12 | ISSUE NO. 3 | MARCH 2026</p>"
+        "</body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert r.ok
+
+
 def test_validate_broken_image_warns_not_errors():
     """Broken image URLs are now WARNINGS not ERRORS -- a flaky HEAD
     check shouldn't abort the editor's pipeline."""

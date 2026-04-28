@@ -53,6 +53,9 @@ if not exist ".git" (
     echo    2. In GitHub Desktop, click File -^> Clone repository
     echo       and clone this project fresh into a new folder.
     echo    3. Re-run this launcher from inside the cloned folder.
+    echo    4. (Optional) Delete THIS folder once the new clone works
+    echo       -- keeping both copies side-by-side will confuse you
+    echo       next month about which launcher to double-click.
     echo.
     pause
     exit /b 1

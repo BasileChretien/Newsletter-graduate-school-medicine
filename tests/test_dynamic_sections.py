@@ -166,6 +166,37 @@ def test_section_heading_japanese_no_kanji_suffix(tmp_path: Path) -> None:
     assert nl.sections[0].title == "Lab News"
 
 
+def test_english_prefix_body_sentence_is_NOT_a_section(tmp_path: Path) -> None:
+    """`Section 5 research was presented` is a body sentence that
+    happens to start with `Section`. Without an explicit separator
+    between `5` and the rest, it must NOT promote to section 5.
+    Bundle 26 tightened the LEGACY_HEAD_RE English branch to require
+    the same separator the bare-numeric branch requires."""
+    doc_path = _make_doc(tmp_path, [
+        ("1.  Real Section", None),
+        ("Body of section one.", None),
+        ("Section 5 research was presented at the symposium.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 1
+    assert nl.sections[0].title == "Real Section"
+    assert all("research was presented" not in s.title for s in nl.sections)
+
+
+def test_english_section_with_separator_still_works(tmp_path: Path) -> None:
+    """`Section 5: Title` and `Section 5 — Title` and `Section 5. Title`
+    all keep working after the bundle-26 tightening."""
+    for sep in [":", "—", "-", "."]:
+        doc_path = _make_doc(tmp_path, [
+            (f"Section 5{sep} Real Heading", None),
+            ("Body.", None),
+        ])
+        nl = parse(doc_path)
+        assert len(nl.sections) == 1, f"sep={sep!r}: {nl.sections}"
+        assert nl.sections[0].number == 5
+        assert nl.sections[0].title == "Real Heading"
+
+
 def test_bare_digit_body_sentence_is_NOT_a_section(tmp_path: Path) -> None:
     """`1 Recent grant from JSPS` is a body sentence that begins with
     a digit -- NOT a section heading. Without an explicit separator

@@ -37,12 +37,26 @@
       <td class="masthead-logo" width="84" style="width:84px;vertical-align:top;padding-right:18px;">
         {# Nest the seal in a 1-cell hairline-frame table.
            Outlook desktop renders padding on <img> with the parent
-           bgcolor, producing a #EEF2F7 halo around the white seal.
-           Putting the white bgcolor + padding on the wrapping <td>
+           bgcolor, producing a #EEF2F7 halo around the white seal --
+           putting the white bgcolor + padding on the wrapping <td>
            keeps the inset frame consistent across Outlook, Gmail,
-           and Apple Mail. #}
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;">
-          <tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:4px;border:1px solid #C9D2DE;line-height:0;font-size:0;">
+           and Apple Mail.
+
+           The wrapping <table> declares an explicit `width="80"`
+           (72px seal + 4px padding on each side) so MSO doesn't
+           balloon it past the seal -- a child table without an
+           explicit width can stretch and turn the hairline into
+           a visible vertical bar. We also use `border-collapse`
+           explicitly to suppress MSO's 2px double-border artifact.
+
+           NOTE: do NOT add `font-size:0;line-height:0` to the
+           wrapping <td> -- it collapses the alt-text fallback
+           when Outlook desktop blocks images by default, leaving
+           recipients with a blank box until they click "Download
+           pictures." `display:block` on the <img> already kills
+           the descender gap that the anti-gap trick guards against. #}
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="80" bgcolor="#FFFFFF" style="width:80px;background-color:#FFFFFF;border-collapse:collapse;">
+          <tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:4px;border:1px solid #C9D2DE;">
             <img src="{{ logo_url }}" alt="Nagoya University Graduate School of Medicine" width="72" height="72" style="display:block;width:72px;height:72px;" />
           </td></tr>
         </table>

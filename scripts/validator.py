@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from scripts.config import GMAIL_CLIP_BYTES
+from scripts.text_utils import normalize_for_match
 
 log = logging.getLogger(__name__)
 
@@ -203,16 +203,27 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     # `VOL. XX` looks like a broken send and triggers spam-filter
     # heuristics. Not just a reminder -- abort the build.
     #
-    # We check the visible text (NOT the raw HTML), so the explanatory
-    # `<!-- ... VOL. XX ... -->` comment in the template doesn't false-
-    # positive. Word also silently substitutes U+00A0 (non-breaking
-    # space) for an ASCII space when the editor copy-pastes from
-    # another document; NFKC folds NBSP (and friends) to plain space,
-    # then we collapse runs of whitespace so "VOL.  XX" or "VOL. XX"
-    # still get caught.
-    visible_text = soup.get_text(" ", strip=True)
-    normalized_text = re.sub(
-        r"\s+", " ", unicodedata.normalize("NFKC", visible_text))
+    # We check the *visible-to-recipients* text -- not raw HTML -- so:
+    #   * the explanatory `<!-- ... VOL. XX ... -->` comment in the
+    #     template doesn't false-positive (BeautifulSoup's get_text
+    #     drops comments).
+    #   * elements the recipient never sees (display:none / hidden /
+    #     mso-hide:all preheader fallbacks) don't false-positive
+    #     either -- we drop them BEFORE pulling text out.
+    #
+    # Normalization (`normalize_for_match`) is shared with
+    # `sanitize_subject` in text_utils, so subject-line and
+    # masthead-token defenses against NBSP / fullwidth substitutions
+    # stay in lockstep.
+    visible_soup = BeautifulSoup(html, "html.parser")
+    for hidden in visible_soup.select(
+        "[style*='display:none'], [style*='display: none'], "
+        "[style*='visibility:hidden'], [style*='visibility: hidden'], "
+        "[hidden]"
+    ):
+        hidden.decompose()
+    visible_text = visible_soup.get_text(" ", strip=True)
+    normalized_text = normalize_for_match(visible_text)
     leaked = [
         tok for tok in _UNFILLED_MASTHEAD_TOKENS if tok in normalized_text
     ]
