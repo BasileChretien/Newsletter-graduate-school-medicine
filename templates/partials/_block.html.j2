@@ -29,6 +29,20 @@
       {% endfor %}
     </tbody>
   </table>
+  {% elif block is highlights_block %}
+  {# Featured Highlights: 3-col table with empty middle cells -> render
+     as proper cards with a gold top rule and cream background. #}
+  <table class="highlights" role="presentation" cellpadding="0" cellspacing="0">
+    <tbody>
+      {% for row in block.rows %}
+      <tr>
+        <td class="card" bgcolor="#F7F2EA">{{ row[0] | safe }}</td>
+        <td class="gutter">&nbsp;</td>
+        <td class="card" bgcolor="#F7F2EA">{{ row[2] | safe }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% else %}
   <table class="layout" role="presentation" cellpadding="0" cellspacing="0">
     <tbody>

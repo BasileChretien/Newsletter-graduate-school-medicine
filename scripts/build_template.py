@@ -57,6 +57,7 @@ def rgb(hex_str: str) -> RGBColor:
 
 PRIMARY = rgb(PALETTE["primary"])
 ACCENT = rgb(PALETTE["accent"])
+ACCENT_AA = rgb(PALETTE["accent_aa"])
 TEXT = rgb(PALETTE["text"])
 MUTED = rgb(PALETTE["muted"])
 
@@ -141,26 +142,28 @@ def restyle_masthead(table) -> None:
     style_run(r, font="Cambria", size_pt=36, bold=True,
               color=PRIMARY, all_caps=True, tracking=20)
 
-    # Tagline
+    # Tagline (now promoted to 14pt, with a gold underline rule)
     p_tag = cell.add_paragraph()
     style_paragraph(p_tag, alignment=WD_ALIGN_PARAGRAPH.LEFT,
-                    space_before=0, space_after=4, line_spacing=1.1)
+                    space_before=4, space_after=6, line_spacing=1.2)
     r = p_tag.add_run(TAGLINE)
-    style_run(r, font="Cambria", size_pt=11, italic=True, color=PRIMARY)
+    style_run(r, font="Cambria", size_pt=14, italic=True, color=PRIMARY)
+    set_paragraph_border(p_tag, position="bottom", sz=4,
+                         color=PALETTE["accent"], val="single", space=4)
 
-    # Subtitle
+    # Subtitle (now smaller, secondary)
     p_sub = cell.add_paragraph()
     style_paragraph(p_sub, alignment=WD_ALIGN_PARAGRAPH.LEFT,
-                    space_before=2, space_after=8, line_spacing=1.15)
+                    space_before=4, space_after=8, line_spacing=1.15)
     r = p_sub.add_run(SUBTITLE)
-    style_run(r, font="Calibri", size_pt=11, italic=True, color=MUTED)
+    style_run(r, font="Calibri", size_pt=10, italic=True, color=MUTED)
 
     # Issue line
     p_iss = cell.add_paragraph()
     style_paragraph(p_iss, alignment=WD_ALIGN_PARAGRAPH.LEFT,
                     space_before=4, space_after=0)
-    parts = [("VOL. XX", PRIMARY), ("  |  ", ACCENT),
-             ("ISSUE NO. XX", PRIMARY), ("  |  ", ACCENT),
+    parts = [("VOL. XX", PRIMARY), ("  |  ", ACCENT_AA),
+             ("ISSUE NO. XX", PRIMARY), ("  |  ", ACCENT_AA),
              ("MONTH YEAR", PRIMARY)]
     for text, color in parts:
         r = p_iss.add_run(text)
@@ -183,10 +186,12 @@ def restyle_masthead(table) -> None:
                     space_before=0, space_after=0)
     if LOGO_PATH.exists():
         run_logo = p_logo.add_run()
-        run_logo.add_picture(str(LOGO_PATH), width=Inches(0.95))
-    # Column widths: ~1.15" logo column, ~5.75" masthead column.
-    left.width = Inches(1.15)
-    cell.width = Inches(5.75)
+        # Reduced from 0.95" to 0.7" to dial back the blue logo's competition
+        # with the wine-red MERIDIAN wordmark.
+        run_logo.add_picture(str(LOGO_PATH), width=Inches(0.70))
+    # Column widths: ~0.9" logo column, ~6.0" masthead column.
+    left.width = Inches(0.90)
+    cell.width = Inches(6.00)
 
 
 # ---------- section heading restyle ----------
@@ -202,11 +207,14 @@ def restyle_section_heading(p) -> None:
         r._element.getparent().remove(r._element)
     style_paragraph(p, alignment=WD_ALIGN_PARAGRAPH.LEFT,
                     space_before=18, space_after=6, line_spacing=1.1)
-    # Add gold leading "01 — " then red label.
+    # Add red leading "01 — " then red label, with the dash in AA gold.
     pad = num.zfill(2)
-    r1 = p.add_run(f"{pad}  —  ")
+    r1 = p.add_run(f"{pad} ")
     style_run(r1, font="Cambria", size_pt=16, bold=True,
-              color=ACCENT, all_caps=True, tracking=20)
+              color=PRIMARY, all_caps=True, tracking=15)
+    r_dash = p.add_run(" —  ")
+    style_run(r_dash, font="Cambria", size_pt=16, bold=True,
+              color=ACCENT_AA, all_caps=True, tracking=15)
     r2 = p.add_run(label.upper())
     style_run(r2, font="Cambria", size_pt=16, bold=True,
               color=PRIMARY, all_caps=True, tracking=20)
@@ -286,12 +294,12 @@ def restyle_data_table(table) -> None:
                           color=rgb(PALETTE["white"]), all_caps=True, tracking=20)
     set_row_height(table.rows[0], 360, exact=False)
 
-    # Body rows: zebra.
+    # Body rows: zebra (darker than masthead cream so stripes are visible).
     for ri, row in enumerate(table.rows[1:], start=1):
         zebra = (ri % 2 == 1)
         for cell in row.cells:
             if zebra:
-                set_cell_shading(cell, PALETTE["cream"])
+                set_cell_shading(cell, PALETTE["zebra"])
             set_cell_margins(cell, top=60, bottom=60, left=120, right=120)
             set_cell_borders(
                 cell,
@@ -406,10 +414,12 @@ def restyle_highlights_table(table) -> None:
             if ci == 1:
                 continue  # gutter
             set_cell_shading(cell, PALETTE["cream"])
-            set_cell_margins(cell, top=160, bottom=160, left=160, right=160)
+            set_cell_margins(cell, top=200, bottom=180, left=200, right=200)
+            # Premium card affordance: gold rule on top instead of red bar
+            # on left -- matches the HTML rendering and reads more editorial.
             set_cell_borders(
                 cell,
-                left={"sz": 24, "color": PALETTE["primary"], "val": "single"},
+                top={"sz": 18, "color": PALETTE["accent_aa"], "val": "single"},
             )
             for p in cell.paragraphs:
                 for r in p.runs:

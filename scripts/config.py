@@ -39,10 +39,12 @@ DEAN_TITLE = "Dean, Graduate School of Medicine, Nagoya University"
 # Brand palette (mirrors DOCX)
 PALETTE = {
     "primary": "#8B1A1F",      # NU wine red
-    "accent": "#C9A96E",       # warm gold
+    "accent": "#C9A96E",       # warm gold (decorative use only)
+    "accent_aa": "#A8864B",    # darker gold for text/markers (WCAG AA on white)
     "text": "#1C1C1E",         # near-black charcoal
     "muted": "#6B6B70",        # cool gray
-    "cream": "#F7F2EA",        # warm cream tint
+    "cream": "#F7F2EA",        # warm cream tint (masthead)
+    "zebra": "#EFE7D6",        # darker cream for zebra rows (better contrast)
     "hairline": "#D9D2C5",     # subtle rule
     "white": "#FFFFFF",
 }

@@ -1,5 +1,14 @@
 /* MERIDIAN newsletter — email-safe styles
  * Web-safe fonts only, table-based layout, inlined by css_inline.
+ *
+ * Palette:
+ *   #8B1A1F primary (NU wine red)
+ *   #C9A96E gold (decorative)
+ *   #A8864B gold (AA-compliant for text/markers on white)
+ *   #1C1C1E charcoal text
+ *   #6B6B70 muted
+ *   #F7F2EA cream (masthead)
+ *   #EFE7D6 zebra (table rows)
  */
 
 body {
@@ -19,17 +28,25 @@ body {
   background-color: #FFFFFF;
 }
 
+/* ---------- masthead ------------------------------------------------- */
 .masthead {
   background-color: #F7F2EA;
   border-top: 8px solid #8B1A1F;
   border-bottom: 1px solid #C9A96E;
-  padding: 28px 28px 18px 28px;
+  padding: 24px 28px 16px 28px;
+}
+.masthead-logo {
+  vertical-align: top;
+  padding-right: 16px;
+}
+.masthead-text {
+  vertical-align: top;
 }
 .masthead .title {
   font-family: Cambria, Georgia, "Times New Roman", serif;
   font-size: 38px;
   font-weight: bold;
-  letter-spacing: 4px;
+  letter-spacing: 2px;
   color: #8B1A1F;
   text-transform: uppercase;
   margin: 0;
@@ -37,17 +54,20 @@ body {
 }
 .masthead .tagline {
   font-family: Cambria, Georgia, "Times New Roman", serif;
-  font-size: 13px;
+  font-size: 16px;
   font-style: italic;
   color: #8B1A1F;
-  margin: 6px 0 0 0;
+  margin: 8px 0 8px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #C9A96E;
+  line-height: 1.3;
 }
 .masthead .subtitle {
   font-family: Calibri, "Segoe UI", Arial, sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   font-style: italic;
   color: #6B6B70;
-  margin: 6px 0 12px 0;
+  margin: 0 0 10px 0;
   line-height: 1.4;
 }
 .masthead .issue {
@@ -60,26 +80,31 @@ body {
   margin: 0;
 }
 .masthead .issue .pipe {
-  color: #C9A96E;
+  color: #A8864B;
 }
 
+/* ---------- sections + headings -------------------------------------- */
 .section {
-  padding: 22px 28px 4px 28px;
+  padding: 24px 28px 4px 28px;
 }
 .section-heading {
   font-family: Cambria, Georgia, "Times New Roman", serif;
   font-size: 16px;
   font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 2px;
-  margin: 0 0 14px 0;
-  padding-left: 10px;
+  letter-spacing: 1.5px;
+  margin: 0 0 16px 0;
+  padding-left: 12px;
   border-left: 4px solid #8B1A1F;
   line-height: 1.2;
 }
 .section-heading .num {
-  color: #C9A96E;
-  margin-right: 6px;
+  color: #8B1A1F;
+  margin-right: 4px;
+}
+.section-heading .sep {
+  color: #A8864B;
+  margin: 0 4px;
 }
 .section-heading .label {
   color: #8B1A1F;
@@ -90,7 +115,9 @@ body {
   font-size: 13px;
   font-weight: bold;
   color: #1C1C1E;
-  margin: 14px 0 6px 0;
+  margin: 16px 0 8px 0;
+  padding-left: 8px;
+  border-left: 3px solid #A8864B;
   line-height: 1.3;
 }
 
@@ -99,36 +126,21 @@ p.body {
   font-size: 14px;
   line-height: 1.55;
   color: #1C1C1E;
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
 }
 
-ul.bullets {
-  margin: 4px 0 12px 0;
-  padding-left: 18px;
-  list-style: none;
-}
-ul.bullets li {
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #1C1C1E;
-  margin: 0 0 6px 0;
-  padding-left: 14px;
-  position: relative;
-}
-ul.bullets li::before {
-  content: "■";
-  color: #C9A96E;
-  font-size: 11px;
-  position: absolute;
-  left: 0;
-  top: 1px;
+/* ---------- bullets (rendered as 2-cell table inline; survives Gmail) - */
+table.bullets {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0 16px 0;
 }
 
+/* ---------- data tables (visiting scholars, events) ------------------- */
 table.data {
   width: 100%;
   border-collapse: collapse;
-  margin: 6px 0 14px 0;
+  margin: 6px 0 16px 0;
   font-family: Calibri, "Segoe UI", Arial, sans-serif;
 }
 table.data th {
@@ -138,21 +150,22 @@ table.data th {
   font-size: 11px;
   font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   text-align: left;
-  padding: 8px 10px;
+  padding: 9px 11px;
 }
 table.data td {
   font-size: 13px;
   color: #1C1C1E;
-  padding: 8px 10px;
+  padding: 9px 11px;
   border-bottom: 1px solid #D9D2C5;
   vertical-align: top;
 }
 table.data tr:nth-child(even) td {
-  background-color: #F7F2EA;
+  background-color: #EFE7D6;
 }
 
+/* ---------- layout tables -------------------------------------------- */
 table.layout {
   width: 100%;
   border-collapse: collapse;
@@ -166,6 +179,38 @@ table.layout td {
   color: #1C1C1E;
 }
 
+/* ---------- featured-highlights cards -------------------------------- */
+table.highlights {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 6px 0 16px 0;
+}
+table.highlights td.card {
+  background-color: #F7F2EA;
+  border-top: 3px solid #A8864B;
+  padding: 16px 14px 14px 14px;
+  vertical-align: top;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1C1C1E;
+  width: 285px;
+}
+table.highlights td.gutter {
+  width: 16px;
+  font-size: 0;
+  line-height: 0;
+}
+table.highlights td.card strong {
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  color: #8B1A1F;
+  font-size: 14px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* ---------- divider, footer, links, images --------------------------- */
 .divider {
   height: 1px;
   background-color: #C9A96E;
@@ -185,12 +230,12 @@ table.layout td {
 }
 .footer a {
   color: #C9A96E;
-  text-decoration: underline;
+  text-decoration: none;
 }
 .footer .institution {
   color: #FFFFFF;
   font-weight: bold;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 
@@ -204,4 +249,11 @@ img.inline {
 
 a {
   color: #8B1A1F;
+}
+
+@media print {
+  .footer {
+    background: #ffffff !important;
+    color: #1C1C1E !important;
+  }
 }

@@ -60,7 +60,18 @@ def make_env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["issue_line"] = _issue_line_filter
+    env.tests["highlights_block"] = _is_highlights_block_filter
     return env
+
+
+def _is_highlights_table(block: TableBlock) -> bool:
+    """Detect a 3-column layout table where the middle column is empty
+    on every row — that's the Featured Highlights spacer pattern."""
+    if block.has_header or not block.rows:
+        return False
+    if not all(len(row) == 3 for row in block.rows):
+        return False
+    return all(not row[1].strip() for row in block.rows)
 
 
 def attach_image_urls(newsletter: Newsletter, url_map: dict[str, str],
@@ -101,6 +112,11 @@ def attach_image_urls(newsletter: Newsletter, url_map: dict[str, str],
             new_blocks.append(img)
         new_sections.append(replace(section, blocks=tuple(new_blocks)))
     return replace(newsletter, sections=tuple(new_sections))
+
+
+def _is_highlights_block_filter(block) -> bool:
+    """Jinja-callable version of _is_highlights_table."""
+    return isinstance(block, TableBlock) and _is_highlights_table(block)
 
 
 def render(newsletter: Newsletter, *, logo_url: str | None = None) -> str:
