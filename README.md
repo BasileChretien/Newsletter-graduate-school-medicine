@@ -1,13 +1,16 @@
 # MERIDIAN — The Newsletter Toolkit
 
-> **MERIDIAN** — *Where medicine meets the world.*
-
 > 🇯🇵 [日本語版はこちら](README.ja.md)
 
-Welcome! This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It does two things for you:
+## ⬇️ [**CLICK HERE TO DOWNLOAD THE TOOLKIT (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
-1. Gives you a **beautiful Word template** (`Meridian_Newsletter_Template.docx`) — already styled with the school's colors, fonts, logo, and Dean photo.
-2. Turns your filled-in Word file into a **polished email** that opens **directly in your usual email app** (Outlook, Apple Mail, Thunderbird, Gmail in your browser, …) with the newsletter already in the body. You only have to type the recipients and click Send.
+[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-8B1A1F?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
+
+**Three steps:** ① download (button above) ② install Python (Windows users tick "Add Python to PATH") ③ double-click `Make Newsletter.bat` (Windows) / `Make Newsletter.command` (macOS).
+
+> **MERIDIAN** — *Where medicine meets the world.*
+
+This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It gives you a **beautiful Word template** (`Meridian_Newsletter_Template.docx`) — already styled with the school's colors, fonts, logo, and Dean photo — and turns your filled-in Word file into a **polished email** that opens **directly in your usual email app** (Outlook, Apple Mail, Thunderbird, Gmail in your browser, …) with the newsletter already in the body. You only have to type the recipients and click Send.
 
 You do **not** need to be a programmer to use this. Follow the steps below.
 
@@ -19,11 +22,7 @@ You'll set this up once on your computer. After that, every issue takes only a f
 
 ### 1. Download the toolkit onto your computer
 
-## ⬇️ [**CLICK HERE TO DOWNLOAD THE TOOLKIT (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-8B1A1F?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-Click the link above, save the ZIP file (it goes to your **Downloads** folder by default), then:
+Click the **download button at the top of this page**, save the ZIP file (it goes to your **Downloads** folder by default), then:
 
 1. Open the ZIP file and **extract / unzip** it to somewhere easy to find — your **Documents** folder works well.
 2. After extracting you'll have a folder called `Newsletter-graduate-school-medicine-main` — **rename it to `Newsletter-graduate-school-medicine`** if you want a cleaner name, or just leave it.
@@ -53,7 +52,7 @@ You get future updates with a single `git pull`.
 Python is the small program that runs the toolkit.
 
 - **Windows:** download from <https://www.python.org/downloads/> and run the installer. **Important:** on the first screen, tick the box that says **"Add Python to PATH"**. Then click *Install Now*.
-- **macOS:** Python is usually already installed. You'll find out automatically the first time you double-click the launcher in the next section.
+- **macOS:** open **Terminal** (Applications → Utilities → Terminal) and type `python3 --version`, then press Enter. If you see a version number like `3.12.x`, you're set. Otherwise, install Python from <https://www.python.org/downloads/> the same way as on Windows.
 
 That's it for setup. **No command window, no `pip install`, no `cd` — the toolkit handles all of that itself the first time you run it.**
 

@@ -4,14 +4,17 @@ cd /d "%~dp0"
 chcp 65001 >nul
 title Make Newsletter - Meridian
 
-REM Detect locale: if Windows / user language tag begins with `ja`, switch
-REM to Japanese-only output. Otherwise English-only. The editor sees ONE
-REM language per run (round-2 UX H1) instead of the bilingual wall.
+REM Detect locale: if Windows reports a Japanese tag, switch to Japanese
+REM output; otherwise English. Try the registry first (no PowerShell
+REM dependency -- works on locked-down corporate machines); fall back
+REM to PowerShell, then to English.
 set "LANG_PREFIX="
-for /f "usebackq tokens=*" %%L in (`powershell -NoProfile -Command "(Get-WinSystemLocale).Name + ' ' + (Get-Culture).Name" 2^>nul`) do set "LANG_PREFIX=%%L"
+for /f "tokens=3" %%L in ('reg query "HKCU\Control Panel\International" /v LocaleName 2^>nul ^| findstr /i "REG_SZ"') do set "LANG_PREFIX=%%L"
+if "!LANG_PREFIX!"=="" (
+    for /f "usebackq tokens=*" %%L in (`powershell -NoProfile -Command "(Get-Culture).Name" 2^>nul`) do set "LANG_PREFIX=%%L"
+)
 set "JP=0"
 echo !LANG_PREFIX! | findstr /b /i "ja" >nul && set "JP=1"
-echo !LANG_PREFIX! | findstr /i "ja-" >nul && set "JP=1"
 
 if "!JP!"=="1" (
     set "BANNER=  MERIDIAN  -  ニュースレター作成ツール"
@@ -21,9 +24,9 @@ if "!JP!"=="1" (
     set "MSG_NO_PYTHON=エラー: Python がインストールされていないか、PATH に登録されていません。"
     set "MSG_NO_PYTHON_HINT=https://www.python.org/downloads/ から Python をインストールしてください。最初の画面で「Add Python to PATH」のチェックを入れてください。"
     set "MSG_SETUP_HEADING=初回セットアップを実行中"
-    set "MSG_SETUP_BODY=ツールの依存関係をインストールしています。1〜2分かかります。"
-    set "MSG_DONT_CLOSE=*** このウィンドウを閉じないでください ***"
-    set "MSG_DONT_CLOSE_BODY=最大2分間、固まっているように見える場合があります。正常に動作中ですので、そのままお待ちください。"
+    set "MSG_SETUP_BODY=ツールの依存関係をインストールしています。1〜2分かかります。途中で固まって見えてもそのままお待ちください。ウィンドウは閉じないでください。"
+    set "MSG_DONT_CLOSE="
+    set "MSG_DONT_CLOSE_BODY="
     set "MSG_SETUP_FAIL=エラー: 依存関係のインストールに失敗しました。"
     set "MSG_SETUP_DONE=セットアップ完了。(このメッセージは次回以降表示されません)"
     set "MSG_NO_ISSUE=号数が入力されていません。終了します。"
@@ -43,9 +46,9 @@ if "!JP!"=="1" (
     set "MSG_NO_PYTHON=ERROR: Python is not installed or not on PATH."
     set "MSG_NO_PYTHON_HINT=Install Python from https://www.python.org/downloads/ and tick \"Add Python to PATH\" on the first install screen."
     set "MSG_SETUP_HEADING=FIRST-TIME SETUP IN PROGRESS"
-    set "MSG_SETUP_BODY=Installing toolkit dependencies. This takes about 1-2 minutes."
-    set "MSG_DONT_CLOSE=*** PLEASE DO NOT CLOSE THIS WINDOW ***"
-    set "MSG_DONT_CLOSE_BODY=Even if it looks frozen for up to 2 minutes, it is still working. Just wait."
+    set "MSG_SETUP_BODY=Installing toolkit dependencies. This takes 1-2 minutes; it may look frozen for a while -- please wait, and don't close this window."
+    set "MSG_DONT_CLOSE="
+    set "MSG_DONT_CLOSE_BODY="
     set "MSG_SETUP_FAIL=ERROR: Could not install dependencies."
     set "MSG_SETUP_DONE=Setup complete. (You will not see this message again.)"
     set "MSG_NO_ISSUE=No issue number entered -- exiting."
@@ -83,9 +86,6 @@ if errorlevel 1 (
     echo  !MSG_SETUP_HEADING!
     echo ================================================
     echo  !MSG_SETUP_BODY!
-    echo.
-    echo  !MSG_DONT_CLOSE!
-    echo  !MSG_DONT_CLOSE_BODY!
     echo ================================================
     echo.
     python -m pip install --disable-pip-version-check -r requirements.txt

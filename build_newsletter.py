@@ -69,6 +69,29 @@ def build_template_cmd(source: str, output: str):
     click.echo(f"Built: {out}")
 
 
+def _friendly_used(used: str) -> str:
+    """Translate the compose() return code into a human sentence."""
+    if used == "outlook":
+        return "Email draft opened in Outlook desktop."
+    if used.startswith("default:") and "fallback-from-outlook" in used:
+        return ("Outlook didn't open -- the newsletter is on your "
+                "clipboard and a blank draft is open in your default "
+                "email app. Click in the body and press Ctrl+V (Mac: Cmd+V).")
+    if used.startswith("default:apple_mail"):
+        return "Email draft opened in Apple Mail."
+    if used.startswith("default:thunderbird"):
+        return "Email draft opened in Thunderbird."
+    if used.startswith("default:browser"):
+        return ("Email draft opened in your browser-based mail client. "
+                "The newsletter is on your clipboard -- press Ctrl+V "
+                "in the message body.")
+    if used.startswith("default:"):
+        return ("Email draft opened in your default email app. "
+                "The newsletter is on your clipboard -- press Ctrl+V "
+                "in the message body.")
+    return f"Email draft opened via: {used}"
+
+
 def _subject_from_masthead(issue: int, masthead) -> str:
     """Build the email subject from an already-parsed masthead."""
     issue_line = (masthead.issue_line or "").strip() if masthead else ""
@@ -240,9 +263,15 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
     subject = _subject_for(issue, Path(input_path) if input_path else None)
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
+    handler = detect_default_mail_handler()
+    if handler.is_outlook_desktop and backend in ("auto", "outlook"):
+        click.echo(
+            "Opening Outlook (this can take up to 30 seconds the first "
+            "time; please do not click anywhere)..."
+        )
     used = compose(html, subject=subject, backend=backend,
                    preview_path=out, bcc=bcc)
-    click.echo(f"Email draft opened via: {used}")
+    click.echo(_friendly_used(used))
     click.echo(f"Subject: {subject}")
     if recipients:
         click.echo(
@@ -290,10 +319,16 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
     # parse -- no need to re-parse the DOCX here.
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
+    handler = detect_default_mail_handler()
+    if handler.is_outlook_desktop and backend in ("auto", "outlook"):
+        click.echo(
+            "Opening Outlook (this can take up to 30 seconds the first "
+            "time; please do not click anywhere)..."
+        )
     try:
         used = compose(html, subject=subject, backend=backend,
                        preview_path=out, bcc=bcc)
-        click.echo(f"Email draft opened via: {used}")
+        click.echo(_friendly_used(used))
         click.echo(f"Subject: {subject}")
         if recipients:
             click.echo(

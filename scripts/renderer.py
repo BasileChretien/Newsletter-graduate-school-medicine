@@ -29,7 +29,12 @@ _MEDIA_SENTINEL_RE = re.compile(r'media://([^"\'\s>]+)')
 
 
 def _resolve_media(html: str, url_map: dict[str, str]) -> str:
-    """Replace `media://filename` sentinels with their public URLs."""
+    """Replace `media://filename` sentinels with their public URLs.
+
+    Also rewrites the dean-photo `alt=""` from a raw filename to a
+    human-meaningful description so screen readers don't recite
+    `Nagoya_university_school_medicine_dean.jpg`.
+    """
     if not html or "media://" not in html:
         return html
 
@@ -37,7 +42,14 @@ def _resolve_media(html: str, url_map: dict[str, str]) -> str:
         name = m.group(1)
         return url_map.get(name, m.group(0))
 
-    return _MEDIA_SENTINEL_RE.sub(_sub, html)
+    out = _MEDIA_SENTINEL_RE.sub(_sub, html)
+    # Replace the dean-photo's filename-derived alt with a real one.
+    out = re.sub(
+        r'alt="Nagoya_university_school_medicine_dean(?:\.jpg)?"',
+        'alt="Dean of the Graduate School of Medicine"',
+        out, flags=re.IGNORECASE,
+    )
+    return out
 
 
 # The Nagoya template wraps every placeholder in <em> italic. Once an

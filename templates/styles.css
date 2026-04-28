@@ -229,8 +229,11 @@ table.highlights td.card strong {
   text-align: center;
 }
 .footer a {
-  color: #C9A96E;
-  text-decoration: none;
+  /* Brighter than the body gold so the link reads as a link on charcoal,
+     and underlined so it isn't visually identical to adjacent footer
+     text (round-3 Visual #4). */
+  color: #E8C97F;
+  text-decoration: underline;
 }
 .footer .institution {
   color: #FFFFFF;

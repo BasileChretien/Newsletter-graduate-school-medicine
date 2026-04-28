@@ -39,8 +39,8 @@ def load_recipients(recipients_path: Path) -> list[str]:
             continue
         if not _EMAIL_RE.match(line):
             log.warning(
-                "Skipping invalid recipient (not a valid e-mail address "
-                "or contains a separator character): %r", line)
+                "Skipped one address from recipients.txt that didn't "
+                "look right: %r (the rest are fine).", line)
             continue
         if line in seen:
             continue

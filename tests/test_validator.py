@@ -35,7 +35,7 @@ def test_validate_size_ok():
 def test_validate_size_warns_when_too_big():
     big = "x" * (GMAIL_CLIP_BYTES + 100)
     r = validate(f"<html><body>{big}</body></html>", check_remote=False)
-    assert any("Gmail clips" in w for w in r.warnings)
+    assert any("Gmail" in w for w in r.warnings)
 
 
 def test_validate_flags_unfilled_placeholders():
@@ -65,7 +65,8 @@ def test_validate_broken_image_warns_not_errors():
         r = validate(HTML_OK)
     assert r.ok            # build still succeeds
     assert r.broken_images
-    assert any("unreachable" in w for w in r.warnings)
+    assert any("couldn't be reached" in w or "unreachable" in w
+               for w in r.warnings)
     assert not r.errors
 
 

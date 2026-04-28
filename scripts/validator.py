@@ -32,9 +32,12 @@ PLACEHOLDER_RE = re.compile(r"\[[A-Z][^\[\]]{1,60}\]")
 # Lines that look like citations or editorial markers we DO know are
 # legitimate -- exclude these from the warning.
 _LEGIT_BRACKETED = re.compile(
-    r"^\[(?:Sic|Ed\.?|Fig\.|Table\b|cf\.|et al\.|"
-    r"\d+|"                    # numbered citation
-    r"[A-Z][a-z]+ \d{4})"      # author-year [Smith 2023]
+    r"^\[(?:"
+    r"Sic|Ed\.?|Fig\.|Table\b|cf\.|et al\.|"
+    r"\d+|"                                          # [1] [42]
+    r"[A-Z][a-z]+ \d{4}|"                            # [Smith 2023]
+    r"[A-Z][A-Za-z.]*(?:\s+[A-Z][A-Za-z.]*)+\s+\d{4}"  # [J Med Chem 2023]
+    r")"
 )
 
 
@@ -140,26 +143,34 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
 
     if size > GMAIL_CLIP_BYTES:
         warnings.append(
-            f"HTML is {size:,} bytes -- Gmail clips messages above "
-            f"{GMAIL_CLIP_BYTES:,} bytes. Consider trimming images or text."
+            "Heads up: this email is quite long. Gmail may show a "
+            "'View entire message' link to recipients. Consider "
+            "trimming a section or shrinking images."
         )
     elif size > _GMAIL_EARLY_WARN_BYTES:
         warnings.append(
-            f"HTML is {size:,} bytes -- approaching Gmail's "
-            f"{GMAIL_CLIP_BYTES:,}-byte clip threshold."
+            "Heads up: this email is getting long. If it grows much "
+            "more, Gmail may truncate it for recipients."
         )
 
     if placeholders:
-        # Friendly nudge -- the build SUCCEEDED. We just want to warn the
-        # editor that some bracket-style placeholders are still in the
-        # text. Cap at 5 so the message is scannable; non-blocking.
+        # Friendly nudge -- the build SUCCEEDED. We just want to warn
+        # the editor that some bracket-style placeholders are still in
+        # the text. Cap at 5 so the message is scannable; non-blocking.
         sample = ", ".join(placeholders[:5])
         more = (f" (+{len(placeholders) - 5} more)"
                 if len(placeholders) > 5 else "")
+        # Detect "fresh template" by very-high count and add a calming
+        # parenthetical so editors testing the toolkit don't feel scolded.
+        fresh_hint = (
+            " (this is normal for an unfilled template -- fill the "
+            "placeholders in Word and re-run)"
+            if len(placeholders) >= 20 else ""
+        )
         warnings.append(
             f"Reminder: {len(placeholders)} placeholder(s) still in the "
-            f"newsletter -- {sample}{more}. The email was built; review "
-            "before sending."
+            f"newsletter -- {sample}{more}.{fresh_hint} The email was "
+            "built; review before sending."
         )
 
     if broken_images:
@@ -168,9 +179,9 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         # the URLs really are broken at send time, a recipient sees a
         # broken image but the editor has already sent.
         warnings.append(
-            f"{len(broken_images)} image URL(s) unreachable right now -- "
-            "publish-images may need to run first, or the URL(s) are "
-            "still propagating."
+            f"{len(broken_images)} photo(s) couldn't be reached on the "
+            "web yet. They may still be uploading -- try previewing in "
+            "a minute. If broken images persist, run 'publish-images'."
         )
 
     return ValidationResult(
