@@ -22,8 +22,11 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.shared import Inches, Pt, RGBColor
 
 from scripts.config import (
+    DEAN_NAME,
+    DEAN_NAME_PLAIN,
     DEAN_PATH,
     DEAN_PHOTO_PLACEHOLDER,
+    DEAN_TITLE,
     LOGO_PATH,
     MERIDIAN_TEMPLATE,
     ORIGINAL_TEMPLATE,
@@ -321,6 +324,54 @@ def restyle_layout_table(table, *, label_color=False) -> None:
                         r.font.color.rgb = PRIMARY
 
 
+def _replace_paragraph_text(p, new_text: str) -> None:
+    """Clear all runs in a paragraph and write `new_text` in its place,
+    preserving the paragraph's existing style. Style is inherited from
+    the first run if available."""
+    # Capture style from the first run (if any) so we don't lose
+    # bold / colour applied by the surrounding template restyle.
+    sample = p.runs[0] if p.runs else None
+    sample_font_name = sample.font.name if sample else None
+    sample_size = sample.font.size if sample else None
+    sample_bold = sample.bold if sample else None
+    sample_italic = sample.italic if sample else None
+    sample_color = (sample.font.color.rgb if sample and
+                    sample.font.color and sample.font.color.rgb else None)
+    for r in list(p.runs):
+        r._element.getparent().remove(r._element)
+    new_run = p.add_run(new_text)
+    if sample_font_name:
+        new_run.font.name = sample_font_name
+    if sample_size:
+        new_run.font.size = sample_size
+    if sample_bold is not None:
+        new_run.bold = sample_bold
+    if sample_italic is not None:
+        new_run.italic = sample_italic
+    if sample_color:
+        new_run.font.color.rgb = sample_color
+
+
+def insert_dean_name(table) -> None:
+    """Replace [Dean's Name] / [Full Name] placeholders in Section 1.
+
+    - Left cell (credentials block): "[Dean's Name]" -> DEAN_NAME
+    - Right cell (message signature): "[Full Name], MD, PhD"
+                                       -> "{DEAN_NAME_PLAIN}, MD, PhD"
+    """
+    for ri, row in enumerate(table.rows):
+        for ci, cell in enumerate(row.cells):
+            for p in cell.paragraphs:
+                stripped = p.text.strip()
+                if stripped == "[Dean's Name]":
+                    _replace_paragraph_text(p, DEAN_NAME)
+                elif stripped == "[Full Name], MD, PhD":
+                    _replace_paragraph_text(
+                        p, f"{DEAN_NAME_PLAIN}, MD, PhD")
+                elif stripped.startswith("[Full Name]"):
+                    _replace_paragraph_text(p, DEAN_NAME_PLAIN)
+
+
 def insert_dean_photo(table) -> None:
     """Replace the '[ Photo ]' placeholder in Table 1 with the Dean image."""
     if not DEAN_PATH.exists():
@@ -472,6 +523,7 @@ def build(src: Path = ORIGINAL_TEMPLATE, dst: Path = MERIDIAN_TEMPLATE) -> Path:
     if len(doc.tables) > 1:
         restyle_layout_table(doc.tables[1], label_color=False)
         insert_dean_photo(doc.tables[1])
+        insert_dean_name(doc.tables[1])
     for idx in (2, 3):
         if idx < len(doc.tables):
             restyle_highlights_table(doc.tables[idx])
