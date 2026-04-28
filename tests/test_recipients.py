@@ -63,3 +63,24 @@ def test_load_recipients_deduplicates(tmp_path: Path):
     )
     out = load_recipients(path)
     assert out == ["alice@example.com", "bob@example.org"]
+
+
+def test_load_recipients_strips_unicode_invisibles(tmp_path: Path):
+    """Zero-width / bidi-override characters hidden inside an address
+    must be stripped before validation -- otherwise the address that
+    looks correct in the editor's text file resolves to a different
+    recipient inside Outlook."""
+    path = tmp_path / "recipients.txt"
+    # ZWSP (​) hidden between 'a' and 'lice'
+    path.write_text(
+        "a​lice@example.com\n"
+        "bob‮@example.org\n"  # RLO between bob and @
+        "﻿carol@example.net\n",  # BOM at start
+        encoding="utf-8",
+    )
+    out = load_recipients(path)
+    assert out == [
+        "alice@example.com",
+        "bob@example.org",
+        "carol@example.net",
+    ]

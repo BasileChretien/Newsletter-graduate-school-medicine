@@ -36,8 +36,17 @@ body {
   padding: 24px 28px 16px 28px;
 }
 .masthead-logo {
+  /* Inset the seal in a thin hairline frame on white so the seal's
+     own blue doesn't fight the wordmark's #003F88. The padding
+     gives it space to breathe; the hairline reads as institutional
+     framing, not a visible border. */
   vertical-align: top;
   padding-right: 16px;
+}
+.masthead-logo img {
+  background-color: #FFFFFF;
+  padding: 4px;
+  border: 1px solid #C9D2DE;
 }
 .masthead-text {
   vertical-align: top;
@@ -103,8 +112,12 @@ body {
   margin-right: 4px;
 }
 .section-heading .sep {
+  /* Bold the em-dash so it holds visual weight against the 16px bold
+     blue numeral and label -- otherwise the gold dash visually
+     disappears, blurring the "02 -- LABEL" rhythm into "02LABEL". */
   color: #A8864B;
-  margin: 0 4px;
+  font-weight: bold;
+  margin: 0 6px;
 }
 .section-heading .label {
   color: #003F88;
