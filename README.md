@@ -25,7 +25,7 @@ Click the link above, save the ZIP file (it goes to your **Downloads** folder by
 
 1. Open the ZIP file and **extract / unzip** it to somewhere easy to find — your **Documents** folder works well.
 2. After extracting you'll have a folder called `Newsletter-graduate-school-medicine-main` — **rename it to `Newsletter-graduate-school-medicine`** if you want a cleaner name, or just leave it.
-3. Remember where you put it. You'll point the command window to this folder in step 3 below.
+3. Remember where you put it — you'll open it in File Explorer / Finder when you make a newsletter.
 
 <details>
 <summary><b>Prefer to use the GitHub website by hand?</b></summary>
@@ -51,37 +51,9 @@ You get future updates with a single `git pull`.
 Python is the small program that runs the toolkit.
 
 - **Windows:** download from <https://www.python.org/downloads/> and run the installer. **Important:** on the first screen, tick the box that says **"Add Python to PATH"**. Then click *Install Now*.
-- **macOS:** Python is usually already installed. Open the **Terminal** app and type `python3 --version` then press Enter. If it shows a number like `3.12.x`, you're done.
+- **macOS:** Python is usually already installed. You'll find out automatically the first time you double-click the launcher in the next section.
 
-### 3. Open a command window inside the project folder
-
-A "command window" is a black/white box where you type instructions. Don't worry — you'll only ever type a couple of lines.
-
-You need it to be **opened inside** the folder you downloaded in step 1 (so it knows which project to work on).
-
-- **Windows:**
-  1. Open **File Explorer** (the folder icon on your taskbar).
-  2. Navigate to the folder where you saved the project — for example `Documents\Newsletter-graduate-school-medicine`. Double-click into it so you're seeing files like `Meridian_Newsletter_Template.docx` and `README.md` listed.
-  3. Click once in the **address bar at the top** of the window (the bar that shows the folder path), so the path becomes editable.
-  4. Type `cmd` and press Enter. A black window opens — it's already pointing at the project folder. ✓
-
-- **macOS:**
-  1. Open **Terminal** (Applications → Utilities → Terminal).
-  2. Type `cd ` (the letters c, d, then a space — don't press Enter yet).
-  3. Open Finder, find the project folder, and **drag it onto the Terminal window**. The folder's path is pasted automatically.
-  4. Press Enter. The terminal is now pointing at the project folder. ✓
-
-> **Quick check:** type `dir` (Windows) or `ls` (macOS) and press Enter. You should see a list that includes `build_newsletter.py`, `Meridian_Newsletter_Template.docx`, etc. If you see those, you're in the right folder.
-
-### 4. Install the toolkit
-
-Still in the command window, copy and paste this single line and press Enter:
-
-```
-pip install -r requirements.txt
-```
-
-You'll see lots of text scroll by. When it finishes, you're ready. **You will never have to do this again on this computer.**
+That's it for setup. **No command window, no `pip install`, no `cd` — the toolkit handles all of that itself the first time you run it.**
 
 ---
 
@@ -126,54 +98,56 @@ In Word: place your cursor where you want the photo → **Insert → Picture** �
 
 > Power-user shortcut: there's also a `drop-images/` folder for batch-adding photos via a filename convention (`s<section>_<order>_<slug>.jpg`). Most editors will never need this — pasting into Word is faster.
 
-### Step 4 — Run the toolkit
+### Step 4 — Double-click the launcher
 
-Back in the command window, type:
+In the project folder, find this file and **double-click it**:
+
+- **Windows:** `Make Newsletter.bat`
+- **macOS:** `Make Newsletter.command`
+
+A small black window opens and asks you two things:
 
 ```
-python build_newsletter.py all --input issue-3.docx --issue 3
+Issue number (e.g. 3): 3
+Word file [issue-3.docx]:        ← just press Enter to accept the suggestion
 ```
 
-(Replace `3` with the issue number you're working on, in both spots.)
+That's it — type `3` (or whatever issue you're on), press Enter twice, and let it run. On the very first time you do this, the toolkit installs itself (about a minute, with a one-line message). Every other time, it goes straight to building the email.
 
-This does everything in one go:
-
-- Reads your Word file
-- **Picks up every photo you pasted in Word** (and any extras in `drop-images/`)
-- Uploads the photos so they're publicly visible
-- Builds the email
-- **Opens a draft email in your default email app** with the newsletter already in the body and the subject line filled in
+When it finishes, the window says **"Done. Your email draft should now be open."** and your usual email app pops up with the newsletter already in the body.
 
 ### Step 5 — Pick recipients and send
 
-What happens depends on which email app your computer is set up to use by default — the toolkit detects this automatically:
+What you see depends on which email app your computer is set up to use by default — the toolkit detected this automatically:
 
 - **If your default is Microsoft Outlook (desktop):** Outlook pops up a new draft message. The newsletter is already in the body and the subject line is filled in. **You only have to type the recipients in the To: field and click Send.**
 
-- **If your default is Apple Mail, Thunderbird, Gmail in your browser, or anything else:** the toolkit copies the formatted newsletter to your clipboard and opens a new blank message in your usual email app, with the subject line filled in. Click in the message body, press `Ctrl+V` (or `⌘+V` on macOS) to paste the newsletter, type the recipients, and click Send.
-
-**Not sure which one your computer uses?** Run this to find out:
-
-```
-python build_newsletter.py detect-mail
-```
+- **If your default is Apple Mail, Thunderbird, Gmail in your browser, or anything else:** the toolkit copied the formatted newsletter to your clipboard and opened a new blank message in your usual email app, with the subject line filled in. Click in the message body, press `Ctrl+V` (or `⌘+V` on macOS) to paste the newsletter, type the recipients, and click Send.
 
 That's it!
 
-> **Tip:** if Outlook doesn't open or the wrong app shows up, see "Common questions" below.
+> **Tip:** if the wrong email app shows up or Outlook doesn't open, see "Common questions" below.
 
 ---
 
 ## Common questions
 
+**❓ I double-clicked the launcher but nothing happens / it flashes and closes.**
+Two common causes:
+- **Python isn't installed yet.** Run the launcher again from the command window so you can read the error: open the project folder, click in the address bar, type `cmd`, press Enter, then type `"Make Newsletter.bat"` and press Enter. If it complains about Python, install Python (see Setup step 2).
+- **macOS only:** macOS may need a one-time permission. Open Terminal in the project folder and run `chmod +x "Make Newsletter.command"`. Then double-click again.
+
+**❓ The launcher says "ERROR: file not found".**
+Your filled-in Word file isn't in the project folder. Move (or save) `issue-3.docx` (or whatever you named it) into the same folder as `Make Newsletter.bat`. Then re-run the launcher.
+
 **❓ I don't see the Dean photo or the logo in the preview.**
-Make sure you ran the full command (`python build_newsletter.py all ...`) and not just `build` — the `all` command also publishes the photos to the web. If they still don't show, try refreshing your browser.
+Make sure you used the launcher (or ran the full `all` command) — that step also publishes the photos to the web. If they still don't show, try refreshing your browser.
 
 **❓ The preview shows a broken-image icon where one of my photos should be.**
-Most likely the photos haven't been pushed to the public web yet. Re-run `python build_newsletter.py all ...` (note: `all`, not `build`) — that step uploads them. Refresh the preview. If you used the `drop-images/` folder, also check that the filename matches the pattern `s<section>_<order>_<slug>.jpg` (e.g., `s3_01_lab.jpg`, **not** `S3-01-lab.jpg` or `lab photo.jpg`).
+Most likely the photos haven't been pushed to the public web yet. Re-run the launcher — it always re-uploads photos. Refresh the preview.
 
 **❓ I need to redo issue 3 — what do I do?**
-Just re-run `python build_newsletter.py all --input issue-3.docx --issue 3`. It will overwrite the previous output. No harm done.
+Just double-click the launcher again and enter `3` when asked. It will overwrite the previous output. No harm done.
 
 **❓ I want to change the colors / fonts / title of the template.**
 Those are intentionally fixed so every issue stays consistent. Ask the developer (or the person who set this up for you) to update the design.
@@ -203,6 +177,10 @@ Copy the full red text and send it to the developer. Most errors are clear about
 
 ## Quick reference card
 
+**The everyday way:** double-click `Make Newsletter.bat` (Windows) or `Make Newsletter.command` (macOS). Answer the two prompts. Done.
+
+**The advanced way** — if you prefer typing commands yourself:
+
 | What you want to do | Type this |
 |---|---|
 | Make a newsletter for issue N (full routine) | `python build_newsletter.py all --input issue-N.docx --issue N` |
@@ -222,13 +200,14 @@ You can ignore most of these — they just need to be there.
 
 | Folder / file | What it's for |
 |---|---|
+| `Make Newsletter.bat` (Windows), `Make Newsletter.command` (macOS) | **Double-click this.** The everyday launcher. |
 | `Meridian_Newsletter_Template.docx` | **The template you fill in.** Open in Word. |
-| `drop-images/` | **Drop photos here** (with the right filename). |
+| `drop-images/` | Optional folder for batch-adding photos by filename. |
 | `dist/` | The finished email files end up here. |
 | `assets/` | Where uploaded photos are kept. |
 | `images/` | Permanent images (school logo, Dean photo). |
 | `NagoyaU_MedSchool_Newsletter_Template-2.docx` | Original template, kept as reference. |
-| `build_newsletter.py`, `scripts/`, `templates/`, `tests/` | The toolkit's machinery. **Don't touch.** |
+| `build_newsletter.py`, `scripts/`, `templates/`, `tests/`, `requirements.txt` | The toolkit's machinery. **Don't touch.** |
 
 ---
 
