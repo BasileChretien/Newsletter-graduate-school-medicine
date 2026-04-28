@@ -82,3 +82,37 @@ def test_docx_hash_stable(tmp_path: Path):
     p = tmp_path / "f"
     p.write_bytes(b"abc")
     assert docx_hash(p) == docx_hash(p)
+
+
+def test_write_manifest_preserves_audit_data_on_same_hash(tmp_path: Path):
+    """Re-running the build for the same DOCX must NOT re-stamp dean_name
+    or built_at -- audit-trail integrity if the dean changes mid-issue."""
+    asset_dir = tmp_path / "assets" / "issue-7"
+    _seed_assets(asset_dir)
+    docx = tmp_path / "issue-7.docx"
+    docx.write_bytes(b"unchanged content")
+    output = tmp_path / "dist" / "issue-7.html"
+    output.parent.mkdir(parents=True)
+    output.write_text("<x/>", encoding="utf-8")
+
+    first = write_manifest(
+        issue=7, asset_dir=asset_dir, source_docx=docx,
+        subject="First", output_html=output,
+    )
+    # Simulate a global config change between runs.
+    import scripts.manifest as mod
+    original_dean = mod.DEAN_NAME
+    try:
+        mod.DEAN_NAME = "Prof. Different Dean"
+        mod.DEAN_TITLE = "New Title"
+        second = write_manifest(
+            issue=7, asset_dir=asset_dir, source_docx=docx,
+            subject="Second build, same content", output_html=output,
+        )
+    finally:
+        mod.DEAN_NAME = original_dean
+
+    # Subject DID get refreshed; dean info DID NOT.
+    assert second.subject == "Second build, same content"
+    assert second.dean_name == first.dean_name == "Prof. Masahisa Katsuno"
+    assert second.built_at == first.built_at

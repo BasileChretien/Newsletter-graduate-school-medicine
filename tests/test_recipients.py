@@ -24,3 +24,42 @@ def test_load_recipients_strips_comments_and_blank_lines(tmp_path: Path):
     )
     out = load_recipients(path)
     assert out == ["alice@example.com", "bob@example.org", "carol@example.net"]
+
+
+def test_load_recipients_rejects_separator_injection(tmp_path: Path):
+    """A line that smuggles `; bcc=evil@x.com` must be rejected, not
+    expanded into multiple Outlook BCC entries."""
+    path = tmp_path / "recipients.txt"
+    path.write_text(
+        "alice@example.com\n"
+        "attacker@evil.com; bcc=second@evil.com\n"
+        "comma,injection@evil.com\n",
+        encoding="utf-8",
+    )
+    out = load_recipients(path)
+    assert out == ["alice@example.com"]
+
+
+def test_load_recipients_rejects_obvious_typos(tmp_path: Path):
+    path = tmp_path / "recipients.txt"
+    path.write_text(
+        "good@example.com\n"
+        "no-at-sign\n"
+        "missing@tld\n"
+        "spaces in@example.com\n",
+        encoding="utf-8",
+    )
+    out = load_recipients(path)
+    assert out == ["good@example.com"]
+
+
+def test_load_recipients_deduplicates(tmp_path: Path):
+    path = tmp_path / "recipients.txt"
+    path.write_text(
+        "alice@example.com\n"
+        "alice@example.com\n"
+        "bob@example.org\n",
+        encoding="utf-8",
+    )
+    out = load_recipients(path)
+    assert out == ["alice@example.com", "bob@example.org"]

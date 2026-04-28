@@ -133,20 +133,30 @@ def _drawing_to_img(drawing, part) -> str:
     if cnv_pr is not None:
         alt = cnv_pr.get("descr") or cnv_pr.get("name") or ""
 
-    # Width from wp:extent (in EMU). Cap to MAX_IMG_PX.
-    width_attr = ""
+    # Width and height from wp:extent (in EMU). Cap width to MAX_IMG_PX
+    # and scale height proportionally so Outlook (which ignores
+    # `height:auto`) reserves the right vertical space even when images
+    # are blocked.
+    size_attrs = ""
     extent = drawing.find(".//" + EXTENT_TAG)
     if extent is not None:
-        cx = extent.get("cx")
-        if cx and cx.isdigit():
-            px = max(1, min(int(cx) // EMU_PER_PX, MAX_IMG_PX))
-            width_attr = f' width="{px}"'
+        cx_str, cy_str = extent.get("cx"), extent.get("cy")
+        if cx_str and cx_str.isdigit():
+            cx = int(cx_str)
+            width_px = max(1, min(cx // EMU_PER_PX, MAX_IMG_PX))
+            size_attrs = f' width="{width_px}"'
+            if cy_str and cy_str.isdigit():
+                cy = int(cy_str)
+                # Scale height proportionally if width was capped.
+                ratio = width_px / (cx / EMU_PER_PX)
+                height_px = max(1, int(cy / EMU_PER_PX * ratio))
+                size_attrs += f' height="{height_px}"'
 
     return (
         f'<img src="media://{escape(fname, quote=True)}" '
-        f'alt="{escape(alt, quote=True)}"{width_attr} '
+        f'alt="{escape(alt, quote=True)}"{size_attrs} '
         f'style="display:block;max-width:100%;height:auto;'
-        f'margin:8px auto;border:0;" />'
+        f'margin:0;border:0;" />'
     )
 
 

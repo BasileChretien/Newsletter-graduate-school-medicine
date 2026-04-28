@@ -290,11 +290,13 @@ def restyle_data_table(table) -> None:
     set_row_height(table.rows[0], 360, exact=False)
 
     # Body rows: zebra (darker than masthead cream so stripes are visible).
+    # Explicit shading on EVERY cell -- otherwise residual fills from the
+    # original template (e.g. pale blue) survive on even rows.
     for ri, row in enumerate(table.rows[1:], start=1):
         zebra = (ri % 2 == 1)
         for cell in row.cells:
-            if zebra:
-                set_cell_shading(cell, PALETTE["zebra"])
+            set_cell_shading(
+                cell, PALETTE["zebra"] if zebra else PALETTE["white"])
             set_cell_margins(cell, top=60, bottom=60, left=120, right=120)
             set_cell_borders(
                 cell,
@@ -309,11 +311,17 @@ def restyle_data_table(table) -> None:
 
 
 def restyle_layout_table(table, *, label_color=False) -> None:
-    """Apply borderless layout styling to 2-col layout tables."""
+    """Apply borderless layout styling to 2-col layout tables.
+
+    Clears any pre-existing cell shading from the original template
+    (e.g. pale-blue or deep-blue Word default) so the new design ships
+    consistently.
+    """
     set_table_fixed_layout(table)
     remove_table_borders(table)
     for row in table.rows:
         for ci, cell in enumerate(row.cells):
+            set_cell_shading(cell, PALETTE["white"])
             set_cell_margins(cell, top=80, bottom=80, left=120, right=120)
             for p in cell.paragraphs:
                 for r in p.runs:

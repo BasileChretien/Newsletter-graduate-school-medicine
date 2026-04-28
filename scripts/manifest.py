@@ -59,8 +59,17 @@ def docx_hash(path: Path) -> str:
 
 def write_manifest(*, issue: int, asset_dir: Path, source_docx: Path,
                    subject: str, output_html: Path) -> IssueManifest:
-    """Write a manifest.json in `asset_dir`, archiving any previous one
-    that referenced a different DOCX hash."""
+    """Write a manifest.json in `asset_dir`.
+
+    Behaviour:
+      - First publish for an issue: stamp current dean info + build time.
+      - Re-publish of the SAME content (matching docx_sha256): preserve
+        the original `dean_name`, `dean_title`, and `built_at` from the
+        existing manifest -- audit trail integrity. Subject and file
+        inventory are refreshed.
+      - Re-publish of DIFFERENT content (hash mismatch): archive the
+        previous manifest as `manifest.previous.json` and stamp fresh.
+    """
     asset_dir.mkdir(parents=True, exist_ok=True)
     files = sorted(
         f.name for f in asset_dir.iterdir() if f.is_file()
@@ -69,25 +78,26 @@ def write_manifest(*, issue: int, asset_dir: Path, source_docx: Path,
     image_count = sum(1 for f in files if f.lower().endswith(
         (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
     ))
-    new = IssueManifest(
-        issue=issue,
-        title=TITLE,
-        subject=subject,
-        docx_sha256=docx_hash(source_docx),
-        built_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        dean_name=DEAN_NAME,
-        dean_title=DEAN_TITLE,
-        files=tuple(files),
-        file_count=len(files),
-        image_count=image_count,
-        output_html=output_html.name,
-    )
+    new_hash = docx_hash(source_docx)
+
+    # Default values (used when there's no prior manifest).
+    dean_name = DEAN_NAME
+    dean_title = DEAN_TITLE
+    built_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     manifest_path = asset_dir / MANIFEST_FILENAME
     if manifest_path.exists():
         try:
             old = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if old.get("docx_sha256") != new.docx_sha256:
+            if old.get("docx_sha256") == new_hash:
+                # Same content as before -- preserve original audit data.
+                dean_name = old.get("dean_name") or dean_name
+                dean_title = old.get("dean_title") or dean_title
+                built_at = old.get("built_at") or built_at
+                log.debug("Re-publishing same content for issue %d -- "
+                          "preserving original dean + built_at fields.",
+                          issue)
+            else:
                 # Different content -- archive the old manifest.
                 (asset_dir / PREVIOUS_FILENAME).write_text(
                     json.dumps(old, indent=2, ensure_ascii=False) + "\n",
@@ -101,6 +111,19 @@ def write_manifest(*, issue: int, asset_dir: Path, source_docx: Path,
         except Exception as e:
             log.debug("Could not read previous manifest: %s", e)
 
+    new = IssueManifest(
+        issue=issue,
+        title=TITLE,
+        subject=subject,
+        docx_sha256=new_hash,
+        built_at=built_at,
+        dean_name=dean_name,
+        dean_title=dean_title,
+        files=tuple(files),
+        file_count=len(files),
+        image_count=image_count,
+        output_html=output_html.name,
+    )
     manifest_path.write_text(new.to_json(), encoding="utf-8")
     return new
 

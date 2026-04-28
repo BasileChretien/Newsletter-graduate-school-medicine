@@ -51,8 +51,8 @@ table { border-collapse: collapse; }
 <tr><td class="section">
   <h2 class="section-heading">
     <span class="num">{{ "%02d" | format(section.number) }}</span>
-    <span class="sep" style="color:#C9A96E;">—</span>
-    <span class="label">&nbsp;{{ section.title }}</span>
+    <span class="sep">&nbsp;—&nbsp;</span>
+    <span class="label">{{ section.title }}</span>
   </h2>
   {% for block in section.blocks %}
     {% include "partials/_block.html.j2" %}
@@ -66,9 +66,11 @@ table { border-collapse: collapse; }
 <!-- FOOTER -->
 <tr><td class="footer" bgcolor="#1C1C1E">
   {% if logo_url %}
-  <p style="margin:0 0 10px 0;text-align:center;">
-    <img src="{{ logo_url }}" alt="Nagoya University Graduate School of Medicine" width="60" height="60" style="display:inline-block;width:60px;height:60px;border:0;opacity:0.95;" />
-  </p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 10px 0;">
+    <tr><td align="center" style="text-align:center;">
+      <img src="{{ logo_url }}" alt="" width="60" height="60" style="display:block;width:60px;height:60px;border:0;margin:0 auto;" />
+    </td></tr>
+  </table>
   {% endif %}
   <p style="margin:0 0 6px 0;" class="institution">Graduate School of Medicine · Nagoya University</p>
   <p style="margin:0 0 6px 0;">
