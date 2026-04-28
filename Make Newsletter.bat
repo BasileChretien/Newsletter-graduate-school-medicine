@@ -41,16 +41,21 @@ REM Desktop, the build will succeed but photos won't upload to the web,
 REM and recipients will see broken-image icons. Surface the problem
 REM here so they know what to fix.
 if not exist ".git" (
-    echo  WARNING: this folder is not a git checkout.
-    echo  Photos in your newsletter will NOT be uploaded to the web,
-    echo  and recipients will see broken-image icons.
+    echo  ERROR: this folder is not a git checkout.
+    echo.
+    echo  You probably extracted a ZIP. The build would succeed, but
+    echo  photos in your newsletter would NOT upload to the web -- and
+    echo  recipients would see broken-image icons. Aborting now so you
+    echo  fix the setup before drafting an email.
     echo.
     echo  Please follow the README Steps 2 and 3:
     echo    1. Install GitHub Desktop from https://desktop.github.com
     echo    2. In GitHub Desktop, click File -^> Clone repository
     echo       and clone this project fresh into a new folder.
+    echo    3. Re-run this launcher from inside the cloned folder.
     echo.
     pause
+    exit /b 1
 )
 
 REM 2b. Dependency check (install on first run) ------------------------------

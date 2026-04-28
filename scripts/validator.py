@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -201,7 +202,20 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     # subject line / inbox preview built from this -- shipping with
     # `VOL. XX` looks like a broken send and triggers spam-filter
     # heuristics. Not just a reminder -- abort the build.
-    leaked = [tok for tok in _UNFILLED_MASTHEAD_TOKENS if tok in html]
+    #
+    # We check the visible text (NOT the raw HTML), so the explanatory
+    # `<!-- ... VOL. XX ... -->` comment in the template doesn't false-
+    # positive. Word also silently substitutes U+00A0 (non-breaking
+    # space) for an ASCII space when the editor copy-pastes from
+    # another document; NFKC folds NBSP (and friends) to plain space,
+    # then we collapse runs of whitespace so "VOL.  XX" or "VOL. XX"
+    # still get caught.
+    visible_text = soup.get_text(" ", strip=True)
+    normalized_text = re.sub(
+        r"\s+", " ", unicodedata.normalize("NFKC", visible_text))
+    leaked = [
+        tok for tok in _UNFILLED_MASTHEAD_TOKENS if tok in normalized_text
+    ]
     if leaked:
         errors.append(
             "The masthead's issue line still contains unfilled "

@@ -84,6 +84,31 @@ def test_validate_passes_filled_masthead():
     assert not any("VOL. XX" in e for e in r.errors)
 
 
+def test_validate_blocks_nbsp_bypassed_masthead():
+    """Word silently substitutes U+00A0 (NBSP) for ASCII space in
+    pasted text. The unfilled-masthead guard must NFKC-normalize so
+    `VOL. XX` is caught as if it were `VOL. XX` -- otherwise an
+    editor pasting "VOL. XX" from another doc would ship the email
+    with the placeholder still in the subject preview."""
+    html = (
+        "<html><body><p class='issue'>"
+        "VOL. XX | ISSUE NO. XX | MONTH YEAR"
+        "</p></body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert not r.ok
+    assert any("VOL. XX" in e for e in r.errors)
+
+
+def test_validate_blocks_collapsed_whitespace_masthead():
+    """Multiple spaces between tokens (e.g. accidental double-space
+    after period) should still trigger the unfilled-masthead block."""
+    html = "<html><body><p>VOL.   XX  TBD</p></body></html>"
+    r = validate(html, check_remote=False)
+    assert not r.ok
+    assert any("VOL. XX" in e for e in r.errors)
+
+
 def test_validate_broken_image_warns_not_errors():
     """Broken image URLs are now WARNINGS not ERRORS -- a flaky HEAD
     check shouldn't abort the editor's pipeline."""

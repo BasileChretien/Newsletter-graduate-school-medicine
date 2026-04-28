@@ -164,3 +164,23 @@ def test_section_heading_japanese_no_kanji_suffix(tmp_path: Path) -> None:
     nl = parse(doc_path)
     assert len(nl.sections) == 1
     assert nl.sections[0].title == "Lab News"
+
+
+def test_bare_digit_body_sentence_is_NOT_a_section(tmp_path: Path) -> None:
+    """`1 Recent grant from JSPS` is a body sentence that begins with
+    a digit -- NOT a section heading. Without an explicit separator
+    after the digit, the legacy regex used to mis-classify it as
+    section 1 titled "Recent grant from JSPS"."""
+    doc_path = _make_doc(tmp_path, [
+        ("1.  Real Section", None),
+        ("Body of section one.", None),
+        # This line is body text. No separator between `1` and `Recent`,
+        # so it must NOT promote to section 2.
+        ("1 Recent grant from JSPS announced last month.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 1
+    assert nl.sections[0].title == "Real Section"
+    # The body-sentence-with-leading-digit shouldn't have leaked out as
+    # a new section title.
+    assert all("Recent grant from JSPS" not in s.title for s in nl.sections)

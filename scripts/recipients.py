@@ -10,6 +10,8 @@ import logging
 import re
 from pathlib import Path
 
+from scripts.text_utils import strip_invisibles
+
 log = logging.getLogger(__name__)
 
 
@@ -19,18 +21,9 @@ _EMAIL_RE = re.compile(r"^[^@\s;,<>]+@[^@\s;,<>]+\.[^@\s;,<>]+$")
 # Hard ceiling -- a runaway recipients.txt cannot generate a 50 MB BCC.
 _MAX_RECIPIENTS = 1000
 
-# Unicode invisible / direction-control characters that some Outlook
-# builds silently strip from BCC -- which would let a typo'd address
-# look valid in the file but resolve to a different recipient. Stripped
-# before validation so the address Outlook sees IS the address the
-# editor sees in their text editor.
-_INVISIBLE_RE = re.compile(
-    "[​-‏"   # zero-width space, joiner, non-joiner, LRM, RLM
-    "‪-‮"    # bidi embedding / overrides
-    "⁠-⁤"    # word joiner, invisible operators
-    "﻿"           # zero-width no-break space / BOM
-    "]"
-)
+# Invisible / bidi character handling delegates to `scripts.text_utils`
+# so the recipients list, the subject-line builder, and the validator
+# all defend against the same Word-paste hazards in lockstep.
 
 
 def load_recipients(recipients_path: Path) -> list[str]:
@@ -50,7 +43,7 @@ def load_recipients(recipients_path: Path) -> list[str]:
         # Strip Unicode invisible characters BEFORE the regex check so a
         # zero-width space hidden in a copy-pasted address doesn't survive
         # validation.
-        line = _INVISIBLE_RE.sub("", raw).strip().rstrip(",").strip()
+        line = strip_invisibles(raw).strip().rstrip(",").strip()
         if not line or line.startswith("#"):
             continue
         if not _EMAIL_RE.match(line):

@@ -19,6 +19,8 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from scripts.config import SUBHEAD_TEXTS  # known sub-headings (canonical template)
+
 log = logging.getLogger(__name__)
 
 
@@ -27,14 +29,27 @@ SECTION_HEAD_RE = re.compile(r"^\s*(\d+)\s*[\.\-—]?\s*[—-]?\s*(.+?)\s*$")
 NUMBERED_HEAD_RE = re.compile(
     r"^\s*0?(\d+)\s*[—–\-:.]\s+(.+?)\s*$"
 )
-# Tolerant of period / colon / em-dash / hyphen and the optional English
-# (`Section N` / `Sec. N`) and Japanese (`第N章` / `第N号` / `第N節`)
-# prefixes. The Japanese form has a kanji *suffix* (章/号/節) directly
-# after the digit; the separator after it is optional.
+# Three alternative shapes for legacy / non-numbered-prefix section heads.
+# The bare-numeric alternative REQUIRES an explicit separator -- without it
+# `1 Recent grant from JSPS` (a body sentence beginning with a digit) would
+# get mis-parsed as section 1 titled "Recent grant from JSPS".
+#
+#   1. English prose prefix: `Section 5: Title` / `Sec. 5 — Title`
+#   2. Japanese: `第N章 Title` / `第N号 — Title` / `第N Title`
+#      (the `第` prefix itself is the marker -- kanji suffix optional,
+#      separator optional, since this form rarely uses ASCII punctuation)
+#   3. Bare numeric: `1. Title` / `5: Title` / `7 — Title`
+#      Separator is mandatory here.
 LEGACY_HEAD_RE = re.compile(
-    r"^\s*(?:Section\s+|Sec\.?\s+)?"            # English prefix (optional)
-    r"(?:第\s*)?(\d+)\s*(?:[章号節])?"          # number, optional kanji suffix
-    r"\s*[\.:—–\-]?\s+(.+?)\s*$"                # optional separator + title
+    r"^\s*(?:"
+    r"(?:Section|Sec\.?)\s+(?P<en_num>\d+)\s*[\.:—–\-]?\s*"
+    r"(?P<en_title>.+?)"
+    r"|"
+    r"第\s*(?P<jp_num>\d+)\s*[章号節]?\s*[\.:—–\-]?\s*"
+    r"(?P<jp_title>.+?)"
+    r"|"
+    r"(?P<num>\d+)\s*[\.:—–\-]\s+(?P<title>.+?)"
+    r")\s*$"
 )
 
 
@@ -225,17 +240,23 @@ def _is_list_paragraph(p: Paragraph) -> bool:
 
 
 def _detect_section(text: str) -> tuple[int, str] | None:
-    """Detect a section heading like '01 — RESEARCH' or '1. Research'."""
+    """Detect a section heading like '01 — RESEARCH' or '1. Research'.
+
+    Tries the strict numeric pattern first; falls back to the legacy
+    pattern that supports English `Section N` and Japanese `第N章`
+    prefixes plus a separator-required bare-numeric form.
+    """
     m = NUMBERED_HEAD_RE.match(text)
     if m:
         return int(m.group(1)), m.group(2).strip()
     m = LEGACY_HEAD_RE.match(text)
     if m:
-        return int(m.group(1)), m.group(2).strip()
+        num = m.group("en_num") or m.group("jp_num") or m.group("num")
+        title = (m.group("en_title") or m.group("jp_title")
+                 or m.group("title") or "")
+        if num and title.strip():
+            return int(num), title.strip()
     return None
-
-
-from scripts.config import SUBHEAD_TEXTS  # known sub-headings from the canonical template
 
 
 # Maximum text length for a paragraph to be treated as a sub-heading via

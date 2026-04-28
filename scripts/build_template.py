@@ -271,7 +271,7 @@ def restyle_section_heading(p) -> None:
         r._element.getparent().remove(r._element)
     style_paragraph(p, alignment=WD_ALIGN_PARAGRAPH.LEFT,
                     space_before=18, space_after=6, line_spacing=1.1)
-    # Add red leading "01 — " then red label, with the dash in AA gold.
+    # Add NU-blue leading "01 — " then NU-blue label, with the dash in AA gold.
     pad = num.zfill(2)
     r1 = p.add_run(f"{pad} ")
     style_run(r1, font="Cambria", size_pt=16, bold=True,
@@ -325,7 +325,7 @@ def restyle_bullet(p) -> None:
 
 # ---------- tables ----------
 def restyle_data_table(table) -> None:
-    """Apply red header + zebra body to 3-col data tables (visitors, events)."""
+    """Apply NU-blue header + zebra body to 3-col data tables (visitors, events)."""
     set_table_fixed_layout(table)
     # Header row.
     for cell in table.rows[0].cells:
@@ -443,7 +443,7 @@ def insert_dean_photo(table) -> None:
                             space_before=0, space_after=4)
             run = p.add_run()
             run.add_picture(str(DEAN_PATH), width=Inches(1.6))
-            # Red frame around the photo cell as matte (per visual spec).
+            # NU-blue frame around the photo cell as matte (per visual spec).
             set_cell_borders(
                 cell,
                 top={"sz": 8, "color": PALETTE["primary"], "val": "single"},
@@ -464,7 +464,7 @@ def restyle_highlights_table(table) -> None:
                 continue  # gutter
             set_cell_shading(cell, PALETTE["surface"])
             set_cell_margins(cell, top=200, bottom=180, left=200, right=200)
-            # Premium card affordance: gold rule on top instead of red bar
+            # Premium card affordance: gold rule on top instead of NU-blue bar
             # on left -- matches the HTML rendering and reads more editorial.
             set_cell_borders(
                 cell,

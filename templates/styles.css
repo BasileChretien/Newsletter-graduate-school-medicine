@@ -36,17 +36,12 @@ body {
   padding: 24px 28px 16px 28px;
 }
 .masthead-logo {
-  /* Inset the seal in a thin hairline frame on white so the seal's
-     own blue doesn't fight the wordmark's #003F88. The padding
-     gives it space to breathe; the hairline reads as institutional
-     framing, not a visible border. */
+  /* The hairline frame, white bg, and 4px padding live on the
+     nested <td> in the template (see newsletter.html.j2) so Outlook
+     desktop doesn't render padding on the <img> with the masthead's
+     #EEF2F7 background -- which produces a halo around the seal. */
   vertical-align: top;
   padding-right: 16px;
-}
-.masthead-logo img {
-  background-color: #FFFFFF;
-  padding: 4px;
-  border: 1px solid #C9D2DE;
 }
 .masthead-text {
   vertical-align: top;

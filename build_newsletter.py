@@ -14,15 +14,14 @@ import logging
 import sys
 import webbrowser
 from collections import defaultdict
-from dataclasses import replace
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
 
-from dataclasses import dataclass
-
 from scripts import build_template as bt
 from scripts.mail import compose, detect_default_mail_handler
+from scripts.publisher import publish_assets
 from scripts.recipients import load_recipients
 from scripts.config import (
     ASSETS_DIR, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
@@ -35,6 +34,7 @@ from scripts.image_handler import (
 from scripts.inliner import inline
 from scripts.manifest import load_manifest, write_manifest
 from scripts.renderer import attach_image_urls, render
+from scripts.text_utils import sanitize_subject
 from scripts.validator import report, validate
 
 RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
@@ -92,8 +92,15 @@ def _friendly_used(used: str) -> str:
 
 
 def _subject_from_masthead(issue: int, masthead) -> str:
-    """Build the email subject from an already-parsed masthead."""
-    issue_line = (masthead.issue_line or "").strip() if masthead else ""
+    """Build the email subject from an already-parsed masthead.
+
+    Runs the issue line through `sanitize_subject` so Word-pasted
+    invisibles (ZWSP, NBSP, BOM, RLO, ...) never reach the wire --
+    otherwise the inbox preview displays one string while logs/audit
+    trail show another.
+    """
+    issue_line = (masthead.issue_line or "") if masthead else ""
+    issue_line = sanitize_subject(issue_line)
     if issue_line:
         return f"{TITLE} — {issue_line}"
     return f"{TITLE} — Issue {issue}"
@@ -136,13 +143,27 @@ def _build_pipeline(input_path: Path, issue: int, *,
     # 6) Render
     raw_html = render(enriched)
     final_html = inline(raw_html)
+    subject = _subject_from_masthead(issue, newsletter.masthead)
 
-    # 7) Write
+    # 7) Validate FIRST -- a hard-block from `validate()` (e.g. unfilled
+    # masthead `VOL. XX`) must NOT leave a stale openable HTML on disk
+    # that the editor double-clicks and pastes into Outlook. So we
+    # validate the in-memory HTML before persisting anything.
+    result = validate(final_html, check_remote=validate_remote)
+    click.echo(report(result))
+    if not result.ok:
+        click.echo(click.style(
+            "Validation failed -- no file written. Fix the issues "
+            "above and re-run.", fg="red"))
+        return BuildResult(1, subject, out_html)
+
+    # 8) Write -- only reached when validation passes.
     out_html.write_text(final_html, encoding="utf-8")
     click.echo(f"Wrote: {out_html}")
 
-    # 8) Manifest -- audit trail for what was published when.
-    subject = _subject_from_masthead(issue, newsletter.masthead)
+    # 9) Manifest -- audit trail for what was published when. A manifest
+    # write failure is non-fatal: the HTML is already on disk and
+    # validation already passed.
     try:
         manifest = write_manifest(
             issue=issue,
@@ -156,12 +177,6 @@ def _build_pipeline(input_path: Path, issue: int, *,
     except (OSError, ValueError, TypeError) as e:
         log.warning("Could not write manifest: %s", e)
 
-    # 9) Validate
-    result = validate(final_html, check_remote=validate_remote)
-    click.echo(report(result))
-    if not result.ok:
-        click.echo(click.style("Validation failed.", fg="red"))
-        return BuildResult(1, subject, out_html)
     return BuildResult(0, subject, out_html)
 
 
@@ -184,7 +199,6 @@ def build_cmd(input_path: str, issue: int, no_remote_check: bool):
 @click.option("--no-push", is_flag=True, help="Commit but don't push.")
 def publish_images_cmd(issue: int, no_push: bool):
     """Commit (and push) /assets/issue-N/ so raw URLs go live."""
-    from scripts.publisher import publish_assets
     sha = publish_assets(issue, push=not no_push)
     if sha:
         click.echo(f"Published assets for issue {issue} — commit {sha[:8]}")
@@ -216,7 +230,10 @@ def _subject_for(issue: int, input_path: Path | None = None) -> str:
     asset_dir = issue_dir(ASSETS_DIR, issue)
     manifest = load_manifest(asset_dir)
     if manifest is not None and manifest.subject:
-        return manifest.subject
+        # Re-sanitize: an older manifest may have been written before
+        # the subject sanitizer existed, so we don't want a stale
+        # invisible-laden subject to escape via the cached path.
+        return sanitize_subject(manifest.subject)
 
     if input_path is not None and input_path.exists():
         try:
@@ -288,7 +305,6 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
               help="Override mail-client detection for the compose step.")
 def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
     """Run the full pipeline: build -> publish -> compose draft email."""
-    from scripts.publisher import publish_assets
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
     # Build first to populate assets/, then publish, then re-validate remotely.
