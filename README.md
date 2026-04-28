@@ -5,7 +5,7 @@
 Welcome! This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It does two things for you:
 
 1. Gives you a **beautiful Word template** (`Meridian_Newsletter_Template.docx`) — already styled with the school's colors, fonts, logo, and Dean photo.
-2. Turns your filled-in Word file into a **polished email** (an HTML file) you can paste straight into Gmail or Outlook.
+2. Turns your filled-in Word file into a **polished email** that opens **directly in your usual email app** (Outlook, Apple Mail, Thunderbird, Gmail in your browser, …) with the newsletter already in the body. You only have to type the recipients and click Send.
 
 You do **not** need to be a programmer to use this. Follow the steps below.
 
@@ -15,23 +15,50 @@ You do **not** need to be a programmer to use this. Follow the steps below.
 
 You'll set this up once on your computer. After that, every issue takes only a few minutes.
 
-### 1. Install Python
+### 1. Download the toolkit onto your computer
+
+You need to copy this project's folder onto your machine. The simplest way:
+
+1. Open this URL in a web browser: <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>
+2. Click the green **Code** button near the top right of the page.
+3. In the menu that drops down, click **Download ZIP**.
+4. Save the ZIP file (it goes to your Downloads folder by default).
+5. Open the ZIP file and **extract / unzip** it to somewhere easy to find — your **Documents** folder works well. After extracting you'll have a folder called `Newsletter-graduate-school-medicine-main` (or similar). **Rename it to `Newsletter-graduate-school-medicine`** if you want, or leave it as-is.
+
+> **Where should I put the folder?** Anywhere you can find again. `Documents\Newsletter-graduate-school-medicine` is a good default. You'll point the command window to wherever you put it in step 3 below.
+
+> **Power users:** if you're comfortable with Git, you can `git clone https://github.com/BasileChretien/Newsletter-graduate-school-medicine.git` instead — same effect, plus you get future updates by running `git pull`.
+
+### 2. Install Python
 
 Python is the small program that runs the toolkit.
 
 - **Windows:** download from <https://www.python.org/downloads/> and run the installer. **Important:** on the first screen, tick the box that says **"Add Python to PATH"**. Then click *Install Now*.
 - **macOS:** Python is usually already installed. Open the **Terminal** app and type `python3 --version` then press Enter. If it shows a number like `3.12.x`, you're done.
 
-### 2. Open a command window in the project folder
+### 3. Open a command window inside the project folder
 
 A "command window" is a black/white box where you type instructions. Don't worry — you'll only ever type a couple of lines.
 
-- **Windows:** open File Explorer, find the folder `Newsletter-graduate-school-medicine`, click the address bar at the top, type `cmd`, and press Enter. A black window opens.
-- **macOS:** open **Terminal**, type `cd ` (with a space), then drag the folder onto the Terminal window, and press Enter.
+You need it to be **opened inside** the folder you downloaded in step 1 (so it knows which project to work on).
 
-### 3. Install the toolkit
+- **Windows:**
+  1. Open **File Explorer** (the folder icon on your taskbar).
+  2. Navigate to the folder where you saved the project — for example `Documents\Newsletter-graduate-school-medicine`. Double-click into it so you're seeing files like `Meridian_Newsletter_Template.docx` and `README.md` listed.
+  3. Click once in the **address bar at the top** of the window (the bar that shows the folder path), so the path becomes editable.
+  4. Type `cmd` and press Enter. A black window opens — it's already pointing at the project folder. ✓
 
-Copy and paste this single line into the command window and press Enter:
+- **macOS:**
+  1. Open **Terminal** (Applications → Utilities → Terminal).
+  2. Type `cd ` (the letters c, d, then a space — don't press Enter yet).
+  3. Open Finder, find the project folder, and **drag it onto the Terminal window**. The folder's path is pasted automatically.
+  4. Press Enter. The terminal is now pointing at the project folder. ✓
+
+> **Quick check:** type `dir` (Windows) or `ls` (macOS) and press Enter. You should see a list that includes `build_newsletter.py`, `Meridian_Newsletter_Template.docx`, etc. If you see those, you're in the right folder.
+
+### 4. Install the toolkit
+
+Still in the command window, copy and paste this single line and press Enter:
 
 ```
 pip install -r requirements.txt
@@ -95,7 +122,7 @@ python build_newsletter.py all --input issue-3.docx --issue 3
 This does everything in one go:
 
 - Reads your Word file
-- Pulls in any photos from `drop-images/`
+- **Picks up every photo you pasted in Word** (and any extras in `drop-images/`)
 - Uploads the photos so they're publicly visible
 - Builds the email
 - **Opens a draft email in your default email app** with the newsletter already in the body and the subject line filled in
