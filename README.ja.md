@@ -2,40 +2,50 @@
 
 > 🇬🇧 [English version](README.md)
 
-## ⬇️ [**ここをクリックしてツールをダウンロード (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-003F88?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-**3 ステップ:** ① ダウンロード (上のボタン) ② Python をインストール (Windows は「Add Python to PATH」にチェック) ③ `Make Newsletter.bat` (Windows) / `Make Newsletter.command` (macOS) をダブルクリック。
-
 > **MERIDIAN** — *Where medicine meets the world.*
 
-これは**名古屋大学大学院医学系研究科**ニュースレターを作成するためのツールです。**美しい Word テンプレート** (`Meridian_Newsletter_Template.docx`) — 学校のカラー、フォント、ロゴ、学長の写真があらかじめ設定済 — と、入力した Word ファイルを**洗練されたメール**に変換し**いつものメールアプリで直接開く**機能を提供します。本文にはニュースレターが既に入っており、宛先を入力して「送信」をクリックするだけです。
+これは**名古屋大学大学院医学系研究科**ニュースレターを作成するためのツールです。Word ファイルを**洗練されたメール**に変換し、**いつもの Outlook** (または Apple Mail / Thunderbird / ブラウザの Gmail) で本文入りの下書きを直接開きます。あとは宛先を入力して「送信」をクリックするだけです。
 
-プログラマーである必要は**ありません**。以下の手順に従ってください。
+プログラマーである必要は**ありません**。以下の手順に順番どおり従ってください。
 
 ---
 
-## 必要なもの (初回セットアップ)
+## セットアップ — 1回だけ実施 (約15分)
 
-1回設定すれば、その後は数分で完了します。
+**4つのステップを順番に**実施してください。スキップしないでください。
 
-### 1. ツールをコンピュータにダウンロード
+### ステップ 1 — 無料の GitHub アカウントを作成
 
-ページ上部の**ダウンロードボタン**をクリックし、ZIPファイルを保存してから:
+1. <https://github.com/signup> にアクセスします。
+2. ユーザー名、メールアドレス、パスワードを入力してサインアップを完了します。
+3. **作成した GitHub ユーザー名**をツール管理者 (Basile Chrétien) に送ってください。写真をアップロードする権限を付与してもらえます。**確認が来るまでステップ 2 に進めません。**
 
-1. ZIPファイルを開いて、わかりやすい場所に**展開/解凍**します。**ドキュメント**フォルダがおすすめです。
-2. 展開すると `Newsletter-graduate-school-medicine-main` というフォルダができます。お好みで `Newsletter-graduate-school-medicine` にリネームするか、そのままでも構いません。
-3. 保存場所を覚えておいてください。
+> **GitHub とは?** ツールの保管場所です。あなたのアカウントには、ニュースレターの写真をアップロードする権限が与えられます。GitHub の使い方を覚える必要はありません — ツールがすべて自動で処理します。
 
-### 2. Pythonをインストール
+### ステップ 2 — GitHub Desktop をインストール
 
-Pythonはこのツールを動作させる小さなプログラムです。
+1. <https://desktop.github.com> にアクセスし、**Download for Windows** (または **macOS**) をクリック。
+2. インストーラーを実行してください。デフォルト設定で問題ありません。
+3. GitHub Desktop が起動したら **Sign in to GitHub.com** をクリックし、ステップ 1 で作成したアカウントでサインインしてください。
 
-- **Windows:** <https://www.python.org/downloads/> からダウンロードし、インストーラーを実行してください。**重要:** 最初の画面で **「Add Python to PATH」**のチェックを入れてから *Install Now* をクリックしてください。
-- **macOS:** ターミナルで `python3 --version` を実行してください。バージョン番号が表示されればOKです。表示されない場合は python.org からインストールしてください。
+### ステップ 3 — ツールをダウンロード (クローン)
 
-これでセットアップは完了です。**コマンドウィンドウもpip installも不要です。ツールが初回実行時にすべて自動で行います。**
+1. GitHub Desktop のメニューから **File → Clone repository…** をクリック。
+2. **URL** タブをクリックし、以下のアドレスを貼り付けます:
+   ```
+   https://github.com/BasileChretien/Newsletter-graduate-school-medicine.git
+   ```
+3. **Local path** で **Choose…** をクリックし、**ドキュメント** (または覚えやすい場所) を選びます。
+4. **Clone** をクリック。数秒後に PC に `Newsletter-graduate-school-medicine` というフォルダができます。**毎号このフォルダを使います。**
+
+### ステップ 4 — Python をインストール
+
+Python はツールを動作させるプログラムです。
+
+- **Windows:** <https://www.python.org/downloads/> からインストーラーをダウンロードし、実行してください。**重要:** 最初の画面で **「Add Python to PATH」**のチェックを入れてから *Install Now* をクリックしてください。
+- **macOS:** **ターミナル** (アプリケーション → ユーティリティ → ターミナル) を開き、`python3 --version` と入力して Enter キーを押します。`3.12.x` のようなバージョン番号が表示されたら完了です。表示されない場合は Windows と同じ手順で <https://www.python.org/downloads/> からインストールしてください。
+
+これでセットアップは完了です。**この4つのステップを再度行う必要は二度とありません。**
 
 ---
 

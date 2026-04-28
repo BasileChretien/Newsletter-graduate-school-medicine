@@ -2,59 +2,50 @@
 
 > 🇯🇵 [日本語版はこちら](README.ja.md)
 
-## ⬇️ [**CLICK HERE TO DOWNLOAD THE TOOLKIT (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-003F88?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-**Three steps:** ① download (button above) ② install Python (Windows users tick "Add Python to PATH") ③ double-click `Make Newsletter.bat` (Windows) / `Make Newsletter.command` (macOS).
-
 > **MERIDIAN** — *Where medicine meets the world.*
 
-This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It gives you a **beautiful Word template** (`Meridian_Newsletter_Template.docx`) — already styled with the school's colors, fonts, logo, and Dean photo — and turns your filled-in Word file into a **polished email** that opens **directly in your usual email app** (Outlook, Apple Mail, Thunderbird, Gmail in your browser, …) with the newsletter already in the body. You only have to type the recipients and click Send.
+This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It turns a filled-in Word file into a polished email that opens **directly in Outlook** (or Apple Mail / Thunderbird / Gmail in your browser) with the newsletter already in the body. You type the recipients and click Send.
 
-You do **not** need to be a programmer to use this. Follow the steps below.
+You do **not** need to be a programmer. Just follow the steps below in order.
 
 ---
 
-## What you need (one-time setup)
+## Setup — do this once (about 15 minutes)
 
-You'll set this up once on your computer. After that, every issue takes only a few minutes.
+Do all four steps in order. Don't skip any.
 
-### 1. Download the toolkit onto your computer
+### Step 1 — Create a free GitHub account
 
-Click the **download button at the top of this page**, save the ZIP file (it goes to your **Downloads** folder by default), then:
+1. Go to <https://github.com/signup>.
+2. Pick a username, type your email, choose a password, and finish the sign-up.
+3. **Send your GitHub username** to the toolkit administrator (Basile Chrétien) so they can give you permission to upload photos. **You can't move on to Step 2 until they confirm.**
 
-1. Open the ZIP file and **extract / unzip** it to somewhere easy to find — your **Documents** folder works well.
-2. After extracting you'll have a folder called `Newsletter-graduate-school-medicine-main` — **rename it to `Newsletter-graduate-school-medicine`** if you want a cleaner name, or just leave it.
-3. Remember where you put it — you'll open it in File Explorer / Finder when you make a newsletter.
+> **What is GitHub?** It's just where the toolkit lives. Your account gives you permission to upload your newsletter's photos. You don't need to learn how GitHub works — the toolkit does everything for you.
 
-<details>
-<summary><b>Prefer to use the GitHub website by hand?</b></summary>
+### Step 2 — Install GitHub Desktop
 
-1. Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine> in a web browser.
-2. Click the green **Code** button near the top right.
-3. In the menu that drops down, click **Download ZIP**.
-4. Continue from step 1 above (extract, find, rename).
-</details>
+1. Go to <https://desktop.github.com> and click **Download for Windows** (or **macOS**).
+2. Run the installer. Default settings are fine.
+3. When GitHub Desktop opens, click **Sign in to GitHub.com** and sign in with the account you just made in Step 1.
 
-<details>
-<summary><b>Power users — use Git instead?</b></summary>
+### Step 3 — Download (clone) the toolkit
 
-```
-git clone https://github.com/BasileChretien/Newsletter-graduate-school-medicine.git
-```
+1. In GitHub Desktop, click the menu **File → Clone repository…**
+2. Click the **URL** tab, then paste this address:
+   ```
+   https://github.com/BasileChretien/Newsletter-graduate-school-medicine.git
+   ```
+3. Under **Local path**, click **Choose…** and pick **Documents** (or any folder you'll remember).
+4. Click **Clone**. After a few seconds you'll have a folder called `Newsletter-graduate-school-medicine` on your PC. **That's the folder you'll use for every newsletter.**
 
-You get future updates with a single `git pull`.
-</details>
+### Step 4 — Install Python
 
-### 2. Install Python
+Python is the program that runs the toolkit.
 
-Python is the small program that runs the toolkit.
+- **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **tick the box "Add Python to PATH"** before you click *Install Now*.
+- **macOS:** open **Terminal** (Applications → Utilities → Terminal), type `python3 --version`, press Enter. If you see something like `3.12.x`, you're done. Otherwise install from <https://www.python.org/downloads/> the same way as Windows.
 
-- **Windows:** download from <https://www.python.org/downloads/> and run the installer. **Important:** on the first screen, tick the box that says **"Add Python to PATH"**. Then click *Install Now*.
-- **macOS:** open **Terminal** (Applications → Utilities → Terminal) and type `python3 --version`, then press Enter. If you see a version number like `3.12.x`, you're set. Otherwise, install Python from <https://www.python.org/downloads/> the same way as on Windows.
-
-That's it for setup. **No command window, no `pip install`, no `cd` — the toolkit handles all of that itself the first time you run it.**
+That's the whole setup. **You will never have to do these four steps again.**
 
 ---
 
