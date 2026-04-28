@@ -10,7 +10,7 @@ import logging
 import re
 from pathlib import Path
 
-from scripts.text_utils import strip_invisibles
+from scripts.text_utils import normalize_compatibility, strip_invisibles
 
 log = logging.getLogger(__name__)
 
@@ -40,10 +40,18 @@ def load_recipients(recipients_path: Path) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for raw in recipients_path.read_text(encoding="utf-8").splitlines():
-        # Strip Unicode invisible characters BEFORE the regex check so a
-        # zero-width space hidden in a copy-pasted address doesn't survive
-        # validation.
-        line = strip_invisibles(raw).strip().rstrip(",").strip()
+        # NFKC FIRST so fullwidth ASCII variants get folded before the
+        # regex sees them. Round-10 security MEDIUM: a crafted
+        # `victim<U+FF20>evil.com` (FULLWIDTH COMMERCIAL AT) would
+        # otherwise pass `_EMAIL_RE` because `[^@\s;,<>]` only excludes
+        # ASCII `@` (U+0040). NFKC folds `<U+FF20>` -> `@`, after
+        # which the regex sees the address it would have otherwise
+        # missed. Same logic applies to fullwidth digits, periods, etc.
+        # THEN strip invisibles so a hidden ZWSP / BOM / RLO doesn't
+        # survive validation.
+        line = strip_invisibles(
+            normalize_compatibility(raw)
+        ).strip().rstrip(",").strip()
         if not line or line.startswith("#"):
             continue
         if not _EMAIL_RE.match(line):

@@ -36,9 +36,14 @@
     <tbody>
       {% for row in block.rows %}
       <tr>
-        <td class="card" bgcolor="#EEF2F7" width="264" style="width:264px;">{{ row[0] | safe }}</td>
-        <td class="gutter" width="16" style="width:16px;font-size:0;line-height:0;">&nbsp;</td>
-        <td class="card" bgcolor="#EEF2F7" width="264" style="width:264px;">{{ row[2] | safe }}</td>
+        <td class="card" bgcolor="#EEF2F7" width="236" style="width:236px;">{{ row[0] | safe }}</td>
+        {# Round-10 Visual M2: zero-width-space + mso-line-height-rule
+           on the gutter cell, matching the divider treatment from
+           bundle 28. `&nbsp;` was rendered with cell font metrics in
+           Outlook 2016/2019 even with `font-size:0`, occasionally
+           producing a 1-2px height bump in the gutter row. #}
+        <td class="gutter" width="16" style="width:16px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&#8203;</td>
+        <td class="card" bgcolor="#EEF2F7" width="236" style="width:236px;">{{ row[2] | safe }}</td>
       </tr>
       {% endfor %}
     </tbody>

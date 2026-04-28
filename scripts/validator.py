@@ -9,10 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup
 
 from scripts.config import GMAIL_CLIP_BYTES
-from scripts.html_utils import remove_hidden_elements
+from scripts.html_utils import parse_html, remove_hidden_elements
 from scripts.text_utils import normalize_for_match
 
 log = logging.getLogger(__name__)
@@ -118,7 +117,7 @@ def _scan_placeholders(html: str) -> tuple[str, ...]:
     `[Sic]`, etc.) are excluded so legitimate scholarly content
     doesn't trigger the warning.
     """
-    soup = BeautifulSoup(html, "html.parser")
+    soup = parse_html(html)
     text = soup.get_text(" ", strip=True)
     found = PLACEHOLDER_RE.findall(text)
     seen: set[str] = set()
@@ -134,7 +133,13 @@ def _scan_placeholders(html: str) -> tuple[str, ...]:
 
 
 def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
-    soup = BeautifulSoup(html, "html.parser")
+    # Drop hidden elements before scanning images/anchors. Round-10
+    # security LOW 5: a malicious DOCX hyperlink that the renderer
+    # leaves wrapped in `[hidden]` would otherwise be HEAD-checked
+    # for reachability AND end up in the audit trail's anchor_urls
+    # tuple even though the recipient can't see it.
+    soup = parse_html(html)
+    remove_hidden_elements(soup)
     img_urls = tuple(
         img["src"] for img in soup.find_all("img") if img.get("src")
     )
@@ -216,7 +221,7 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     # `sanitize_subject` in text_utils, so subject-line and
     # masthead-token defenses against NBSP / fullwidth substitutions
     # stay in lockstep.
-    visible_soup = BeautifulSoup(html, "html.parser")
+    visible_soup = parse_html(html)
     remove_hidden_elements(visible_soup)
     visible_text = visible_soup.get_text(" ", strip=True)
     normalized_text = normalize_for_match(visible_text)

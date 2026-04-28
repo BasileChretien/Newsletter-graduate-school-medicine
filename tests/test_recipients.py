@@ -65,6 +65,40 @@ def test_load_recipients_deduplicates(tmp_path: Path):
     assert out == ["alice@example.com", "bob@example.org"]
 
 
+def test_load_recipients_normalises_fullwidth_at(tmp_path: Path):
+    """Round-10 security MEDIUM: `_EMAIL_RE`'s exclusion class
+    `[^@\\s;,<>]` only rejects ASCII `@` (U+0040); a crafted
+    `victim<U+FF20>evil.com` (FULLWIDTH COMMERCIAL AT) would have passed
+    validation AND routed to Outlook BCC, where COM might or might not
+    auto-fold. Bundle 29 NFKC-normalises BEFORE regex matching, so
+    fullwidth variants are always folded to ASCII first."""
+    path = tmp_path / "recipients.txt"
+    # Fullwidth `@` (U+FF20) and fullwidth `.` (U+FF0E) should fold to ASCII.
+    path.write_text(
+        "alice@example.com\n"
+        "victim＠evil．com\n",  # both fullwidth
+        encoding="utf-8",
+    )
+    out = load_recipients(path)
+    # After NFKC normalisation the smuggled address is now structurally
+    # equal to the visible-looking `victim@evil.com`. The point is that
+    # the editor sees what Outlook will resolve -- no hidden routing.
+    assert "alice@example.com" in out
+    assert "victim@evil.com" in out
+    # No entries with fullwidth chars survived to BCC.
+    for addr in out:
+        assert "＠" not in addr
+        assert "．" not in addr
+
+
+def test_load_recipients_normalises_fullwidth_digits(tmp_path: Path):
+    """`１２３@example.com` -> `123@example.com` after NFKC."""
+    path = tmp_path / "recipients.txt"
+    path.write_text("user１２３@example.com\n", encoding="utf-8")
+    out = load_recipients(path)
+    assert out == ["user123@example.com"]
+
+
 def test_load_recipients_rejects_zwj_smuggled_address(tmp_path: Path):
     """Round-9 security finding: U+200D ZERO WIDTH JOINER is not
     whitespace and not in `_EMAIL_RE`'s exclusion class, so a crafted

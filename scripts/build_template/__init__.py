@@ -150,8 +150,9 @@ __all__ = [
 # `_normalize_body_run` is intentionally NOT in `__all__` -- the leading
 # underscore signals private-to-package. It's still reachable as
 # `scripts.build_template._normalize_body_run` for debug shells, or via
-# the submodule path `scripts.build_template._styles._normalize_body_run`,
-# but it's not part of the public API surface.
+# the submodule path `scripts.build_template.styles._normalize_body_run`
+# (bundle 28 dropped the underscore on submodule names), but it's not
+# part of the public API surface.
 
 
 if __name__ == "__main__":

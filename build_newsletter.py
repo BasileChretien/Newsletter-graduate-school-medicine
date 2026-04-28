@@ -211,8 +211,10 @@ def _build_pipeline(input_path: Path, issue: int, *,
         click.echo(click.style(
             "Validation failed -- no file written. Any older "
             f"{out_html.name} from a previous run was removed so you "
-            "don't accidentally open it. Fix the issues above and "
-            "re-run.", fg="red"))
+            "don't accidentally open it. Scroll up to the lines that "
+            "start with \"ERROR:\", fix those in your Word file, then "
+            "re-run the launcher (re-running is always safe -- it "
+            "rebuilds from scratch).", fg="red"))
         return BuildResult(1, subject, out_html)
 
     # Soft warnings on subject length. Two thresholds:
@@ -227,10 +229,11 @@ def _build_pipeline(input_path: Path, issue: int, *,
             f"Heads up: subject is {n} characters "
             f"(> {_SUBJECT_SPAM_LIMIT_CHARS}). Many spam filters "
             "score long subjects higher, and inbox-list previews on "
-            "most clients will truncate it. Tip: most overflow comes "
-            "from a long issue subtitle in the masthead -- try "
-            "abbreviating MONTH YEAR (e.g. \"MAR 2026\" instead of "
-            "\"MARCH 2026\").",
+            "most clients will truncate it. Tip: shorten the masthead "
+            "issue line -- the subject is built from "
+            "\"VOL. X | ISSUE NO. Y | MONTH YEAR\". Common quick wins: "
+            "abbreviate the month (\"MAR 2026\"), drop a subtitle, or "
+            "use shorter Roman numerals.",
             fg="yellow"))
     elif n > _SUBJECT_PREVIEW_LIMIT_CHARS:
         click.echo(click.style(
@@ -238,8 +241,10 @@ def _build_pipeline(input_path: Path, issue: int, *,
             f"(> {_SUBJECT_PREVIEW_LIMIT_CHARS}). Outlook desktop and "
             "Gmail web typically truncate inbox-list previews around "
             "50 chars, so recipients may only see the first half. "
-            "If that's a concern, try abbreviating MONTH YEAR (e.g. "
-            "\"MAR 2026\").",
+            "If that's a concern, shorten the masthead issue line -- "
+            "the subject is built from \"VOL. X | ISSUE NO. Y | "
+            "MONTH YEAR\". Quickest win: abbreviate the month "
+            "(\"MAR 2026\" instead of \"MARCH 2026\").",
             fg="yellow"))
 
     # 8) Write -- only reached when validation passes. mkdir is here

@@ -19,13 +19,18 @@ def test_plaintext_strips_html_tags():
 
 def test_plaintext_inserts_line_breaks_for_block_elements():
     """<p>, <h1>, <li>, <br>, <tr>, <div> -- all produce newlines
-    so the plaintext is readable without HTML rendering."""
+    so the plaintext is readable without HTML rendering.
+
+    Bundle 29 normalises all newlines to CRLF (round-10 deliverability
+    HIGH 1) so we match against `\\r\\n` here."""
     out = html_to_plaintext(
         "<p>First paragraph.</p>"
         "<p>Second paragraph.</p>"
     )
-    assert "First paragraph.\nSecond paragraph." in out or \
-           "First paragraph.\n\nSecond paragraph." in out
+    assert (
+        "First paragraph.\r\nSecond paragraph." in out
+        or "First paragraph.\r\n\r\nSecond paragraph." in out
+    )
 
 
 def test_plaintext_renders_anchor_url_after_label():
@@ -90,8 +95,9 @@ def test_plaintext_collapses_whitespace_runs():
 
 
 def test_plaintext_handles_empty_input():
-    assert html_to_plaintext("") == "\n" or html_to_plaintext("") == ""
-    assert html_to_plaintext("<html><body></body></html>") in ("\n", "")
+    """Bundle 29 emits CRLF-only output (round-10 deliverability HIGH 1)."""
+    assert html_to_plaintext("") in ("\r\n", "")
+    assert html_to_plaintext("<html><body></body></html>") in ("\r\n", "")
 
 
 def test_plaintext_preserves_text_order():
@@ -173,6 +179,80 @@ def test_plaintext_drops_tel_url():
     assert "tel:" not in out
     assert "+1234567890" not in out
     assert "phone" in out
+
+
+def test_plaintext_drops_vbscript_url():
+    """`vbscript:` is the legacy IE / Outlook desktop WebView vector;
+    not in `_SAFE_URL_SCHEMES`. Round-10 code-review MEDIUM."""
+    out = html_to_plaintext('<a href="vbscript:msgbox(1)">click</a>')
+    assert "vbscript:" not in out
+    assert "msgbox" not in out
+    assert "click" in out
+
+
+def test_plaintext_accepts_uppercase_https():
+    """Round-10 security MEDIUM 3: the scheme allowlist check is
+    case-INsensitive so legitimate `HTTPS://example.com` survives.
+    Bundle 28's case-sensitive check would silently drop the URL."""
+    out = html_to_plaintext('<a href="HTTPS://example.com/">click</a>')
+    assert "HTTPS://example.com/" in out
+    assert "click" in out
+
+
+def test_plaintext_drops_mixed_case_javascript():
+    """Mixed-case `JavaScript:` must still be rejected after the
+    case-insensitive change (we allowlist, not denylist)."""
+    out = html_to_plaintext('<a href="JavaScript:alert(1)">click</a>')
+    # JavaScript scheme must NOT survive in the output.
+    assert "JavaScript:" not in out
+    assert "javascript:" not in out
+    assert "alert" not in out
+    assert "click" in out
+
+
+def test_plaintext_heading_with_link_does_not_leak_url_into_marker():
+    """Round-10 python-reviewer HIGH: bundle 28 ran link expansion
+    BEFORE heading rewriting, so `<h2><a href="x">Link</a></h2>` got
+    rewritten to a NavigableString `Link (x)`, then wrapped in
+    `=== ... ===`, producing `=== LINK (HTTPS://X.COM) ===`. Bundle
+    29 swaps the order so the URL never appears in the heading marker."""
+    out = html_to_plaintext(
+        '<h2><a href="https://example.com/">Lab News</a></h2>'
+        '<p>Body.</p>'
+    )
+    # Heading marker uppercased label, no URL leak.
+    assert "=== LAB NEWS ===" in out
+    # The URL still appears OUTSIDE the heading marker (in the body
+    # if there's a separate link, or not at all in this case since
+    # the link was inside the heading and consumed by it).
+    # Specifically: no URL inside any === ... === block.
+    import re as _re
+    for marker in _re.findall(r"===\s*[^=]*\s*===", out):
+        assert "://" not in marker, (
+            f"URL leaked into heading marker: {marker!r}"
+        )
+
+
+def test_plaintext_heading_uppercase_consistent_for_nested_tags():
+    """Round-10 deliverability M2: `<h2>` heading text must be
+    uppercased in BOTH the simple-string and nested-tag cases.
+    `<h2>Section <em>Foo</em></h2>` -> `=== SECTION FOO ===` (not
+    `=== Section Foo ===`)."""
+    out = html_to_plaintext("<h2>Section <em>Foo</em></h2>")
+    assert "=== SECTION FOO ===" in out
+
+
+def test_plaintext_uses_crlf_line_endings():
+    """Round-10 deliverability HIGH 1: RFC 5322 mandates CRLF in
+    mail bodies. Bundle 28's bare-LF output would trip strict MIME
+    validators on Send-As / forwarded paths."""
+    out = html_to_plaintext("<p>One</p><p>Two</p>")
+    assert "\r\n" in out
+    # No bare LF that isn't already part of CRLF.
+    bare_lf_count = out.count("\n") - out.count("\r\n")
+    assert bare_lf_count == 0, (
+        f"Plaintext contains {bare_lf_count} bare LF; must be all CRLF."
+    )
 
 
 def test_plaintext_keeps_mailto_url():

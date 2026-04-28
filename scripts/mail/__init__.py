@@ -63,28 +63,27 @@ class ComposeOutcome:
         return self.fell_back_from is not None
 
     def __str__(self) -> str:
-        """DEPRECATED legacy magic-string format.
+        """Legacy magic-string format.
 
-        Round-7 callers compared the bare-string return of `compose()`;
-        we keep `__str__` so existing log lines (`log.info("used: %s",
-        outcome)`) keep producing the documented wire format. Match on
-        the dataclass fields directly in new code.
+        Returned by `str(outcome)` and by lazy-format log calls
+        (`log.info("used: %s", outcome)`). Round-9 introduced a
+        DeprecationWarning here, but round-10 found that lazy-%s
+        formatting in production logs would emit those warnings on
+        every INFO line -- defeating the shim's purpose. So `__str__`
+        is now silent: it just produces the legacy wire format.
+        Migration is encouraged via the `startswith` shim's warning
+        (which is a more deliberate API surface) and via the field
+        comparisons documented in `ComposeOutcome`'s docstring.
+        Round-10 python-reviewer MEDIUM + UX H3.
         """
-        warnings.warn(
-            "ComposeOutcome.__str__ legacy format is deprecated; "
-            "match on .backend / .handler_kind / .is_fallback / "
-            ".fell_back_from instead. The shim will be removed in a "
-            "future release.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._legacy_str()
+        return self._format_legacy()
 
-    def _legacy_str(self) -> str:
-        """Internal: the legacy wire format without the deprecation warning.
+    def _format_legacy(self) -> str:
+        """The legacy wire format without any deprecation noise.
 
-        Used by `startswith` and by tests that need to verify the shim
-        format itself. Public callers should not rely on this.
+        Used by `__str__` and by `startswith`. Tests that need to
+        verify the shim's exact format call this directly so they
+        don't have to muck with `warnings.simplefilter`.
         """
         if self.backend == "outlook" and not self.is_fallback:
             return "outlook"
@@ -95,15 +94,26 @@ class ComposeOutcome:
     def startswith(self, prefix: str) -> bool:
         """DEPRECATED compatibility shim for `outcome.startswith("default:")`.
 
-        Match on `.backend` / `.is_fallback` instead.
+        Use field comparisons instead, e.g.::
+
+            if outcome.backend == "outlook" and not outcome.is_fallback: ...
+            if outcome.is_fallback: ...
+
+        This shim still emits a `DeprecationWarning` because explicit
+        `.startswith` calls are usually deliberate -- worth nudging.
+        Removal target: bundle 30+.
         """
         warnings.warn(
-            "ComposeOutcome.startswith legacy shim is deprecated; "
-            "match on .backend / .is_fallback / .handler_kind instead.",
+            "ComposeOutcome.startswith is deprecated. Replace "
+            "`outcome.startswith('default:')` with "
+            "`outcome.backend != 'outlook' or outcome.is_fallback`, "
+            "and `outcome.startswith('outlook')` with "
+            "`outcome.backend == 'outlook' and not outcome.is_fallback`. "
+            "Removal target: bundle 30+.",
             DeprecationWarning,
             stacklevel=2,
         )
-        return self._legacy_str().startswith(prefix)
+        return self._format_legacy().startswith(prefix)
 
 
 # Registry: ordered, priority high-to-low. The dispatcher iterates and

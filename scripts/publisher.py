@@ -80,9 +80,15 @@ def publish_assets(issue: int, *, push: bool = True,
     # a subclass of `int`, but `publish_assets(True)` should never
     # reach the filesystem.
     if isinstance(issue, bool) or not isinstance(issue, int):
+        # Cap the repr to 80 chars so a caller passing a large dict /
+        # numpy array / arbitrary object can't blow up logs or leak
+        # PII via this exception (round-10 security LOW 2).
+        bad = repr(issue)
+        if len(bad) > 80:
+            bad = bad[:77] + "..."
         raise TypeError(
             f"issue must be a positive integer -- got "
-            f"{type(issue).__name__} {issue!r}"
+            f"{type(issue).__name__} {bad}"
         )
     if issue <= 0:
         raise ValueError(

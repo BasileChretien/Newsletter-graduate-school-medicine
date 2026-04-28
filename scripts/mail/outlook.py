@@ -18,6 +18,23 @@ from scripts.mail.plaintext import (
 log = logging.getLogger(__name__)
 
 
+# COM-error tuple used by the narrow except clauses on `mail.*`
+# property setters. Round-10 security LOW 4 + python-reviewer MEDIUM:
+# `pywintypes.com_error` is `OSError`-derived in pywin32 >= 228 (2021)
+# but inherits directly from `Exception` in older builds still common
+# on locked-down university Windows images. So we import lazily and
+# build a tuple that works in both environments. `AttributeError`
+# stays in the tuple for the case where a renamed COM property turns
+# the call into an attribute miss.
+try:
+    import pywintypes  # type: ignore[import-not-found]
+    _COM_ERRORS: tuple[type[BaseException], ...] = (
+        OSError, AttributeError, pywintypes.com_error,
+    )
+except ImportError:
+    _COM_ERRORS = (OSError, AttributeError)
+
+
 def is_available() -> bool:
     if platform.system() != "Windows":
         return False
@@ -85,19 +102,20 @@ def compose_outlook(html: str, subject: str, *,
         # account to have Send-As permission for from_addr.
         mail.SentOnBehalfOfName = from_addr
     if reply_to:
-        # COM call may raise pywintypes.com_error (which is OSError-
-        # derived in modern pywin32) for unresolvable addresses.
-        # Narrow except so a real bug (AttributeError on a renamed
-        # COM property) isn't silently swallowed.
+        # COM call may raise `pywintypes.com_error` (which is
+        # `OSError`-derived only on pywin32 >= 228) for unresolvable
+        # addresses. The `_COM_ERRORS` tuple at module load builds a
+        # version-aware union so older pywin32 doesn't slip past the
+        # narrow except.
         try:
             mail.ReplyRecipients.Add(reply_to)
-        except (OSError, AttributeError) as e:
+        except _COM_ERRORS as e:
             log.debug("Outlook ReplyRecipients.Add(%r) failed: %s",
                       reply_to, e)
     for path in attachments or ():
         try:
             mail.Attachments.Add(str(path))
-        except (OSError, AttributeError) as e:
+        except _COM_ERRORS as e:
             log.debug("Outlook Attachments.Add(%r) failed: %s", path, e)
     mail.Display(False)
 

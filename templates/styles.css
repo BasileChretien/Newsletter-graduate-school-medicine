@@ -50,7 +50,13 @@ body {
   padding-right: 16px;
 }
 .masthead-text {
-  vertical-align: top;
+  /* Round-10 Visual H2: paired with `.masthead-logo { vertical-align:
+     middle }`. Setting one cell to `middle` and the other to `top`
+     anchored them to opposite ends -- the seal floated centred while
+     the text stacked from the top, leaving empty space both above
+     AND below the seal in the masthead band. Matching alignments
+     keeps the seal flush against the top of the title text. */
+  vertical-align: middle;
 }
 .masthead .title {
   font-family: Cambria, Georgia, 'Times New Roman', serif;
@@ -132,20 +138,24 @@ body {
 
 .subhead {
   font-family: Cambria, Georgia, 'Times New Roman', serif;
-  /* Round 8 Visual M4 + round 9 revisit: subhead recoloured to NU
-     blue (links it visually to the section's left bar) AND the
-     uppercase + letter-spacing dropped (round 9 Visual H2). The
-     section heading already owns "uppercase + tracked + blue +
-     serif"; repeating that on the subhead made them read as
-     siblings instead of parent-child. Title-case mixed-bold here
-     is the clear typographic distinction. */
-  font-size: 12px;
+  /* Round-8/9/10 evolution. Sequence:
+       round 7   13px charcoal bold   -- collided with section heading
+       round 8   12px blue uppercase  -- typographic near-tie with section heading
+       round 9   12px blue mixed-case -- below 14px body, didn't read as heading
+       round 10  13px blue mixed-case -- above body, below section, reads as parent-child.
+     Visual M3 finding: at 12px the subhead dropped *below* the 14px
+     body font and read as bold-blue inline emphasis. 13px restores
+     the parent-child hierarchy without re-introducing the uppercase
+     + tracking that owned the section-heading's signature.
+     A bumped top margin (22px) gives extra separation so the subhead
+     reads as a section break, not a body emphasis. */
+  font-size: 13px;
   font-weight: bold;
   color: #003F88;
   /* No left rule -- the section heading already has a strong blue
      left bar; an additional gold rule on every subhead made the page
      feel "ruled everywhere" (round-3 Visual LOW-9). */
-  margin: 18px 0 8px 0;
+  margin: 22px 0 8px 0;
   line-height: 1.3;
 }
 
@@ -223,12 +233,15 @@ table.highlights td.card {
   font-size: 13px;
   line-height: 1.5;
   color: #1C1C1E;
-  /* The section's <td> is 600px wide minus 28px L/R padding => 544px
-     usable. Two cards + 16px gutter must fit inside 544px:
-     (544 - 16) / 2 = 264px each. Hardcoding 264px (instead of 285)
-     prevents Outlook desktop from falling back to its own column
-     math, which produced a slight horizontal scroll in earlier rounds. */
-  width: 264px;
+  /* Round-10 Visual H1 follow-up: the 264 px figure was the OUTER
+     width budget (2 cards + 16 px gutter == 544 px usable section
+     width). With `padding: 16px 14px 14px 14px` and Outlook's
+     content-box-default rendering, declaring `width: 264px` produced
+     264 + 14 + 14 = 292 px per card -> 600 px total -> 56 px
+     overflow in Outlook desktop. We now declare the CONTENT width
+     so the rendered outer width hits the 264 px budget:
+        264 (outer) - 14 - 14 (h-padding) = 236 px content. */
+  width: 236px;
 }
 table.highlights td.gutter {
   width: 16px;

@@ -45,6 +45,11 @@ import unicodedata
 # generate today), use `strip_invisibles(s, keep_zwj=True)`.
 _KEEP_CHARS = frozenset({"\n", "\t"})
 _ZWJ = "‍"
+# Pre-computed once at module load so `keep_zwj=True` callers don't
+# allocate a new frozenset on every invocation (round-10
+# python-reviewer HIGH). `frozenset | frozenset` returns a new
+# frozenset; doing it on every call costs ~200ns plus GC pressure.
+_KEEP_CHARS_WITH_ZWJ = _KEEP_CHARS | frozenset({_ZWJ})
 _STRIP_CATEGORIES = frozenset({"Cf", "Cc"})
 
 
@@ -59,9 +64,7 @@ def strip_invisibles(s: str, *, keep_zwj: bool = False) -> str:
     validators MUST leave `keep_zwj=False` so a crafted ZWJ-bearing
     address can't smuggle past `_EMAIL_RE`.
     """
-    keep: frozenset[str] = (
-        _KEEP_CHARS | {_ZWJ} if keep_zwj else _KEEP_CHARS
-    )
+    keep = _KEEP_CHARS_WITH_ZWJ if keep_zwj else _KEEP_CHARS
     return "".join(
         ch for ch in s
         if ch in keep or unicodedata.category(ch) not in _STRIP_CATEGORIES

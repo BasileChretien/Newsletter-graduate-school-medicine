@@ -172,6 +172,25 @@ def test_validate_still_blocks_visible_token_when_hidden_present():
 
 # ---------- Bundle 26: HTML comment is not a token leak ------------------
 
+def test_validate_excludes_hidden_anchors_from_audit_trail():
+    """Round-10 security LOW 5: a `<a href hidden>` (or `display:none`
+    wrapper) is invisible to recipients but, before bundle 29, would
+    end up in `result.anchor_urls` AND get a HEAD request. We now
+    drop hidden elements before scanning."""
+    html = (
+        "<html><body>"
+        "<div style='display:none'>"
+        "<a href='https://hidden.example.com/secret'>x</a>"
+        "</div>"
+        "<p>Visible body. <a href='https://example.com/visible'>link</a></p>"
+        "</body></html>"
+    )
+    r = validate(html, check_remote=False)
+    # Only the visible link is in the audit trail.
+    assert "https://example.com/visible" in r.anchor_urls
+    assert "https://hidden.example.com/secret" not in r.anchor_urls
+
+
 def test_validate_html_comment_does_not_false_positive():
     """The template's explanatory `<!-- ... VOL. XX ... -->` comment
     must not trigger the hard-block: it's documentation, not visible

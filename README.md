@@ -40,7 +40,7 @@ Do all four steps in order. Don't skip any.
 3. Under **Local path**, click **Choose…** and pick **Documents** (or any folder you'll remember).
 4. Click **Clone**. After a few seconds you'll have a folder called `Newsletter-graduate-school-medicine` on your PC. **That's the folder you'll use for every newsletter.**
 
-> **Important — do NOT use "Download ZIP":** GitHub's web page also offers a green **Code → Download ZIP** button. **Do not use it.** A ZIP-extracted copy can build a newsletter, but photos won't upload to the web — recipients will see broken-image icons. The launcher detects this and stops with a clear error, so if you accidentally extracted a ZIP just follow the instructions on screen and clone fresh via GitHub Desktop as described above.
+> **Heads up for next time you visit the project page on github.com:** that page has a green **Code** button with a **Download ZIP** option. **Don't use it** — a ZIP copy can build the email but photos won't upload to the web, so recipients will see broken-image icons. Always come back through **GitHub Desktop** (this Step 3) instead. The launcher also detects a ZIP-extracted folder and stops with a clear error, but if you can avoid it, you'll save yourself a few minutes of "wait, why doesn't it work?".
 
 ### Step 4 — Install Python
 
@@ -219,7 +219,7 @@ Most universities (including Nagoya University) cap a single outgoing message at
 Yes, as long as you send from your university account. Sending reputation depends on the mail server, not the toolkit, and `@med.nagoya-u.ac.jp` already has a trusted setup.
 
 **❓ I printed the email and the masthead looks different from the screen.**
-That's intentional. The print stylesheet swaps the dark cream-and-gold masthead for a high-contrast, ink-saving version — your recipients still see the on-screen design when they read the email, and your printed copy doesn't drain a colour cartridge.
+That's intentional. The print stylesheet swaps the dark cream-and-gold masthead for a simpler black-and-white version that doesn't drain your colour cartridge. Your recipients still see the on-screen design when they read the email — only the printed copy looks different.
 
 ---
 

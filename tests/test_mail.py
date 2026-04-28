@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from unittest.mock import patch
 
 import pytest
@@ -126,44 +127,49 @@ def test_compose_outcome_is_frozen_dataclass():
         out.backend = "other"  # type: ignore[misc]
 
 
-def test_compose_outcome_str_emits_deprecation_warning():
-    """Bundle 28: `__str__` and `startswith` are now deprecation
-    paths. The legacy format is still produced (so existing log-grep
-    keeps working), but each call emits a DeprecationWarning so
-    callers know to migrate."""
+def test_compose_outcome_str_is_silent():
+    """Bundle 29: `__str__` no longer emits DeprecationWarning.
+
+    Round-9 added the warning, but round-10 found that lazy-%s
+    formatting in production log calls (`log.info("used: %s",
+    outcome)`) triggers the warning on every INFO line, defeating
+    the purpose of the legacy shim. The migration nudge lives on
+    `startswith` (a more deliberate API surface) instead."""
     out = ComposeOutcome(backend="outlook", handler_kind="outlook")
-    with pytest.warns(DeprecationWarning, match="match on .backend"):
-        s = str(out)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        s = str(out)  # must NOT raise
     assert s == "outlook"
 
 
 def test_compose_outcome_startswith_emits_deprecation_warning():
+    """`startswith` is still deprecated -- explicit string-prefix
+    matching is usually deliberate code worth migrating."""
     out = ComposeOutcome(
         backend="clipboard_mailto", handler_kind="apple_mail",
     )
-    with pytest.warns(DeprecationWarning, match=".startswith"):
+    with pytest.warns(DeprecationWarning, match=r"\.startswith"):
         assert out.startswith("default:")
 
 
 def test_compose_outcome_legacy_formats_via_internal_helper():
-    """The legacy wire format (preserved via the deprecated `__str__`)
-    must still reproduce every round-7 stringly-typed return so
-    existing log lines stay greppable. Pinned via the
-    `_legacy_str` internal helper which doesn't emit the warning,
-    so this test isn't itself reading deprecation noise."""
+    """The legacy wire format must still reproduce every round-7
+    stringly-typed return so existing log lines stay greppable. Pinned
+    via the `_format_legacy` internal helper (renamed from
+    `_legacy_str` in bundle 29 -- round-10 python-reviewer MEDIUM)."""
     assert ComposeOutcome(
         backend="outlook", handler_kind="outlook",
-    )._legacy_str() == "outlook"
+    )._format_legacy() == "outlook"
     assert ComposeOutcome(
         backend="clipboard_mailto", handler_kind="apple_mail",
-    )._legacy_str() == "default:apple_mail"
+    )._format_legacy() == "default:apple_mail"
     assert ComposeOutcome(
         backend="clipboard_mailto", handler_kind="browser",
-    )._legacy_str() == "default:browser"
+    )._format_legacy() == "default:browser"
     assert ComposeOutcome(
         backend="clipboard_mailto", handler_kind="outlook",
         fell_back_from="outlook",
-    )._legacy_str() == "default:outlook:fallback-from-outlook"
+    )._format_legacy() == "default:outlook:fallback-from-outlook"
 
 
 def test_compose_outcome_field_pattern_match_replaces_str_check():

@@ -19,6 +19,7 @@ regress them.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from scripts.docx_parser import Masthead, Newsletter
@@ -102,6 +103,49 @@ def test_masthead_logo_preserves_alt_text():
     assert 'alt="Nagoya University Graduate School of Medicine"' in block, (
         "Masthead seal alt-text missing or modified -- recipients with "
         "images blocked would see no institution name."
+    )
+
+
+def test_masthead_logo_and_text_share_vertical_alignment():
+    """Round-10 Visual H2: bundle 28 set `.masthead-logo` to
+    `vertical-align: middle` to keep the seal centered as the text
+    column grew, but left `.masthead-text` at `top`. The two cells
+    anchored to opposite ends -> seal floated centred while text
+    stacked from the top, leaving empty space ABOVE AND BELOW the
+    seal. Bundle 29 sets both to `middle`. Pin the parity so a
+    future tweak to one cell can't silently regress the other."""
+    css_path = Path(__file__).parent.parent / "templates" / "styles.css"
+    css = css_path.read_text(encoding="utf-8")
+    # Find both class blocks and extract the vertical-align value.
+    def _vertical_align_for(class_name: str) -> str:
+        m = re.search(
+            rf"\.{class_name}\s*\{{[^}}]*vertical-align:\s*([a-z]+)",
+            css, flags=re.DOTALL,
+        )
+        assert m, f"vertical-align missing for .{class_name}"
+        return m.group(1)
+    logo_va = _vertical_align_for("masthead-logo")
+    text_va = _vertical_align_for("masthead-text")
+    assert logo_va == text_va, (
+        f".masthead-logo (vertical-align:{logo_va}) and .masthead-text "
+        f"(vertical-align:{text_va}) must match. Mismatch is the "
+        "bundle-28 regression: opposite anchors leave empty space "
+        "above AND below the seal."
+    )
+
+
+def test_masthead_inline_styles_match_class_vertical_alignment():
+    """The inline `style=\"vertical-align:...\"` on the cells in the
+    template must match the `.masthead-logo` / `.masthead-text` CSS
+    rules so css_inline doesn't end up with a contradictory
+    declaration after the inlining pass."""
+    j2 = Path(__file__).parent.parent / "templates" / "newsletter.html.j2"
+    src = j2.read_text(encoding="utf-8")
+    # Both inline styles use vertical-align:middle (matching CSS).
+    assert "vertical-align:middle" in src
+    assert "vertical-align:top;\">" not in src or src.count("vertical-align:top") <= 1, (
+        "Found a `vertical-align:top` on a masthead cell -- bundle 29 "
+        "set BOTH cells to `middle` for visual parity."
     )
 
 
@@ -230,9 +274,16 @@ def test_subhead_uses_smaller_distinct_typography():
     css = css_path.read_text(encoding="utf-8")
     subhead_idx = css.find(".subhead")
     assert subhead_idx >= 0
-    subhead_block = css[subhead_idx:subhead_idx + 800]
-    assert "font-size: 12px" in subhead_block, (
-        ".subhead font-size must be 12px (was 13px before bundle 27)."
+    # Window expanded to 1500 chars because round-10 added a longer
+    # rationale comment block; the actual `font-size:` declaration
+    # now sits ~900 chars in from the rule start.
+    subhead_block = css[subhead_idx:subhead_idx + 1500]
+    # Round-10 Visual M3: bumped 12 -> 13px. At 12px the subhead
+    # dropped BELOW the 14px body and read as inline emphasis, not a
+    # heading. 13px sits above body, below section heading.
+    assert "font-size: 13px" in subhead_block, (
+        ".subhead font-size must be 13px (round-10 Visual M3 -- "
+        "12px dropped below 14px body and stopped reading as a heading)."
     )
     assert "color: #003F88" in subhead_block, (
         ".subhead must be NU blue so it ties visually to the section's "

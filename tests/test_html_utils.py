@@ -70,17 +70,68 @@ def test_remove_hidden_is_in_place():
     assert result is None
 
 
-def test_validator_and_plaintext_share_the_helper():
-    """Round-9 code-review HIGH: pin the de-duplication. Both
-    `scripts.validator` and `scripts.mail.plaintext` must reference
-    the shared helper, NOT roll their own selector list."""
+def test_validator_references_the_shared_remove_hidden_elements():
+    """Round-9 code-review HIGH + round-10 code-review MEDIUM:
+    assert IDENTITY (the same callable object) rather than name
+    presence -- a re-export under a different name OR a local
+    function literally named `remove_hidden_elements` would have
+    passed the bundle-28 check. Pin the identity so re-divergence
+    becomes structurally impossible."""
     import scripts.validator as v
+    assert any(
+        getattr(v, name, None) is remove_hidden_elements
+        for name in dir(v)
+    ), (
+        "scripts.validator does not reference the shared "
+        "remove_hidden_elements -- the round-9 de-duplication "
+        "regressed."
+    )
+
+
+def test_plaintext_references_the_shared_remove_hidden_elements():
     import scripts.mail.plaintext as p
-    # Both modules import remove_hidden_elements (or reference it via
-    # `from scripts.html_utils import remove_hidden_elements`).
-    assert "remove_hidden_elements" in dir(v) or any(
-        getattr(v, name, None) is remove_hidden_elements for name in dir(v)
+    assert any(
+        getattr(p, name, None) is remove_hidden_elements
+        for name in dir(p)
+    ), (
+        "scripts.mail.plaintext does not reference the shared "
+        "remove_hidden_elements -- the round-9 de-duplication "
+        "regressed."
     )
-    assert "remove_hidden_elements" in dir(p) or any(
-        getattr(p, name, None) is remove_hidden_elements for name in dir(p)
+
+
+# ---------- Bundle 29: parse_html + visible_text ------------------------
+
+def test_parse_html_returns_beautifulsoup_with_correct_parser():
+    """`parse_html` is the toolkit's single entry point for BS4
+    construction so a future migration to `lxml` is one-line."""
+    from scripts.html_utils import parse_html
+    soup = parse_html("<p>x</p>")
+    assert soup.find("p").text == "x"
+    # It's an actual BeautifulSoup instance, not a NavigableString.
+    from bs4 import BeautifulSoup
+    assert isinstance(soup, BeautifulSoup)
+
+
+def test_visible_text_drops_hidden_blocks():
+    """`visible_text(html)` is the shorthand for "what does the
+    recipient actually read?" -- used by the masthead-token guard
+    and any future plaintext-ratio computations."""
+    from scripts.html_utils import visible_text
+    html = (
+        "<p>Hello.</p>"
+        "<div style='display:none'>SECRET</div>"
+        "<p>World.</p>"
     )
+    text = visible_text(html)
+    assert "Hello." in text
+    assert "World." in text
+    assert "SECRET" not in text
+
+
+def test_visible_text_drops_html_comments():
+    """BS4's get_text drops comments by default; pin it."""
+    from scripts.html_utils import visible_text
+    text = visible_text("<p>Body.</p><!-- editor note -->")
+    assert "editor note" not in text
+    assert "Body." in text
