@@ -90,9 +90,11 @@ Rules: lowercase `issue`, then a hyphen, then digits, then `.docx`. **No spaces.
 In the file you just saved:
 
 - Replace the masthead's **issue line** ("VOL. XX | ISSUE NO. XX | MONTH YEAR") with the real volume, issue number, and month.
-- Replace **`[Dean's Name]`**, **`[Author(s)]`**, **`[Visitor Name]`**, **`[YYYY/MM/DD]`** etc. with your real text.
-- Replace the message paragraphs (the gray "Lorem ipsum"-style text) with the actual newsletter content.
+- Replace the bracketed placeholders such as **`[Author(s)]`**, **`[Paper Title]`**, **`[Visitor Name]`**, **`[YYYY/MM/DD]`**, **`[Country]`** etc. with your real text.
+- Replace the gray "Lorem ipsum"-style paragraphs with the actual newsletter content.
 - **Do not rename the section titles** (1. Message from the Dean, 2. Featured Highlights, etc.) — the toolkit relies on them.
+
+> **The dean's name and photo are already filled in for you** (currently *Prof. Masahisa Katsuno*) — you don't need to touch the credentials block or the signature line. If the dean changes, ask the developer to update the template.
 
 Save the file when you're done.
 
