@@ -1,10 +1,30 @@
 # MERIDIAN — ニュースレター作成ツール
 
+[![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python: 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![tests: 201 passing](https://img.shields.io/badge/tests-201%20passing-brightgreen.svg)](tests/)
+
 > 🇬🇧 [English version](README.md)
 
 > **MERIDIAN** — *Where medicine meets the world.*
 
-**名古屋大学大学院医学系研究科**ニュースレターのための公式作成ツールです。
+> **Word ファイル1つ → 綺麗なメール1通 → Outlook 下書き1つ。** コピー&ペーストなし、画像が壊れない、受信者側で書式が崩れない。**名古屋大学大学院医学系研究科**で実運用中、他機関でも自由にフォーク可能な設計です。
+
+> ⭐ **このツールが役に立ちそう?** [スターをつけて](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/stargazers)同じ課題を持つ他の機関に届くよう手助けしてください。フォークして使った場合は [issue を立てて](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/issues/new/choose)ください — 「導入機関」リストに掲載します。
+
+## ビフォア / アフター
+
+| 従来のやり方 | MERIDIAN のやり方 |
+|---|---|
+| Word を開き、セクションごとにコピーして Outlook に貼り付け | Word をいつも通りに記入し、`Make Newsletter.bat` をダブルクリック |
+| Outlook で書式が崩れていくのを見守る | 本文入りの綺麗な HTML メールが Outlook で開く |
+| 写真をリサイズしてファイル共有に再アップロード | Word に写真を貼り付けるだけ、ツールが自動でアップロード |
+| 送信後に受信者の画像が壊れていることに気付く | 送信前に画像リンク切れ・容量超過・プレースホルダ残りをバリデータが検出 |
+| 毎号 BCC リストを再入力 | `recipients.txt` から BCC を自動入力（区切り文字注入 / Unicode 偽装も防御済み） |
+| 号ごとに半日が「配管作業」 | 号ごとに数分だけ |
+
+> **見てみたい?** クローンして `python build_newsletter.py build-template` を実行すれば、サンプルテンプレートが Word で開けます。HTML 側は任意の DOCX を埋めて `python build_newsletter.py build --input issue-1.docx --issue 1 --no-remote-check` で確認できます。
 
 ## なぜこのツールが必要なのか
 

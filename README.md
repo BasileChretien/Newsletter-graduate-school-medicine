@@ -1,10 +1,31 @@
 # MERIDIAN — The Newsletter Toolkit
 
+[![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python: 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![tests: 201 passing](https://img.shields.io/badge/tests-201%20passing-brightgreen.svg)](tests/)
+[![release: v1.0.1](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
+
 > 🇯🇵 [日本語版はこちら](README.ja.md)
 
 > **MERIDIAN** — *Where medicine meets the world.*
 
-The official newsletter toolkit for the **Graduate School of Medicine, Nagoya University**.
+> **One Word file → one polished email → one Outlook draft.** No copy-paste. No broken images. No formatting falling apart at recipients' end. Used in production at the **Graduate School of Medicine, Nagoya University** — and engineered to be forkable for any institution with the same problem.
+
+> ⭐ **Like what you see? [Star the repo](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/stargazers)** so other institutions facing the same problem can find it. (And [open an issue](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/issues/new/choose) if you've forked it for yours — you'll get a "Used by" listing.)
+
+## Before / after
+
+| The old way | The MERIDIAN way |
+|---|---|
+| Open Word, copy section by section, paste into Outlook | Fill the Word file as usual, double-click `Make Newsletter.bat` |
+| Watch the formatting fall apart in Outlook | Polished HTML email opens in Outlook with the body already populated |
+| Resize and re-upload photos to a file share | Drop photos into the Word doc; the toolkit uploads them automatically |
+| Realise after sending that recipients see broken images | Pre-send validation flags broken images, oversized emails, and unfilled placeholders |
+| Re-type the BCC list every issue | `recipients.txt` populates BCC automatically, with separator-injection and Unicode-smuggle defences |
+| Half a day per issue on plumbing | A few minutes per issue on plumbing |
+
+> **Want to see it?** Generate a sample render yourself in 60 seconds: clone the repo, run `python build_newsletter.py build-template` (uses the bundled template + dean photo), then open the generated DOCX in Word. The HTML side is just `python build_newsletter.py build --input issue-1.docx --issue 1 --no-remote-check` after filling in any DOCX. (Working on getting a hosted preview link up — PR welcome.)
 
 ## Why this exists
 
@@ -24,7 +45,23 @@ Producing a department newsletter the old way means an editor copy-pastes paragr
 
 ## Who it's for
 
-Primarily the editor at the Graduate School of Medicine producing the quarterly newsletter — but the toolkit is **fully forkable** for any institution with the same problem. Replace the logo + dean photo + colour palette in `scripts/config.py`, point it at your own GitHub repo, and you have a branded newsletter pipeline for your department in an afternoon.
+Primarily the editor at the Graduate School of Medicine producing the quarterly newsletter — but the toolkit is **fully forkable** for any institution with the same problem. Replace the logo + dean photo + colour palette in `scripts/config.py`, point it at your own GitHub repo, and you have a branded newsletter pipeline for your department in an afternoon. The MIT license explicitly carves out the Nagoya University trademark assets (logo, seal, "MERIDIAN" wordmark) so you don't accidentally inherit them when you fork.
+
+**Realistic adoption fits include:**
+
+- University departments (medicine, science, engineering, humanities) producing internal-comms newsletters.
+- Hospital communication offices sending physician / staff briefings.
+- Research labs or institutes with a quarterly stakeholder update.
+- Academic societies / conference committees sending member announcements.
+- Anywhere there's a non-technical editor + a Word draft + a "make this look professional in email without copy-pasting" gap.
+
+**Fork it in an afternoon:** see [CONTRIBUTING.md](CONTRIBUTING.md) for the 6-step rebrand checklist. If you ship a working fork, [open a "[fork]" issue](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/issues/new?template=institution_fork.md) and we'll add you to a "Used by" list here.
+
+## Used by
+
+> Forks live here. If yours runs in production, [tell us about it](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/issues/new?template=institution_fork.md) and we'll list it.
+
+- **Graduate School of Medicine, Nagoya University** — the originating fork. Quarterly newsletter, Outlook desktop, ~50-recipient BCC, Japanese + English content.
 
 ## Under the hood (for developers)
 
