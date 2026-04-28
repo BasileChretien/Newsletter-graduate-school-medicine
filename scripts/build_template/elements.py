@@ -5,16 +5,21 @@ applies the visual spec for that element type. The orchestration in
 `pipeline.build()` walks the document once and dispatches to the
 right restyler per paragraph/table.
 
-Extracted from `build_template.py` in bundle 27 alongside `_styles.py`.
+Extracted from `build_template.py` in bundle 27 alongside `styles.py`
+(renamed from `_elements.py` in bundle 28 -- the package boundary
+already encapsulates the submodules).
 """
 
 from __future__ import annotations
 
 import re
 
+from docx.document import Document as DocxDocument
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from scripts.config import (
     DEAN_NAME,
@@ -38,7 +43,7 @@ from scripts.oxml_helpers import (
     set_table_fixed_layout,
 )
 
-from scripts.build_template._styles import (
+from scripts.build_template.styles import (
     ACCENT, MUTED, PRIMARY, TEXT,
     _normalize_body_run, rgb, style_paragraph, style_run,
 )
@@ -53,7 +58,7 @@ def is_section_heading(text: str) -> bool:
 
 
 # ---------- masthead ----------
-def restyle_masthead(table) -> None:
+def restyle_masthead(table: Table) -> None:
     """Table 0: 1 row x 2 cols. Replace contents with MERIDIAN masthead."""
     remove_table_borders(table)
 
@@ -140,7 +145,7 @@ def restyle_masthead(table) -> None:
 
 
 # ---------- section heading restyle ----------
-def restyle_section_heading(p) -> None:
+def restyle_section_heading(p: Paragraph) -> None:
     """Reformat '1.  Message from the Dean / Director' style headings."""
     text = p.text
     m = SECTION_HEAD_RE.match(text)
@@ -176,7 +181,7 @@ def restyle_section_heading(p) -> None:
 # Sub-heading detection delegates to docx_parser.is_subheading_paragraph.
 
 
-def restyle_subhead(p) -> None:
+def restyle_subhead(p: Paragraph) -> None:
     """Format paragraph as an H3 sub-heading (Cambria 12pt bold charcoal)."""
     text = p.text
     for r in list(p.runs):
@@ -188,7 +193,7 @@ def restyle_subhead(p) -> None:
 
 
 # ---------- body paragraph ----------
-def restyle_body(p) -> None:
+def restyle_body(p: Paragraph) -> None:
     """Apply default body styling: Calibri 10.5pt charcoal."""
     if not p.runs:
         return
@@ -198,14 +203,14 @@ def restyle_body(p) -> None:
 
 
 # ---------- bullet list ----------
-def restyle_bullet(p) -> None:
+def restyle_bullet(p: Paragraph) -> None:
     style_paragraph(p, space_after=4, line_spacing=1.25, left_indent=0.25)
     for r in p.runs:
         _normalize_body_run(r)
 
 
 # ---------- tables ----------
-def restyle_data_table(table) -> None:
+def restyle_data_table(table: Table) -> None:
     """Apply NU-blue header + zebra body to 3-col data tables (visitors, events)."""
     set_table_fixed_layout(table)
     # Header row.
@@ -242,7 +247,7 @@ def restyle_data_table(table) -> None:
                     r.font.size = Pt(10)  # data tables run a touch smaller
 
 
-def restyle_layout_table(table, *, label_color=False) -> None:
+def restyle_layout_table(table: Table, *, label_color: bool = False) -> None:
     """Apply borderless layout styling to 2-col layout tables.
 
     Clears any pre-existing cell shading from the original template
@@ -262,7 +267,7 @@ def restyle_layout_table(table, *, label_color=False) -> None:
                         r.font.color.rgb = PRIMARY
 
 
-def _replace_paragraph_text(p, new_text: str) -> None:
+def _replace_paragraph_text(p: Paragraph, new_text: str) -> None:
     """Clear all runs in a paragraph and write `new_text` in its place,
     preserving the paragraph's existing style. Style is inherited from
     the first run if available."""
@@ -290,7 +295,7 @@ def _replace_paragraph_text(p, new_text: str) -> None:
         new_run.font.color.rgb = sample_color
 
 
-def insert_dean_name(table) -> None:
+def insert_dean_name(table: Table) -> None:
     """Replace [Dean's Name] / [Full Name] placeholders in Section 1.
 
     - Left cell (credentials block): "[Dean's Name]" -> DEAN_NAME
@@ -310,7 +315,7 @@ def insert_dean_name(table) -> None:
                     _replace_paragraph_text(p, DEAN_NAME_PLAIN)
 
 
-def insert_dean_photo(table) -> None:
+def insert_dean_photo(table: Table) -> None:
     """Replace the '[ Photo ]' placeholder in Table 1 with the Dean image."""
     if not DEAN_PATH.exists():
         return
@@ -335,7 +340,7 @@ def insert_dean_photo(table) -> None:
             return
 
 
-def restyle_highlights_table(table) -> None:
+def restyle_highlights_table(table: Table) -> None:
     """Featured Highlights tables (3 cols: card, gutter, card)."""
     set_table_fixed_layout(table)
     remove_table_borders(table)
@@ -357,7 +362,7 @@ def restyle_highlights_table(table) -> None:
 
 
 # ---------- header / footer ----------
-def restyle_header_footer(doc) -> None:
+def restyle_header_footer(doc: DocxDocument) -> None:
     section = doc.sections[0]
 
     # HEADER
@@ -407,7 +412,7 @@ def restyle_header_footer(doc) -> None:
 
 
 # ---------- page setup ----------
-def configure_page(doc) -> None:
+def configure_page(doc: DocxDocument) -> None:
     section = doc.sections[0]
     section.top_margin = Inches(0.7)
     section.bottom_margin = Inches(0.7)

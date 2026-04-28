@@ -10,10 +10,13 @@ spec:
 * Masthead band, section bars, gold dividers
 * Zebra-styled data tables, refined header/footer
 
-Bundle 27 split this single 600-line module into a small package:
+Bundle 27 split this single 600-line module into a small package;
+bundle 28 dropped the leading underscores on the submodule names
+(round-9 architect MEDIUM 2 -- the package boundary already
+encapsulates them, the underscore was misleading):
 
-* `_styles.py`   -- color/run/paragraph primitives
-* `_elements.py` -- per-element restylers (masthead, sections, tables)
+* `styles.py`    -- color/run/paragraph primitives
+* `elements.py`  -- per-element restylers (masthead, sections, tables)
 * `__init__.py`  -- public API + the `build()` orchestration
 
 The public surface is unchanged: callers still do
@@ -34,7 +37,7 @@ from scripts.docx_parser import is_subheading_paragraph
 
 # Re-export the primitives + element restylers so existing test code
 # / debug shells that hit `bt.<name>` keep working without changes.
-from scripts.build_template._elements import (
+from scripts.build_template.elements import (
     SECTION_HEAD_RE,
     configure_page,
     insert_dean_name,
@@ -50,7 +53,7 @@ from scripts.build_template._elements import (
     restyle_section_heading,
     restyle_subhead,
 )
-from scripts.build_template._styles import (
+from scripts.build_template.styles import (
     ACCENT, MUTED, PRIMARY, TEXT,
     _normalize_body_run, rgb, style_paragraph, style_run,
 )
@@ -135,7 +138,7 @@ __all__ = [
     "TABLE_VISITORS", "TABLE_EVENTS", "TABLE_CONTACT",
     # Re-exported helpers (kept for debug shells / future test reuse).
     "rgb", "PRIMARY", "ACCENT", "TEXT", "MUTED",
-    "style_run", "style_paragraph", "_normalize_body_run",
+    "style_run", "style_paragraph",
     "is_section_heading", "SECTION_HEAD_RE",
     "restyle_masthead", "restyle_section_heading", "restyle_subhead",
     "restyle_body", "restyle_bullet",
@@ -144,6 +147,11 @@ __all__ = [
     "insert_dean_name", "insert_dean_photo",
     "configure_page",
 ]
+# `_normalize_body_run` is intentionally NOT in `__all__` -- the leading
+# underscore signals private-to-package. It's still reachable as
+# `scripts.build_template._normalize_body_run` for debug shells, or via
+# the submodule path `scripts.build_template._styles._normalize_body_run`,
+# but it's not part of the public API surface.
 
 
 if __name__ == "__main__":

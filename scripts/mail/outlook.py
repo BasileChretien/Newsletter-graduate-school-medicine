@@ -11,7 +11,9 @@ import logging
 import platform
 
 from scripts.mail.base import DraftEmail, MailHandler
-from scripts.mail.plaintext import html_to_plaintext
+from scripts.mail.plaintext import (
+    html_to_plaintext, html_to_plaintext_strict_fallback,
+)
 
 log = logging.getLogger(__name__)
 
@@ -51,10 +53,27 @@ def compose_outlook(html: str, subject: str, *,
     # if we want a real plaintext alternative we set HTMLBody first
     # then overwrite Body with our cleaner conversion.
     mail.HTMLBody = html
+    # Plaintext alternative -- spam filters score multipart/alternative
+    # lower than HTML-only. Always set Body to SOMETHING (never let
+    # Outlook auto-generate from HTML, which it does poorly): primary
+    # path is `html_to_plaintext` (structurally preserved); on
+    # exception, fall back to a strict regex strip so the MIME message
+    # still ships as `multipart/alternative`.
     try:
         mail.Body = html_to_plaintext(html)
     except Exception as e:  # noqa: BLE001 -- plaintext is best-effort
-        log.debug("plaintext fallback failed: %s", e)
+        log.warning(
+            "html_to_plaintext failed (%s); falling back to strict "
+            "tag-strip plaintext to keep multipart/alternative.", e,
+        )
+        try:
+            mail.Body = html_to_plaintext_strict_fallback(html)
+        except Exception as e2:  # noqa: BLE001 -- last resort
+            log.warning(
+                "Strict plaintext fallback also failed (%s); Outlook "
+                "will auto-generate Body from HTML (lower-quality).",
+                e2,
+            )
     if to:
         mail.To = to
     if cc:
@@ -66,15 +85,20 @@ def compose_outlook(html: str, subject: str, *,
         # account to have Send-As permission for from_addr.
         mail.SentOnBehalfOfName = from_addr
     if reply_to:
+        # COM call may raise pywintypes.com_error (which is OSError-
+        # derived in modern pywin32) for unresolvable addresses.
+        # Narrow except so a real bug (AttributeError on a renamed
+        # COM property) isn't silently swallowed.
         try:
             mail.ReplyRecipients.Add(reply_to)
-        except Exception:
-            log.debug("Outlook ReplyRecipients.Add(%r) failed", reply_to)
+        except (OSError, AttributeError) as e:
+            log.debug("Outlook ReplyRecipients.Add(%r) failed: %s",
+                      reply_to, e)
     for path in attachments or ():
         try:
             mail.Attachments.Add(str(path))
-        except Exception:
-            log.debug("Outlook Attachments.Add(%r) failed", path)
+        except (OSError, AttributeError) as e:
+            log.debug("Outlook Attachments.Add(%r) failed: %s", path, e)
     mail.Display(False)
 
 

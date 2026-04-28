@@ -12,6 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from scripts.config import GMAIL_CLIP_BYTES
+from scripts.html_utils import remove_hidden_elements
 from scripts.text_utils import normalize_for_match
 
 log = logging.getLogger(__name__)
@@ -216,12 +217,7 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     # masthead-token defenses against NBSP / fullwidth substitutions
     # stay in lockstep.
     visible_soup = BeautifulSoup(html, "html.parser")
-    for hidden in visible_soup.select(
-        "[style*='display:none'], [style*='display: none'], "
-        "[style*='visibility:hidden'], [style*='visibility: hidden'], "
-        "[hidden]"
-    ):
-        hidden.decompose()
+    remove_hidden_elements(visible_soup)
     visible_text = visible_soup.get_text(" ", strip=True)
     normalized_text = normalize_for_match(visible_text)
     leaked = [

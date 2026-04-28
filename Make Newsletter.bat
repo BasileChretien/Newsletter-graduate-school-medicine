@@ -51,11 +51,14 @@ if not exist ".git" (
     echo  Please follow the README Steps 2 and 3:
     echo    1. Install GitHub Desktop from https://desktop.github.com
     echo    2. In GitHub Desktop, click File -^> Clone repository
-    echo       and clone this project fresh into a new folder.
-    echo    3. Re-run this launcher from inside the cloned folder.
-    echo    4. (Optional) Delete THIS folder once the new clone works
-    echo       -- keeping both copies side-by-side will confuse you
-    echo       next month about which launcher to double-click.
+    echo       and clone this project fresh into a NEW folder
+    echo       (e.g. ^"Documents\Meridian-Newsletter^").
+    echo    3. Re-run the launcher from inside that NEW folder.
+    echo    4. Once the new clone works (you see ^"Done. Your email
+    echo       draft should now be open^"), you can delete this old
+    echo       folder. The broken folder is the one with NO hidden
+    echo       ^".git^" subfolder -- the working clone has one.
+    echo       If unsure, leave both. Keeping both is safe.
     echo.
     pause
     exit /b 1

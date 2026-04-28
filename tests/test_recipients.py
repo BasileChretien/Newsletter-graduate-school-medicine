@@ -65,6 +65,31 @@ def test_load_recipients_deduplicates(tmp_path: Path):
     assert out == ["alice@example.com", "bob@example.org"]
 
 
+def test_load_recipients_rejects_zwj_smuggled_address(tmp_path: Path):
+    """Round-9 security finding: U+200D ZERO WIDTH JOINER is not
+    whitespace and not in `_EMAIL_RE`'s exclusion class, so a crafted
+    `victim<ZWJ>@evil.com` would have passed recipient validation
+    AND routed to Outlook BCC. Bundle 28 strips ZWJ in
+    `strip_invisibles` by default; this test pins that fix."""
+    path = tmp_path / "recipients.txt"
+    # `victim` + ZWJ + `@evil.com` -- visually identical to the
+    # legitimate `victim@evil.com`, but if ZWJ survives stripping the
+    # local part the regex matches AND Outlook may resolve it
+    # differently.
+    path.write_text(
+        "alice@example.com\n"
+        "victim‍@evil.com\n",  # ZWJ between victim and @
+        encoding="utf-8",
+    )
+    out = load_recipients(path)
+    # After ZWJ-strip, the address normalises to `victim@evil.com`,
+    # which is a structurally valid email -- so the entry IS accepted,
+    # but as the visually-correct address (no hidden routing trick).
+    # The point of the fix is that the pre/post-strip strings now
+    # match -- there's no smuggling.
+    assert out == ["alice@example.com", "victim@evil.com"]
+
+
 def test_load_recipients_strips_unicode_invisibles(tmp_path: Path):
     """Zero-width / bidi-override characters hidden inside an address
     must be stripped before validation -- otherwise the address that

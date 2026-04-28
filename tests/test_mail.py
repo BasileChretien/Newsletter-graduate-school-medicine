@@ -36,11 +36,13 @@ def test_compose_routes_outlook_when_default_is_outlook():
          patch("scripts.mail.outlook.OutlookBackend.compose") as out_compose, \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
         used = compose("<html>x</html>", subject="Test")
+    # Round-9 Architect HIGH-1: assert on the typed dataclass fields
+    # rather than the deprecated `str(used) == "outlook"` shim, so the
+    # eventual removal of `__str__` doesn't churn this test.
     assert isinstance(used, ComposeOutcome)
     assert used.backend == "outlook"
+    assert used.handler_kind == "outlook"
     assert not used.is_fallback
-    # Legacy str() format is preserved.
-    assert str(used) == "outlook"
     out_compose.assert_called_once()
     fb_compose.assert_not_called()
 
@@ -57,7 +59,6 @@ def test_compose_falls_back_to_default_when_not_outlook():
     assert used.backend == "clipboard_mailto"
     assert used.handler_kind == "apple_mail"
     assert not used.is_fallback
-    assert str(used) == "default:apple_mail"
     out_compose.assert_not_called()
     fb_compose.assert_called_once()
 
@@ -75,9 +76,6 @@ def test_compose_falls_back_when_outlook_backend_throws():
     assert used.backend == "clipboard_mailto"
     assert used.is_fallback
     assert used.fell_back_from == "outlook"
-    # Legacy fallback magic-string format preserved for any older
-    # call site or log-grep.
-    assert str(used) == "default:outlook:fallback-from-outlook"
     fb_compose.assert_called_once()
 
 
@@ -112,41 +110,71 @@ def test_compose_default_backend_skips_outlook():
     fb_compose.assert_called_once()
 
 
-# ---------- Bundle 27: ComposeOutcome shape ------------------------------
+# ---------- Bundle 27/28: ComposeOutcome shape ---------------------------
 
 def test_compose_outcome_is_frozen_dataclass():
     """`ComposeOutcome` must be immutable so callers can't mutate
-    the result and confuse downstream logging / audit."""
+    the result and confuse downstream logging / audit.
+
+    Round-9 code-review LOW: catch the precise exception class
+    (`FrozenInstanceError` from `dataclasses`) rather than bare
+    `Exception` -- otherwise this test would pass for unrelated
+    `AttributeError` from a renamed field."""
+    import dataclasses
     out = ComposeOutcome(backend="outlook", handler_kind="outlook")
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
         out.backend = "other"  # type: ignore[misc]
 
 
-def test_compose_outcome_str_legacy_formats():
-    """The `__str__` shim must reproduce every legacy magic string
-    the round-7 stringly-typed return produced, so log-grep keeps
-    working during the migration."""
-    assert str(ComposeOutcome(
-        backend="outlook", handler_kind="outlook",
-    )) == "outlook"
-    assert str(ComposeOutcome(
+def test_compose_outcome_str_emits_deprecation_warning():
+    """Bundle 28: `__str__` and `startswith` are now deprecation
+    paths. The legacy format is still produced (so existing log-grep
+    keeps working), but each call emits a DeprecationWarning so
+    callers know to migrate."""
+    out = ComposeOutcome(backend="outlook", handler_kind="outlook")
+    with pytest.warns(DeprecationWarning, match="match on .backend"):
+        s = str(out)
+    assert s == "outlook"
+
+
+def test_compose_outcome_startswith_emits_deprecation_warning():
+    out = ComposeOutcome(
         backend="clipboard_mailto", handler_kind="apple_mail",
-    )) == "default:apple_mail"
-    assert str(ComposeOutcome(
-        backend="clipboard_mailto", handler_kind="browser",
-    )) == "default:browser"
-    assert str(ComposeOutcome(
-        backend="clipboard_mailto", handler_kind="outlook",
-        fell_back_from="outlook",
-    )) == "default:outlook:fallback-from-outlook"
+    )
+    with pytest.warns(DeprecationWarning, match=".startswith"):
+        assert out.startswith("default:")
 
 
-def test_compose_outcome_startswith_compatibility():
-    """Legacy code may still call `outcome.startswith("default:")` --
-    keep the shim so existing log-grep / debug paths don't break."""
+def test_compose_outcome_legacy_formats_via_internal_helper():
+    """The legacy wire format (preserved via the deprecated `__str__`)
+    must still reproduce every round-7 stringly-typed return so
+    existing log lines stay greppable. Pinned via the
+    `_legacy_str` internal helper which doesn't emit the warning,
+    so this test isn't itself reading deprecation noise."""
+    assert ComposeOutcome(
+        backend="outlook", handler_kind="outlook",
+    )._legacy_str() == "outlook"
     assert ComposeOutcome(
         backend="clipboard_mailto", handler_kind="apple_mail",
-    ).startswith("default:")
-    assert not ComposeOutcome(
-        backend="outlook", handler_kind="outlook",
-    ).startswith("default:")
+    )._legacy_str() == "default:apple_mail"
+    assert ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="browser",
+    )._legacy_str() == "default:browser"
+    assert ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="outlook",
+        fell_back_from="outlook",
+    )._legacy_str() == "default:outlook:fallback-from-outlook"
+
+
+def test_compose_outcome_field_pattern_match_replaces_str_check():
+    """Demonstrates the migration target: callers that used to do
+    `str(used) == "outlook"` should match on the typed fields."""
+    outlook = ComposeOutcome(backend="outlook", handler_kind="outlook")
+    assert outlook.backend == "outlook" and not outlook.is_fallback
+
+    fallback = ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="outlook",
+        fell_back_from="outlook",
+    )
+    assert fallback.is_fallback
+    assert fallback.fell_back_from == "outlook"

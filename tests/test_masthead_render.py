@@ -121,11 +121,16 @@ def test_masthead_logo_uses_white_background():
 def test_divider_uses_outlook_safe_three_cell_layout():
     """Outlook desktop ignores `margin` on a <td>, which used to make
     the gold rule extend full-width. Round 8 Visual L1 wraps the
-    divider in a 3-cell layout (28px spacer + rule + 28px spacer) so
-    the inset is consistent across Outlook, Gmail, Apple Mail.
+    divider in a 3-cell layout (spacer + rule + spacer).
 
-    Regression guard for round-8 Visual L1."""
-    from scripts.docx_parser import Heading, Newsletter, Section
+    Round-9 code-review MEDIUM: don't ±-string-grep for `width="28"`
+    near `class="divider"`; assert the *structural* invariant that the
+    divider's parent <tr> has exactly 3 <td> children. The pixel
+    width is a tuning value that can change without breaking
+    Outlook-safety."""
+    from bs4 import BeautifulSoup
+    from scripts.docx_parser import Newsletter, Section
+
     nl = Newsletter(
         masthead=Masthead("MERIDIAN", "tag", "sub", "VOL. 1"),
         sections=(
@@ -134,19 +139,51 @@ def test_divider_uses_outlook_safe_three_cell_layout():
         ),
     )
     html = inline(render(nl))
-    # Two sections -> exactly one divider in the loop.
-    div_count = html.count('class="divider"')
-    assert div_count == 1, (
-        f"Expected exactly one divider between two sections; got {div_count}."
+
+    soup = BeautifulSoup(html, "html.parser")
+    dividers = soup.find_all(class_="divider")
+    assert len(dividers) == 1, (
+        f"Expected exactly one divider between two sections; "
+        f"got {len(dividers)}."
     )
-    # The divider <td> must be inside a wrapping <table> (the 3-cell
-    # layout) -- check by looking for the spacer width="28" near it.
-    div_idx = html.find('class="divider"')
-    surrounding = html[max(0, div_idx - 400):div_idx + 200]
-    assert 'width="28"' in surrounding, (
-        "Divider must be inside the round-8 3-cell layout (28px spacer + "
-        "rule + 28px spacer) for Outlook-safe insetting."
+    divider_td = dividers[0]
+    parent_tr = divider_td.find_parent("tr")
+    assert parent_tr is not None
+    sibling_tds = parent_tr.find_all("td", recursive=False)
+    assert len(sibling_tds) == 3, (
+        f"Divider <tr> must contain exactly 3 <td> children "
+        f"(spacer + rule + spacer); got {len(sibling_tds)}."
     )
+    # The middle cell IS the divider; the two outer cells are spacers.
+    assert sibling_tds[1] is divider_td or "divider" in (
+        sibling_tds[1].get("class") or [])
+
+
+def test_divider_is_outlook_height_clamped():
+    """Round-9 Email M2: Outlook desktop expands empty cells to
+    font-line-height. Force exactly 1px via `mso-line-height-rule:exactly`
+    on the spacer cells AND the rule cell so the divider doesn't
+    silently become 15-18px tall in Outlook 2016/2019."""
+    from bs4 import BeautifulSoup
+    from scripts.docx_parser import Newsletter, Section
+
+    nl = Newsletter(
+        masthead=Masthead("MERIDIAN", "tag", "sub", "VOL. 1"),
+        sections=(
+            Section(number=1, title="A", blocks=()),
+            Section(number=2, title="B", blocks=()),
+        ),
+    )
+    html = inline(render(nl))
+    soup = BeautifulSoup(html, "html.parser")
+    parent_tr = soup.find(class_="divider").find_parent("tr")
+    for td in parent_tr.find_all("td", recursive=False):
+        style = (td.get("style") or "")
+        assert "mso-line-height-rule" in style, (
+            "Every <td> in the divider row must carry "
+            "`mso-line-height-rule:exactly` so Outlook doesn't expand "
+            "empty cells to font-line-height."
+        )
 
 
 def test_print_stylesheet_strips_masthead_background():
@@ -158,21 +195,52 @@ def test_print_stylesheet_strips_masthead_background():
     assert ".masthead" in _KEPT_STYLES, (
         "_KEPT_STYLES must carry a print-mode override for .masthead"
     )
-    assert "background: #FFFFFF" in _KEPT_STYLES.replace(" ", "") \
-           or "background:#FFFFFF" in _KEPT_STYLES.replace(" ", "")
+    no_spaces = _KEPT_STYLES.replace(" ", "")
+    assert "background:#FFFFFF" in no_spaces
+
+
+def test_print_stylesheet_strips_gold_rules():
+    """Round-9 Visual M1: print mode must also strip the masthead's
+    gold border-bottom AND the tagline's gold underline. Otherwise
+    paper output shows four stacked horizontal lines around the
+    title (1pt blue rule, two gold lines, the title between them)."""
+    from scripts.inliner import _KEPT_STYLES
+    no_spaces = _KEPT_STYLES.replace(" ", "")
+    # masthead.border-bottom override
+    assert "border-bottom:none!important" in no_spaces, (
+        "@media print must override .masthead border-bottom (the gold "
+        "rule under the issue-line)."
+    )
+    # Tagline border override appears separately.
+    assert ".tagline" in _KEPT_STYLES, (
+        "@media print must also override .masthead .tagline border-bottom "
+        "(the gold underline beneath the tagline)."
+    )
 
 
 def test_subhead_uses_smaller_distinct_typography():
-    """Round 8 Visual M4: subhead dropped to 12px + small caps + NU
-    blue so it doesn't compete with the section heading for header
-    rank. Pin the size so a future tweak can't silently regress."""
+    """Round 8 Visual M4 + round 9 Visual H2: subhead is 12px NU
+    blue (was 13px charcoal pre-bundle-27, then briefly 12px blue
+    UPPERCASE which collided typographically with the 16px blue
+    UPPERCASE section heading -- both serif, both bold, both blue).
+    Bundle 28 keeps the smaller size + blue colour but DROPS the
+    uppercase + letter-spacing so the subhead clearly reads as a
+    child tier of the section heading."""
     css_path = Path(__file__).parent.parent / "templates" / "styles.css"
     css = css_path.read_text(encoding="utf-8")
-    # Find the .subhead block.
     subhead_idx = css.find(".subhead")
     assert subhead_idx >= 0
-    subhead_block = css[subhead_idx:subhead_idx + 600]
+    subhead_block = css[subhead_idx:subhead_idx + 800]
     assert "font-size: 12px" in subhead_block, (
-        ".subhead font-size must be 12px (was 13px before bundle 27); "
-        "competing with the 16px section-heading otherwise."
+        ".subhead font-size must be 12px (was 13px before bundle 27)."
+    )
+    assert "color: #003F88" in subhead_block, (
+        ".subhead must be NU blue so it ties visually to the section's "
+        "left bar."
+    )
+    # Bundle 28 differentiation guard: uppercase + letter-spacing must
+    # NOT both reappear -- that's the section-heading's signature.
+    assert "text-transform: uppercase" not in subhead_block, (
+        ".subhead must NOT be uppercase -- collides with section-heading "
+        "typographic rank (round-9 Visual H2)."
     )

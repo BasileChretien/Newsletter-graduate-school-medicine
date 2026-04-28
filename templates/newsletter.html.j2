@@ -34,7 +34,7 @@
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
       {% if logo_url %}
-      <td class="masthead-logo" width="84" style="width:84px;vertical-align:top;padding-right:18px;">
+      <td class="masthead-logo" width="84" style="width:84px;vertical-align:middle;padding-right:18px;">
         {# Nest the seal in a 1-cell hairline-frame table.
            Outlook desktop renders padding on <img> with the parent
            bgcolor, producing a #EEF2F7 halo around the white seal --
@@ -85,16 +85,25 @@
   {% endfor %}
 </td></tr>
 {% if not loop.last %}
-{# Round 8 Visual L1: Outlook desktop ignores `margin` on a <td>, so
-   the gold rule used to extend full-width instead of aligning with
-   the section's 28px L/R padding. A 3-cell layout (28px spacer +
-   1px-tall rule + 28px spacer) gives the same inset in every client. #}
+{# Round 8 Visual L1 + round 9 Email M2: Outlook desktop ignores
+   `margin` on a <td>, so the gold rule used to extend full-width
+   instead of aligning with the section's 28px L/R padding. A 3-cell
+   layout (28px spacer + 1px-tall rule + 28px spacer) gives the same
+   inset in every client.
+
+   Outlook 2016/2019's Word renderer also expands empty cells to the
+   font's line-height rather than the declared `height` -- so we add
+   `mso-line-height-rule:exactly` to force exactly 1px, and use a
+   zero-width-space (`&#8203;`) instead of `&nbsp;` since `&nbsp;`
+   is rendered with the cell's font metrics regardless of `font-size:0`.
+   The HTML `height="1"` attribute is the belt to the CSS `height:1px`'s
+   braces. #}
 <tr><td>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
-      <td width="28" style="width:28px;font-size:0;line-height:0;">&nbsp;</td>
-      <td class="divider" bgcolor="#A8864B" style="background-color:#A8864B;height:1px;font-size:0;line-height:0;">&nbsp;</td>
-      <td width="28" style="width:28px;font-size:0;line-height:0;">&nbsp;</td>
+      <td width="28" style="width:28px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&#8203;</td>
+      <td class="divider" height="1" bgcolor="#A8864B" style="background-color:#A8864B;height:1px;font-size:0;line-height:1px;mso-line-height-rule:exactly;">&#8203;</td>
+      <td width="28" style="width:28px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&#8203;</td>
     </tr>
   </table>
 </td></tr>

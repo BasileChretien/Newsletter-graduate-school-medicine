@@ -26,33 +26,45 @@ import unicodedata
 # Unicode "Cf" (format) and "Cc" (control) categories cover ZWSP, ZWNJ,
 # LRM, RLM, LRE, RLE, LRO, RLO, PDF, WJ, BOM, etc., plus C0/C1 controls.
 #
-# Preserved characters:
+# Preserved characters by default:
 #   * `\n`, `\t`        -- legitimate structural whitespace; downstream
 #                          callers collapse to single space if needed.
-#   * U+200D ZWJ        -- intentional in compound emoji (family / job
-#                          emoji) and several Indic / Arabic scripts.
-#                          Removing it shatters multi-codepoint glyphs
-#                          into separate Unicode characters.
 #
 # `\r` is intentionally NOT preserved: it's harmful in subject lines
 # (would let an injected CR survive into Outlook COM property
 # assignment) and unhelpful elsewhere -- the recipients reader splits
 # on lines BEFORE this function runs, so a stray `\r` mid-string is
 # always a paste artefact, never a real line break.
-_KEEP_CHARS = frozenset({"\n", "\t", "‍"})
+#
+# ZWJ (U+200D) used to be preserved here for compound emoji rendering,
+# but the recipients reader feeds the SAME helper into `_EMAIL_RE` --
+# and ZWJ isn't whitespace nor in the regex's exclusion class, so a
+# crafted `victim<ZWJ>@evil.com` would pass validation and route to
+# Outlook BCC. Round-9 security finding (MEDIUM 6). For body text /
+# subjects that legitimately need ZWJ (which the toolkit doesn't
+# generate today), use `strip_invisibles(s, keep_zwj=True)`.
+_KEEP_CHARS = frozenset({"\n", "\t"})
+_ZWJ = "‍"
 _STRIP_CATEGORIES = frozenset({"Cf", "Cc"})
 
 
-def strip_invisibles(s: str) -> str:
+def strip_invisibles(s: str, *, keep_zwj: bool = False) -> str:
     """Drop Unicode invisible/bidi/control characters from `s`.
 
-    Preserves `\\n`, `\\t`, and ZWJ (U+200D, used in compound emoji and
-    several non-Latin scripts). All other Cf/Cc category characters
-    -- ZWSP, BOM, RLO, LRM, RLE, etc. -- are removed.
+    Preserves `\\n` and `\\t` always. All other Cf/Cc category characters
+    -- ZWSP, BOM, RLO, LRM, RLE, ZWJ, etc. -- are removed by default.
+
+    Pass `keep_zwj=True` when the caller needs to preserve compound-emoji
+    or Indic-script joiner sequences (e.g. rendering body text). Address
+    validators MUST leave `keep_zwj=False` so a crafted ZWJ-bearing
+    address can't smuggle past `_EMAIL_RE`.
     """
+    keep: frozenset[str] = (
+        _KEEP_CHARS | {_ZWJ} if keep_zwj else _KEEP_CHARS
+    )
     return "".join(
         ch for ch in s
-        if ch in _KEEP_CHARS or unicodedata.category(ch) not in _STRIP_CATEGORIES
+        if ch in keep or unicodedata.category(ch) not in _STRIP_CATEGORIES
     )
 
 

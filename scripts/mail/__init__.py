@@ -17,6 +17,7 @@ Public API:
 from __future__ import annotations
 
 import logging
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,7 +63,29 @@ class ComposeOutcome:
         return self.fell_back_from is not None
 
     def __str__(self) -> str:
-        # Preserve legacy formats so str-comparing code still works.
+        """DEPRECATED legacy magic-string format.
+
+        Round-7 callers compared the bare-string return of `compose()`;
+        we keep `__str__` so existing log lines (`log.info("used: %s",
+        outcome)`) keep producing the documented wire format. Match on
+        the dataclass fields directly in new code.
+        """
+        warnings.warn(
+            "ComposeOutcome.__str__ legacy format is deprecated; "
+            "match on .backend / .handler_kind / .is_fallback / "
+            ".fell_back_from instead. The shim will be removed in a "
+            "future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_str()
+
+    def _legacy_str(self) -> str:
+        """Internal: the legacy wire format without the deprecation warning.
+
+        Used by `startswith` and by tests that need to verify the shim
+        format itself. Public callers should not rely on this.
+        """
         if self.backend == "outlook" and not self.is_fallback:
             return "outlook"
         if self.is_fallback:
@@ -70,8 +93,17 @@ class ComposeOutcome:
         return f"default:{self.handler_kind}"
 
     def startswith(self, prefix: str) -> bool:
-        """Compatibility shim for code doing `outcome.startswith("default:")`."""
-        return str(self).startswith(prefix)
+        """DEPRECATED compatibility shim for `outcome.startswith("default:")`.
+
+        Match on `.backend` / `.is_fallback` instead.
+        """
+        warnings.warn(
+            "ComposeOutcome.startswith legacy shim is deprecated; "
+            "match on .backend / .is_fallback / .handler_kind instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_str().startswith(prefix)
 
 
 # Registry: ordered, priority high-to-low. The dispatcher iterates and

@@ -39,9 +39,18 @@ from scripts.validator import report, validate
 
 RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
 
-# Subject lines beyond this length wrap in many clients and elevate
-# spam scores (Mimecast / Proofpoint heuristic). Soft warn, never block.
-_SUBJECT_SOFT_LIMIT_CHARS = 78
+# Subject-length thresholds for the soft warning. Round-9 Email M1:
+#   * 50 chars   -- inbox-list previews truncate around here on Outlook
+#                   desktop / Gmail web; recipients only see the first
+#                   ~50 chars in their preview.
+#   * 78 chars   -- historical RFC 5322 wrap point; modern SMTP no
+#                   longer enforces it but Proofpoint / Mimecast
+#                   spam-score this threshold.
+# We warn at 50 (gentle nudge to keep preview-readable subjects) and
+# warn more strongly at 78. Never block -- subject choice belongs to
+# the editor.
+_SUBJECT_PREVIEW_LIMIT_CHARS = 50
+_SUBJECT_SPAM_LIMIT_CHARS = 78
 
 
 @dataclass(frozen=True)
@@ -82,10 +91,9 @@ def build_template_cmd(source: str, output: str):
 def _friendly_used(used: ComposeOutcome) -> str:
     """Translate the compose() outcome into a human sentence.
 
-    Accepts a `ComposeOutcome` dataclass; uses `handler_kind` and
-    `is_fallback` to produce the right message. The legacy magic
-    strings ("outlook", "default:apple_mail", ...) are still
-    available via `str(used)` for log lines.
+    Accepts a `ComposeOutcome` dataclass; matches on `.backend`,
+    `.handler_kind`, and `.is_fallback` exclusively (no `str(used)`
+    or `.startswith` -- those shims emit DeprecationWarning).
     """
     if used.is_fallback and used.fell_back_from == "outlook":
         return ("Outlook didn't open -- the newsletter is on your "
@@ -207,14 +215,32 @@ def _build_pipeline(input_path: Path, issue: int, *,
             "re-run.", fg="red"))
         return BuildResult(1, subject, out_html)
 
-    # Soft warning when subject would wrap or score for spam.
-    if len(subject) > _SUBJECT_SOFT_LIMIT_CHARS:
+    # Soft warnings on subject length. Two thresholds:
+    #   * > 78 chars  -- historic RFC 5322 wrap + spam-filter heuristic.
+    #   * > 50 chars  -- inbox preview truncation in Outlook / Gmail web.
+    # The wording suggests the most common fix (abbreviate MONTH YEAR)
+    # because that's the typical overflow source for this newsletter
+    # template (round-9 UX M4).
+    n = len(subject)
+    if n > _SUBJECT_SPAM_LIMIT_CHARS:
         click.echo(click.style(
-            f"Heads up: subject is {len(subject)} characters "
-            f"(> {_SUBJECT_SOFT_LIMIT_CHARS}). Many mail clients "
-            "wrap long subjects in the inbox preview, and some "
-            "spam filters score them higher. Consider shortening "
-            "the issue line.", fg="yellow"))
+            f"Heads up: subject is {n} characters "
+            f"(> {_SUBJECT_SPAM_LIMIT_CHARS}). Many spam filters "
+            "score long subjects higher, and inbox-list previews on "
+            "most clients will truncate it. Tip: most overflow comes "
+            "from a long issue subtitle in the masthead -- try "
+            "abbreviating MONTH YEAR (e.g. \"MAR 2026\" instead of "
+            "\"MARCH 2026\").",
+            fg="yellow"))
+    elif n > _SUBJECT_PREVIEW_LIMIT_CHARS:
+        click.echo(click.style(
+            f"Note: subject is {n} characters "
+            f"(> {_SUBJECT_PREVIEW_LIMIT_CHARS}). Outlook desktop and "
+            "Gmail web typically truncate inbox-list previews around "
+            "50 chars, so recipients may only see the first half. "
+            "If that's a concern, try abbreviating MONTH YEAR (e.g. "
+            "\"MAR 2026\").",
+            fg="yellow"))
 
     # 8) Write -- only reached when validation passes. mkdir is here
     # rather than at the top of the pipeline so a hard-block doesn't
@@ -280,8 +306,8 @@ def preview_cmd(issue: int):
     webbrowser.open(out.as_uri())
 
 
-def _subject_for(issue: int, input_path: Path | None = None) -> str:
-    """Build the email subject line.
+def _subject_from_path(issue: int, input_path: Path | None = None) -> str:
+    """Build the email subject line from a DOCX path or manifest cache.
 
     Resolution order:
       1. The manifest written by `_build_pipeline` (cheap; one JSON read).
@@ -341,7 +367,8 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
         click.echo(f"Not found: {out}. Run `build` first.", err=True)
         sys.exit(1)
     html = out.read_text(encoding="utf-8")
-    subject = _subject_for(issue, Path(input_path) if input_path else None)
+    subject = _subject_from_path(
+        issue, Path(input_path) if input_path else None)
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
     handler = detect_default_mail_handler()

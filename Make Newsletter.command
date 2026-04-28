@@ -104,13 +104,17 @@ if [[ ! -d ".git" ]]; then
         echo "  設定を直すため、ここで停止します。"
         echo
         echo "  README のステップ 2 と 3 に従ってください:"
-        echo "    1. https://desktop.github.com から GitHub Desktop をインストール"
+        echo "    1. https://desktop.github.com から GitHub Desktop を"
+        echo "       インストール"
         echo "    2. GitHub Desktop で File -> Clone repository をクリックし、"
-        echo "       このプロジェクトを新しいフォルダに複製"
-        echo "    3. 複製した新しいフォルダの中から、このランチャーを再実行"
-        echo "    4. (任意) 新しい複製が動作したら、この古いフォルダは削除"
-        echo "       してください。両方を残すと次回どちらをダブルクリック"
-        echo "       したのか分からなくなります。"
+        echo "       このプロジェクトを **新しい** フォルダに複製してください"
+        echo "       (例: ~/Documents/Meridian-Newsletter)"
+        echo "    3. その新しいフォルダの中から、ランチャーを再実行"
+        echo "    4. 新しい複製で正常に動作した (\"完了。メールの下書きが開いて"
+        echo "       いるはずです\" が表示された) のを確認してから、この古い"
+        echo "       フォルダを削除してください。壊れているフォルダは隠し"
+        echo "       \".git\" サブフォルダが **無い** 方です。動いているクローンには"
+        echo "       \".git\" があります。判断に迷ったら、両方残しても安全です。"
     else
         echo "  ERROR: this folder is not a git checkout."
         echo
@@ -122,11 +126,14 @@ if [[ ! -d ".git" ]]; then
         echo "  Please follow the README Steps 2 and 3:"
         echo "    1. Install GitHub Desktop from https://desktop.github.com"
         echo "    2. In GitHub Desktop, click File -> Clone repository"
-        echo "       and clone this project fresh into a new folder."
-        echo "    3. Re-run this launcher from inside the cloned folder."
-        echo "    4. (Optional) Delete THIS folder once the new clone works"
-        echo "       -- keeping both copies side-by-side will confuse you"
-        echo "       next month about which launcher to double-click."
+        echo "       and clone this project fresh into a NEW folder"
+        echo "       (e.g. ~/Documents/Meridian-Newsletter)."
+        echo "    3. Re-run the launcher from inside that NEW folder."
+        echo "    4. Once the new clone works (you see \"Done. Your email"
+        echo "       draft should now be open\"), you can delete this old"
+        echo "       folder. The broken folder is the one with NO hidden"
+        echo "       \".git\" subfolder -- the working clone has one."
+        echo "       If unsure, leave both. Keeping both is safe."
     fi
     echo
     read -r -p "$PRESS_ENTER" _

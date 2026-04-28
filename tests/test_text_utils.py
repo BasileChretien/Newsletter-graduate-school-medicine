@@ -45,21 +45,32 @@ def test_sanitize_subject_leaves_normal_text_alone():
         == "MERIDIAN — VOL. 12 | ISSUE NO. 3 | MARCH 2026"
 
 
-# ---------- Bundle 26: ZWJ preservation (compound emoji) -----------------
+# ---------- Bundle 28: ZWJ stripped by default (security fix) ------------
 
-def test_strip_invisibles_preserves_zwj_in_compound_emoji():
-    """U+200D ZWJ joins emoji into single-glyph sequences (family,
-    profession). Removing it shatters the glyph into separate emoji,
-    so it must survive `strip_invisibles`."""
-    # Family emoji: man + ZWJ + woman + ZWJ + girl
+def test_strip_invisibles_drops_zwj_by_default():
+    """Round-9 security finding: ZWJ (U+200D) used to be preserved
+    here, but `_EMAIL_RE` doesn't exclude ZWJ from its character
+    class, so `victim<ZWJ>@evil.com` would pass recipient validation.
+    Default behaviour now strips ZWJ; only callers that opt in via
+    `keep_zwj=True` keep it."""
     family = "👨‍👩‍👧"
-    assert strip_invisibles(family) == family
+    out = strip_invisibles(family)
+    assert "‍" not in out
+    # Without ZWJ the family becomes three standalone emoji codepoints.
+    assert out == "👨👩👧"
 
 
-def test_strip_invisibles_preserves_zwj_in_text():
-    """ZWJ also appears in Indic / Arabic scripts as a script joiner."""
+def test_strip_invisibles_drops_zwj_in_text_by_default():
     text = "a‍b"
-    assert strip_invisibles(text) == "a‍b"
+    assert strip_invisibles(text) == "ab"
+
+
+def test_strip_invisibles_keep_zwj_opt_in_for_rendered_text():
+    """Body / subject pipelines that legitimately need ZWJ (compound
+    emoji, Indic scripts) opt in via the `keep_zwj=True` flag."""
+    family = "👨‍👩‍👧"
+    assert strip_invisibles(family, keep_zwj=True) == family
+    assert strip_invisibles("a‍b", keep_zwj=True) == "a‍b"
 
 
 # ---------- Bundle 26: \r stripped (no longer in keep set) ---------------

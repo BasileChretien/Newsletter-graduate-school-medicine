@@ -96,19 +96,119 @@ def test_plaintext_handles_empty_input():
 
 def test_plaintext_preserves_text_order():
     """Order of visible text must match the document order so
-    plaintext readers see the same sequence as HTML readers."""
+    plaintext readers see the same sequence as HTML readers.
+
+    Bundle 28: <h1> / <h2> are now uppercased and wrapped in
+    `=== ... ===` markers (round-9 email H2 -- richer plaintext
+    for spam-filter scoring), so we search for the upper-cased form."""
     out = html_to_plaintext(
         "<h1>Title</h1>"
         "<p>Intro paragraph.</p>"
         "<h2>Section</h2>"
         "<p>Section body.</p>"
     )
-    # Verify the order within the joined plaintext.
-    title_pos = out.find("Title")
+    title_pos = out.find("TITLE")
     intro_pos = out.find("Intro paragraph.")
-    section_pos = out.find("Section")
+    section_pos = out.find("SECTION")
     body_pos = out.find("Section body.")
     assert 0 <= title_pos < intro_pos < section_pos < body_pos
+
+
+# ---------- Bundle 28: richer plaintext for spam-filter scoring ----------
+
+def test_plaintext_h1_h2_get_uppercase_marker_wrapping():
+    """Round-9 email H2: `<h1>` / `<h2>` produce `=== HEADING ===`
+    blocks in plaintext so the multipart/alternative text part has
+    visible structure (better spam-filter scoring + more readable for
+    plaintext clients)."""
+    out = html_to_plaintext("<h1>Important News</h1><p>Body.</p>")
+    assert "=== IMPORTANT NEWS ===" in out
+
+
+def test_plaintext_h3_through_h6_get_minor_marker():
+    out = html_to_plaintext(
+        "<h3>Sub-heading</h3><h4>Tier 4</h4>"
+        "<h5>Tier 5</h5><h6>Tier 6</h6>"
+    )
+    assert "--- Sub-heading ---" in out
+    assert "--- Tier 4 ---" in out
+    assert "--- Tier 5 ---" in out
+    assert "--- Tier 6 ---" in out
+
+
+def test_plaintext_li_gets_bullet_glyph():
+    out = html_to_plaintext(
+        "<ul><li>First</li><li>Second</li></ul>"
+    )
+    assert "• First" in out
+    assert "• Second" in out
+
+
+def test_plaintext_drops_javascript_url():
+    """Round-9 security MEDIUM: the URL allowlist must drop unsafe
+    schemes. Only the visible label survives, not the URL."""
+    out = html_to_plaintext('<a href="javascript:alert(1)">click</a>')
+    assert "javascript:" not in out
+    assert "alert" not in out
+    assert "click" in out
+
+
+def test_plaintext_drops_data_url():
+    out = html_to_plaintext('<a href="data:text/html,XSS">link</a>')
+    assert "data:" not in out
+    assert "XSS" not in out
+    assert "link" in out
+
+
+def test_plaintext_drops_file_url():
+    out = html_to_plaintext('<a href="file:///etc/passwd">label</a>')
+    assert "file://" not in out
+    assert "passwd" not in out
+    assert "label" in out
+
+
+def test_plaintext_drops_tel_url():
+    """`tel:` is not in the safe-scheme allowlist."""
+    out = html_to_plaintext('<a href="tel:+1234567890">phone</a>')
+    assert "tel:" not in out
+    assert "+1234567890" not in out
+    assert "phone" in out
+
+
+def test_plaintext_keeps_mailto_url():
+    """`mailto:` IS in the allowlist."""
+    out = html_to_plaintext('<a href="mailto:dean@nu.ac.jp">email</a>')
+    assert "mailto:dean@nu.ac.jp" in out
+    assert "email" in out
+
+
+def test_plaintext_handles_unclosed_tags_gracefully():
+    """Round-9 code-review LOW: malformed HTML from a Word paste must
+    not raise. BeautifulSoup handles unclosed tags; pin the contract."""
+    out = html_to_plaintext("<p>Unclosed paragraph<p>Next one.")
+    assert "Unclosed paragraph" in out
+    assert "Next one" in out
+
+
+def test_plaintext_handles_html_entity():
+    """`&#160;` (NBSP entity) and `&amp;` should normalise sanely."""
+    out = html_to_plaintext("<p>A&nbsp;B&amp;C&#160;D</p>")
+    # NBSP collapses to space, & survives.
+    assert "A B&C D" in out or "A B & C D" in out
+
+
+def test_plaintext_strict_fallback_strips_tags():
+    """The strict regex-based fallback (used when html_to_plaintext
+    raises) produces SOME plaintext rather than letting Outlook
+    auto-generate a poor one from HTML."""
+    from scripts.mail.plaintext import html_to_plaintext_strict_fallback
+    out = html_to_plaintext_strict_fallback(
+        "<p>Hello <strong>world</strong></p>"
+    )
+    assert "<" not in out
+    assert ">" not in out
+    assert "Hello" in out
+    assert "world" in out
 
 
 def test_plaintext_for_realistic_newsletter_fragment():

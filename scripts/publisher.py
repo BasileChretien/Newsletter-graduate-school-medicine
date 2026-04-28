@@ -70,6 +70,20 @@ def publish_assets(issue: int, *, push: bool = True,
     subject snippets) to the public repo is almost never intentional.
     Editors number real issues from 1.
     """
+    # Round-9 security MEDIUM 5: explicit type check rejects
+    # non-int inputs (`0.5`, `"3"`) up front. Without this, e.g.
+    # `publish_assets(0.5)` would silently produce path
+    # `assets/issue-0.5/` on the filesystem and fail later with a
+    # FileNotFoundError further down -- worse error message AND
+    # opens a string-coercion attack surface for any future caller
+    # that accepts user input. Reject `bool` explicitly: `bool` is
+    # a subclass of `int`, but `publish_assets(True)` should never
+    # reach the filesystem.
+    if isinstance(issue, bool) or not isinstance(issue, int):
+        raise TypeError(
+            f"issue must be a positive integer -- got "
+            f"{type(issue).__name__} {issue!r}"
+        )
     if issue <= 0:
         raise ValueError(
             f"Refusing to publish issue {issue}: real issues are "

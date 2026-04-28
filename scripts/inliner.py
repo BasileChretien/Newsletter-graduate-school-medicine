@@ -25,10 +25,21 @@ log = logging.getLogger(__name__)
 _KEPT_STYLES: str = """
 @media print {
   body, .container { background: #FFFFFF !important; }
-  /* Round 8 Visual L3: don't waste ink on the cream masthead band
-     and the 8px solid blue top-rule. A thin 1pt blue rule under the
-     wordmark is plenty for a printed copy. */
-  .masthead { background: #FFFFFF !important; border-top: 1pt solid #003F88 !important; }
+  /* Round 8 Visual L3 + round 9 Visual M1: don't waste ink on the
+     cream masthead band, the 8px solid blue top-rule, the gold
+     bottom-rule, OR the gold tagline-underline. A single thin 1pt
+     blue rule under the wordmark is enough rhythm for a printed
+     copy. Without these overrides the page would print four stacked
+     horizontal lines around the title. */
+  .masthead {
+    background: #FFFFFF !important;
+    border-top: 1pt solid #003F88 !important;
+    border-bottom: none !important;
+  }
+  .masthead .tagline {
+    border-bottom: none !important;
+    padding-bottom: 4px !important;
+  }
   .footer { background: #FFFFFF !important; color: #1C1C1E !important; }
   .footer a { color: #003F88 !important; }
 }

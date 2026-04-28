@@ -39,8 +39,14 @@ body {
   /* The hairline frame, white bg, and 4px padding live on the
      nested <td> in the template (see newsletter.html.j2) so Outlook
      desktop doesn't render padding on the <img> with the masthead's
-     #EEF2F7 background -- which produces a halo around the seal. */
-  vertical-align: top;
+     #EEF2F7 background -- which produces a halo around the seal.
+
+     Round-9 Visual M2: vertical-align switched from `top` to `middle`
+     because bundle 27's looser tagline + subtitle margins push the
+     text column ~10px taller than the seal. With `top`, the seal sat
+     in the upper third with empty space below; `middle` keeps it
+     centered in the masthead band as the text grows. */
+  vertical-align: middle;
   padding-right: 16px;
 }
 .masthead-text {
@@ -126,17 +132,16 @@ body {
 
 .subhead {
   font-family: Cambria, Georgia, 'Times New Roman', serif;
-  /* Round 8 Visual M4: dropped 13px -> 12px and switched from bold
-     charcoal to NU-blue regular-weight + small letter-spacing, so
-     a long Research section doesn't feel like its sub-heads are
-     competing with the section heading itself for "header" rank.
-     The blue ties them visually to the section's left bar without
-     repeating the section heading's typographic weight. */
+  /* Round 8 Visual M4 + round 9 revisit: subhead recoloured to NU
+     blue (links it visually to the section's left bar) AND the
+     uppercase + letter-spacing dropped (round 9 Visual H2). The
+     section heading already owns "uppercase + tracked + blue +
+     serif"; repeating that on the subhead made them read as
+     siblings instead of parent-child. Title-case mixed-bold here
+     is the clear typographic distinction. */
   font-size: 12px;
   font-weight: bold;
   color: #003F88;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
   /* No left rule -- the section heading already has a strong blue
      left bar; an additional gold rule on every subhead made the page
      feel "ruled everywhere" (round-3 Visual LOW-9). */

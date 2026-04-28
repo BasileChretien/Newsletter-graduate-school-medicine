@@ -53,14 +53,19 @@ def test_helper_functions_re_exported():
 
 
 def test_styling_helpers_re_exported():
-    """style_run / style_paragraph / _normalize_body_run are the
-    primitives every restyler delegates to; future tests / debug
-    sessions reach them via the package, not the private submodule."""
+    """style_run / style_paragraph / rgb are public helpers.
+    `_normalize_body_run` keeps its leading underscore (private-to-package)
+    and is intentionally NOT in `__all__` -- bundle 28 cleanup
+    (round-9 python-reviewer MEDIUM)."""
     from scripts import build_template as bt
     assert callable(bt.style_run)
     assert callable(bt.style_paragraph)
-    assert callable(bt._normalize_body_run)
     assert callable(bt.rgb)
+    # _normalize_body_run is reachable but NOT public.
+    assert callable(bt._normalize_body_run)
+    assert "_normalize_body_run" not in bt.__all__, (
+        "Leading-underscore names must not appear in __all__."
+    )
 
 
 def test_restyle_functions_re_exported():
@@ -89,11 +94,69 @@ def test_section_head_re_pattern_unchanged():
 
 
 def test_submodules_importable_directly():
-    """Internal-but-not-private submodules can still be imported by
-    test code that wants to exercise primitives in isolation."""
-    from scripts.build_template import _styles, _elements
-    assert hasattr(_styles, "rgb")
-    assert hasattr(_elements, "is_section_heading")
+    """Bundle 28 dropped the leading underscore on the submodule
+    names (`styles.py` / `elements.py`); the package boundary
+    already encapsulates them. Import paths used by debug shells:"""
+    from scripts.build_template import styles, elements
+    assert hasattr(styles, "rgb")
+    assert hasattr(elements, "is_section_heading")
+
+
+def test_underscore_submodules_are_gone():
+    """Round-9 architect MEDIUM 2: the legacy `_styles` / `_elements`
+    module names should no longer exist after the rename. If they
+    reappear, someone has reverted the bundle-28 cleanup."""
+    import importlib
+    for name in ("scripts.build_template._styles",
+                 "scripts.build_template._elements"):
+        try:
+            importlib.import_module(name)
+        except ImportError:
+            continue
+        else:
+            raise AssertionError(
+                f"{name} should not exist post-bundle-28 (use the "
+                "underscore-free name)."
+            )
+
+
+def test_style_run_actually_styles_a_run():
+    """Behaviour smoke check (round-9 code-review MEDIUM): the
+    `callable(bt.style_run)` test would pass even if the function
+    were stubbed to do nothing. This test verifies it actually
+    applies font / size / colour to a real python-docx run."""
+    from scripts import build_template as bt
+    import docx
+    doc = docx.Document()
+    p = doc.add_paragraph()
+    run = p.add_run("hello")
+    bt.style_run(run, font="Cambria", size_pt=14, bold=True,
+                 color=bt.PRIMARY)
+    assert run.font.name == "Cambria"
+    assert run.font.size.pt == 14
+    assert run.bold is True
+    # Colour comparison via the RGBColor's underlying tuple.
+    assert run.font.color.rgb == bt.PRIMARY
+
+
+def test_restyle_section_heading_smoke():
+    """Behaviour smoke check (round-9 code-review MEDIUM): hand the
+    restyler a real `1.  Title` paragraph and confirm it produces
+    runs with the expected colours / sizes."""
+    from scripts import build_template as bt
+    import docx
+    doc = docx.Document()
+    p = doc.add_paragraph("1.  Hospital News")
+    bt.restyle_section_heading(p)
+    # After restyling, the paragraph should have at least 3 runs:
+    # numeral, gold dash, label.
+    assert len(p.runs) >= 3
+    # The first run carries the zero-padded numeral in NU blue.
+    assert "01" in p.runs[0].text
+    assert p.runs[0].font.color.rgb == bt.PRIMARY
+    # One of the runs is the gold dash.
+    dash_runs = [r for r in p.runs if r.font.color.rgb == bt.ACCENT]
+    assert dash_runs, "Section heading must carry a gold-coloured dash run"
 
 
 def test_build_template_module_does_not_exist_as_file():

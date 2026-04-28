@@ -42,6 +42,37 @@ def test_publisher_accepts_positive_issue_with_missing_dir(
         publisher.publish_assets(1, push=False, cwd=tmp_path)
 
 
+# ---------- Bundle 28: type guard ---------------------------------------
+
+def test_publisher_rejects_float_issue(tmp_path: Path) -> None:
+    """Round-9 security MEDIUM 5: `publish_assets(0.5)` used to pass
+    the `<= 0` numeric guard (0.5 > 0) and produce a path
+    `assets/issue-0.5/` on the filesystem before failing later with
+    `FileNotFoundError`. Bundle 28 rejects non-int issue numbers up
+    front with a clear `TypeError`."""
+    with pytest.raises(TypeError, match="issue must be a positive integer"):
+        publisher.publish_assets(0.5, push=False, cwd=tmp_path)
+    with pytest.raises(TypeError):
+        publisher.publish_assets(3.0, push=False, cwd=tmp_path)
+
+
+def test_publisher_rejects_string_issue(tmp_path: Path) -> None:
+    """`publish_assets("3")` would have built an `assets/issue-3/`
+    path that LOOKS valid -- a near-miss for the type guard. Reject."""
+    with pytest.raises(TypeError):
+        publisher.publish_assets("3", push=False, cwd=tmp_path)  # type: ignore[arg-type]
+
+
+def test_publisher_rejects_bool_issue(tmp_path: Path) -> None:
+    """Python booleans are a subclass of int, so the naive
+    `isinstance(issue, int)` check would accept `True` (=1) and
+    `False` (=0). The guard explicitly excludes bool."""
+    with pytest.raises(TypeError):
+        publisher.publish_assets(True, push=False, cwd=tmp_path)
+    with pytest.raises(TypeError):
+        publisher.publish_assets(False, push=False, cwd=tmp_path)
+
+
 def test_publisher_error_message_explains_why(tmp_path: Path) -> None:
     """The error message must tell the editor *why* issue-0 is
     rejected -- not just refuse silently."""

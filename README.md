@@ -40,11 +40,13 @@ Do all four steps in order. Don't skip any.
 3. Under **Local path**, click **Choose…** and pick **Documents** (or any folder you'll remember).
 4. Click **Clone**. After a few seconds you'll have a folder called `Newsletter-graduate-school-medicine` on your PC. **That's the folder you'll use for every newsletter.**
 
+> **Important — do NOT use "Download ZIP":** GitHub's web page also offers a green **Code → Download ZIP** button. **Do not use it.** A ZIP-extracted copy can build a newsletter, but photos won't upload to the web — recipients will see broken-image icons. The launcher detects this and stops with a clear error, so if you accidentally extracted a ZIP just follow the instructions on screen and clone fresh via GitHub Desktop as described above.
+
 ### Step 4 — Install Python
 
 Python is the program that runs the toolkit.
 
-- **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **tick the box "Add Python to PATH"** before you click *Install Now*.
+- **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **check the box "Add Python to PATH"** before you click *Install Now*.
 - **macOS:** open **Terminal** (Applications → Utilities → Terminal), type `python3 --version`, press Enter. If you see something like `3.12.x`, you're done. Otherwise install from <https://www.python.org/downloads/> the same way as Windows.
 
 That's the whole setup. **You will never have to do these four steps again.**
@@ -208,13 +210,16 @@ You're using the non-Outlook path. The newsletter is on your clipboard — click
 Copy the full red text and send it to the developer. Most errors are clear about what went wrong (e.g. "image filename doesn't match the convention").
 
 **❓ Some recipients say the photos in the email are broken / missing.**
-Photos are hosted on GitHub (a developer service) at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain and strip the images, even though the rest of the email arrives fine. If a Nagoya University recipient reports this, ask the developer to set up a one-time GitHub Pages mirror — same files, but served from `<user>.github.io/<repo>/assets/...`, which sits on a different network and is rarely flagged. Until then, an affected recipient can still click each broken-image icon to view it.
+Photos are hosted on GitHub (a developer service) at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain and strip the images, even though the rest of the email arrives fine. If a recipient at Nagoya University reports this, ask the developer (the person who set up the toolkit for you, listed in the repo's "About" page on GitHub) to set up a one-time GitHub Pages mirror — same files, but served from `<user>.github.io/<repo>/assets/...`, which sits on a different network and is rarely flagged. Until then, an affected recipient can still click each broken-image icon to view it.
 
 **❓ How many recipients can I BCC at once before mail is throttled?**
-Most universities (including Nagoya University) cap a single outgoing message at around **50 BCC recipients**. Beyond that the message can be quietly throttled or quarantined as bulk. If your distribution list is larger, send in batches of ≤ 50 (the launcher will happily BCC whatever is in `recipients.txt`, but the throttle is enforced by your mail server, not the toolkit). For very large lists, ask IT about a proper mailing-list address.
+Most universities (including Nagoya University) cap a single outgoing message at around **50 BCC recipients**. Beyond that the message can be quietly throttled or quarantined as bulk. The toolkit doesn't enforce a limit — it BCCs whatever is in your `recipients.txt` — so it's up to you to split a > 50-person list into batches of ≤ 50. For very large lists, ask IT about a proper mailing-list address.
 
 **❓ Will recipients' spam filters trust the email?**
-Sending reputation depends on your university's mail server, not on the toolkit. If you're sending from `@med.nagoya-u.ac.jp` you're already inheriting a trusted SPF/DKIM/DMARC posture — no action needed. If you ever switch to sending from a personal Gmail / Outlook account, expect the same email to score worse with corporate filters.
+Yes, as long as you send from your university account. Sending reputation depends on the mail server, not the toolkit, and `@med.nagoya-u.ac.jp` already has a trusted setup.
+
+**❓ I printed the email and the masthead looks different from the screen.**
+That's intentional. The print stylesheet swaps the dark cream-and-gold masthead for a high-contrast, ink-saving version — your recipients still see the on-screen design when they read the email, and your printed copy doesn't drain a colour cartridge.
 
 ---
 
@@ -223,7 +228,7 @@ Sending reputation depends on your university's mail server, not on the toolkit.
 **The everyday way:** double-click `Make Newsletter.bat` (Windows) or `Make Newsletter.command` (macOS). Answer the two prompts. Done.
 
 <details>
-<summary><strong>The advanced way</strong> — for developers / power users only (you do not need any of this; the launcher above does it all for you)</summary>
+<summary><strong>CLI commands (for developers / power users)</strong> — click to expand. The launcher above does all of this for you; this list is only useful if you're maintaining the toolkit or scripting around it.</summary>
 
 | What you want to do | Type this |
 |---|---|

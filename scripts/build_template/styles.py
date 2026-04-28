@@ -1,8 +1,10 @@
 """Run / paragraph / color primitives shared by every restyler.
 
 Extracted from `build_template.py` in bundle 27 so the orchestration
-in `_elements.py` reads as a flat list of high-level steps rather
-than scrolling past 70 lines of color-helper boilerplate.
+in `elements.py` reads as a flat list of high-level steps rather
+than scrolling past 70 lines of color-helper boilerplate. Renamed
+from `_styles.py` in bundle 28 (round-9 architect MEDIUM 2 -- the
+package boundary already encapsulates the submodule).
 
 Public surface (re-exported by the package `__init__`):
 
@@ -17,6 +19,8 @@ from __future__ import annotations
 
 from docx.enum.text import WD_LINE_SPACING
 from docx.shared import Inches, Pt, RGBColor
+from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from scripts.config import PALETTE
 from scripts.oxml_helpers import set_run_letter_spacing, set_run_small_caps
@@ -41,7 +45,7 @@ _LEGACY_MUSTARD = RGBColor(0xC8, 0xA4, 0x15)
 _LEGACY_PASTEL = RGBColor(0xAA, 0xBB, 0xCC)
 
 
-def _normalize_body_run(run) -> None:
+def _normalize_body_run(run: Run) -> None:
     """Apply default body styling (Calibri / charcoal / 10.5pt) to a run.
 
     Also clears the original Nagoya template's blanket-italic placeholder
@@ -82,9 +86,12 @@ def _normalize_body_run(run) -> None:
 
 
 # ---------- run/paragraph styling helpers ----------
-def style_run(run, *, font=None, size_pt=None, bold=None, italic=None,
-              color: RGBColor | None = None, all_caps=False, small_caps=False,
-              tracking=None) -> None:
+def style_run(run: Run, *, font: str | None = None,
+              size_pt: float | None = None,
+              bold: bool | None = None, italic: bool | None = None,
+              color: RGBColor | None = None,
+              all_caps: bool = False, small_caps: bool = False,
+              tracking: int | None = None) -> None:
     if font:
         run.font.name = font
     if size_pt is not None:
@@ -103,8 +110,11 @@ def style_run(run, *, font=None, size_pt=None, bold=None, italic=None,
         set_run_letter_spacing(run, tracking)
 
 
-def style_paragraph(p, *, alignment=None, space_before=None, space_after=None,
-                    line_spacing=None, left_indent=None) -> None:
+def style_paragraph(p: Paragraph, *, alignment=None,
+                    space_before: float | None = None,
+                    space_after: float | None = None,
+                    line_spacing: float | None = None,
+                    left_indent: float | None = None) -> None:
     pf = p.paragraph_format
     if alignment is not None:
         p.alignment = alignment
