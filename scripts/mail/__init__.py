@@ -11,12 +11,13 @@ Public API:
     detect_default_mail_handler() -> MailHandler
     load_recipients(path) -> list[str]
     compose(html, *, subject, backend="auto", preview_path=None,
-            bcc=None, to=None) -> str
+            bcc=None, to=None) -> ComposeOutcome
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from scripts.mail.base import DraftEmail, MailBackend, MailHandler
@@ -25,10 +26,52 @@ from scripts.mail.clipboard_mailto import (
     ClipboardMailtoBackend, compose_via_default,
 )
 from scripts.mail.detect import detect_default_mail_handler
-from scripts.mail.outlook import OutlookBackend, compose_outlook, is_available
+from scripts.mail.outlook import OutlookBackend, compose_outlook
 from scripts.recipients import load_recipients
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ComposeOutcome:
+    """Typed result of a `compose()` call.
+
+    Replaces the round-7 stringly-typed return (`"outlook"`,
+    `"default:apple_mail"`, `"default:browser:fallback-from-outlook"`)
+    with three explicit fields:
+
+    * `backend`         -- name of the backend that actually composed
+                           the draft (`"outlook"`, `"clipboard_mailto"`).
+    * `handler_kind`    -- detected default-mail-handler kind
+                           (`"outlook"`, `"apple_mail"`, `"thunderbird"`,
+                           `"browser"`, `"other"`, `"unknown"`).
+    * `fell_back_from`  -- if the auto-path attempted Outlook and it
+                           threw, this holds `"outlook"`. None otherwise.
+
+    `__str__` preserves the legacy magic-string wire format so
+    existing log lines and any string-comparing call sites keep
+    working during the migration. New code should pattern-match on
+    the dataclass fields directly.
+    """
+    backend: str
+    handler_kind: str
+    fell_back_from: str | None = None
+
+    @property
+    def is_fallback(self) -> bool:
+        return self.fell_back_from is not None
+
+    def __str__(self) -> str:
+        # Preserve legacy formats so str-comparing code still works.
+        if self.backend == "outlook" and not self.is_fallback:
+            return "outlook"
+        if self.is_fallback:
+            return f"default:{self.handler_kind}:fallback-from-{self.fell_back_from}"
+        return f"default:{self.handler_kind}"
+
+    def startswith(self, prefix: str) -> bool:
+        """Compatibility shim for code doing `outcome.startswith("default:")`."""
+        return str(self).startswith(prefix)
 
 
 # Registry: ordered, priority high-to-low. The dispatcher iterates and
@@ -64,8 +107,8 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             from_addr: str | None = None,
             reply_to: str | None = None,
             attachments=(),
-            ) -> str:
-    """Open an email draft. Returns the backend used.
+            ) -> ComposeOutcome:
+    """Open an email draft. Returns a `ComposeOutcome`.
 
     Failure modes:
       - `backend="outlook"` explicit + Outlook throws  -> re-raise.
@@ -103,14 +146,17 @@ def compose(html: str, *, subject: str, backend: str = "auto",
         )
         fallback = _BACKENDS[-1]
         fallback.compose(draft)
-        return f"default:{handler.kind}:fallback-from-{chosen.name}"
+        return ComposeOutcome(
+            backend=fallback.name,
+            handler_kind=handler.kind,
+            fell_back_from=chosen.name,
+        )
 
-    if chosen.name == "outlook":
-        return "outlook"
-    return f"default:{handler.kind}"
+    return ComposeOutcome(backend=chosen.name, handler_kind=handler.kind)
 
 
 __all__ = [
+    "ComposeOutcome",
     "DraftEmail",
     "MailBackend",
     "MailHandler",
@@ -119,7 +165,10 @@ __all__ = [
     "compose_via_default",
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
-    "is_available",
 ]
 # `load_recipients` is intentionally NOT re-exported -- it's not a
 # mail-backend concern. New code imports from `scripts.recipients`.
+# `is_available` (from outlook.py) is also not re-exported -- it's a
+# backend-internal helper that collides conceptually with the
+# `MailBackend.is_available()` method on the Protocol. Backends that
+# need to expose availability do so via the Protocol method.

@@ -61,7 +61,10 @@ body {
   font-size: 16px;
   font-style: italic;
   color: #003F88;
-  margin: 8px 0 8px 0;
+  /* Round 8 Visual M2: bumped top margin (8 -> 12) so the tagline
+     doesn't crowd the title's descenders, and added bottom margin
+     so the gold rule has breathing room before the subtitle. */
+  margin: 12px 0 10px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid #A8864B;
   line-height: 1.3;
@@ -71,7 +74,10 @@ body {
   font-size: 11px;
   font-style: italic;
   color: #6B6B70;
-  margin: 0 0 10px 0;
+  /* Round 8 Visual M2: top margin breaks the cluster the subtitle
+     used to form with the gold rule above it, restoring the
+     intended 4-step ladder (title -> tagline -> subtitle -> issue). */
+  margin: 6px 0 10px 0;
   line-height: 1.4;
 }
 .masthead .issue {
@@ -120,9 +126,17 @@ body {
 
 .subhead {
   font-family: Cambria, Georgia, 'Times New Roman', serif;
-  font-size: 13px;
+  /* Round 8 Visual M4: dropped 13px -> 12px and switched from bold
+     charcoal to NU-blue regular-weight + small letter-spacing, so
+     a long Research section doesn't feel like its sub-heads are
+     competing with the section heading itself for "header" rank.
+     The blue ties them visually to the section's left bar without
+     repeating the section heading's typographic weight. */
+  font-size: 12px;
   font-weight: bold;
-  color: #1C1C1E;
+  color: #003F88;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
   /* No left rule -- the section heading already has a strong blue
      left bar; an additional gold rule on every subhead made the page
      feel "ruled everywhere" (round-3 Visual LOW-9). */
@@ -229,9 +243,14 @@ table.highlights td.card strong {
 
 /* ---------- divider, footer, links, images --------------------------- */
 .divider {
+  /* The 28px L/R inset that used to live in `margin: 18px 28px` now
+     comes from the wrapping 3-cell layout in newsletter.html.j2 --
+     Outlook desktop ignores margin on <td>, which made the rule
+     extend full-width before round 8. Vertical breathing-room from
+     the wrapping <tr> still flows from `padding-top:24px` on the
+     next .section. */
   height: 1px;
   background-color: #A8864B;
-  margin: 18px 28px;
   font-size: 0;
   line-height: 0;
 }

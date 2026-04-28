@@ -1,44 +1,32 @@
-"""Build the modernized MERIDIAN newsletter DOCX template.
+"""Per-element restylers for the MERIDIAN DOCX template.
 
-Reads the original NagoyaU template, preserves all section names and content
-verbatim (text only), and restyles it per the Meridian visual spec:
+Each `restyle_*` function takes a python-docx paragraph or table and
+applies the visual spec for that element type. The orchestration in
+`pipeline.build()` walks the document once and dispatches to the
+right restyler per paragraph/table.
 
-- Title: MERIDIAN (replaces MEDICAL FRONTIER)
-- NU blue (#003F88) + warm gold palette per the official guideline
-- Cambria headings, Calibri body
-- Masthead band, section bars, gold dividers
-- Zebra-styled data tables, refined header/footer
+Extracted from `build_template.py` in bundle 27 alongside `_styles.py`.
 """
 
 from __future__ import annotations
 
-import logging
 import re
-import shutil
-from pathlib import Path
 
-from typing import Final
-
-from docx import Document
 from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt
 
 from scripts.config import (
     DEAN_NAME,
     DEAN_NAME_PLAIN,
     DEAN_PATH,
     DEAN_PHOTO_PLACEHOLDER,
-    DEAN_TITLE,
     LOGO_PATH,
-    MERIDIAN_TEMPLATE,
-    ORIGINAL_TEMPLATE,
     PALETTE,
     SUBTITLE,
     TAGLINE,
     TITLE,
 )
-from scripts.docx_parser import is_subheading_paragraph
 from scripts.oxml_helpers import (
     add_page_field,
     remove_table_borders,
@@ -47,120 +35,13 @@ from scripts.oxml_helpers import (
     set_cell_shading,
     set_paragraph_border,
     set_row_height,
-    set_run_letter_spacing,
-    set_run_small_caps,
     set_table_fixed_layout,
 )
 
-
-# ---------- color helpers ----------
-def rgb(hex_str: str) -> RGBColor:
-    h = hex_str.lstrip("#")
-    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-
-
-PRIMARY = rgb(PALETTE["primary"])
-ACCENT = rgb(PALETTE["accent"])
-TEXT = rgb(PALETTE["text"])
-MUTED = rgb(PALETTE["muted"])
-
-# Module-level constants for the legacy palette colors swept by
-# `_normalize_body_run`. Hoisted out of the inner loop -- previously
-# allocated 3 RGBColor objects per run on every restyle pass.
-_LEGACY_BLUE = RGBColor(0x2D, 0x2D, 0x8E)
-_LEGACY_MUSTARD = RGBColor(0xC8, 0xA4, 0x15)
-_LEGACY_PASTEL = RGBColor(0xAA, 0xBB, 0xCC)
-
-
-# Index of each table inside the DOCX (in document order). Named so the
-# orchestration in `build()` is grep-able instead of mystery-meat
-# `doc.tables[3]` calls. `Final` so type-checkers flag accidental
-# reassignment.
-TABLE_MASTHEAD: Final[int] = 0
-TABLE_DEAN: Final[int] = 1
-TABLE_HIGHLIGHTS_TOP: Final[int] = 2
-TABLE_HIGHLIGHTS_BOTTOM: Final[int] = 3
-TABLE_VISITORS: Final[int] = 4
-TABLE_EVENTS: Final[int] = 5
-TABLE_CONTACT: Final[int] = 6
-
-
-def _normalize_body_run(run) -> None:
-    """Apply default body styling (Calibri / charcoal / 10.5pt) to a run.
-
-    Also clears the original Nagoya template's blanket-italic placeholder
-    formatting (e.g. "[Author(s)]", `doi:[DOI]`) -- once the editor types
-    real content, persistent italic reads as "this whole list is a
-    footnote". The HTML pipeline does the same via `_strip_em` in the
-    renderer; this is the DOCX-side counterpart so both outputs ship
-    consistently.
-
-    Stale-palette sweep: the original Nagoya template carried hard-coded
-    `#2D2D8E` (old indigo), `#C8A415` (mustard), and `#AABBCC` (placeholder
-    pastel) on certain runs. After the NU blue rebrand those clash with
-    `#003F88`; we promote them to the new palette here.
-    """
-    if run.font.name in (None, "", "Arial"):
-        run.font.name = "Calibri"
-    if run.font.size is None:
-        run.font.size = Pt(10.5)
-
-    # Replace stale legacy palette colors with the NU blue palette.
-    # Without this sweep, runs the editor never touched ship with
-    # template-leftover indigo/mustard/pastel.
-    cur = run.font.color.rgb
-    if cur is None:
-        run.font.color.rgb = TEXT
-    elif cur == _LEGACY_BLUE:
-        run.font.color.rgb = PRIMARY
-    elif cur == _LEGACY_MUSTARD:
-        run.font.color.rgb = ACCENT
-    elif cur == _LEGACY_PASTEL:
-        run.font.color.rgb = TEXT
-
-    # Clear the template's default italics on placeholder text. Editors
-    # who genuinely need italic (a journal title, a pull quote) can
-    # re-enable it locally in Word.
-    if run.italic:
-        run.italic = False
-
-
-# ---------- run/paragraph styling helpers ----------
-def style_run(run, *, font=None, size_pt=None, bold=None, italic=None,
-              color: RGBColor | None = None, all_caps=False, small_caps=False,
-              tracking=None) -> None:
-    if font:
-        run.font.name = font
-    if size_pt is not None:
-        run.font.size = Pt(size_pt)
-    if bold is not None:
-        run.font.bold = bold
-    if italic is not None:
-        run.font.italic = italic
-    if color is not None:
-        run.font.color.rgb = color
-    if all_caps:
-        run.font.all_caps = True
-    if small_caps:
-        set_run_small_caps(run)
-    if tracking is not None:
-        set_run_letter_spacing(run, tracking)
-
-
-def style_paragraph(p, *, alignment=None, space_before=None, space_after=None,
-                    line_spacing=None, left_indent=None) -> None:
-    pf = p.paragraph_format
-    if alignment is not None:
-        p.alignment = alignment
-    if space_before is not None:
-        pf.space_before = Pt(space_before)
-    if space_after is not None:
-        pf.space_after = Pt(space_after)
-    if line_spacing is not None:
-        pf.line_spacing = line_spacing
-        pf.line_spacing_rule = WD_LINE_SPACING.MULTIPLE
-    if left_indent is not None:
-        pf.left_indent = Inches(left_indent)
+from scripts.build_template._styles import (
+    ACCENT, MUTED, PRIMARY, TEXT,
+    _normalize_body_run, rgb, style_paragraph, style_run,
+)
 
 
 SECTION_HEAD_RE = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*$")
@@ -536,60 +417,12 @@ def configure_page(doc) -> None:
     section.footer_distance = Inches(0.4)
 
 
-# ---------- main pipeline ----------
-def build(src: Path = ORIGINAL_TEMPLATE, dst: Path = MERIDIAN_TEMPLATE) -> Path:
-    if not src.exists():
-        raise FileNotFoundError(f"Original template not found: {src}")
-
-    # Work on a copy so we don't touch the original.
-    shutil.copy2(src, dst)
-    doc = Document(str(dst))
-
-    configure_page(doc)
-    restyle_header_footer(doc)
-
-    # 1) Masthead — Table 0.
-    if doc.tables:
-        restyle_masthead(doc.tables[TABLE_MASTHEAD])
-
-    # 2) Body paragraphs -- section heads, subheads, body, bullets.
-    # Sub-heading detection delegates to docx_parser.is_subheading_paragraph
-    # (same 3-tier check the parser uses) so the styled template stays in
-    # sync with what the parser will recognise as sub-headings in any
-    # issue's filled-in DOCX.
-    for p in doc.paragraphs:
-        text = p.text.strip()
-        if not text:
-            continue
-        if is_section_heading(text):
-            restyle_section_heading(p)
-        elif is_subheading_paragraph(p, text):
-            restyle_subhead(p)
-        elif p.style.name == "List Paragraph":
-            restyle_bullet(p)
-        else:
-            restyle_body(p)
-
-    # 3) Apply per-table styling. Named indices (from constants at the
-    # top of this module) keep the orchestration grep-able.
-    if TABLE_DEAN < len(doc.tables):
-        restyle_layout_table(doc.tables[TABLE_DEAN], label_color=False)
-        insert_dean_photo(doc.tables[TABLE_DEAN])
-        insert_dean_name(doc.tables[TABLE_DEAN])
-    for idx in (TABLE_HIGHLIGHTS_TOP, TABLE_HIGHLIGHTS_BOTTOM):
-        if idx < len(doc.tables):
-            restyle_highlights_table(doc.tables[idx])
-    for idx in (TABLE_VISITORS, TABLE_EVENTS):
-        if idx < len(doc.tables):
-            restyle_data_table(doc.tables[idx])
-    if TABLE_CONTACT < len(doc.tables):
-        restyle_layout_table(doc.tables[TABLE_CONTACT], label_color=True)
-
-    doc.save(str(dst))
-    return dst
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    out = build()
-    logging.getLogger(__name__).info("Built: %s", out)
+__all__ = [
+    "SECTION_HEAD_RE", "is_section_heading",
+    "restyle_masthead", "restyle_section_heading", "restyle_subhead",
+    "restyle_body", "restyle_bullet",
+    "restyle_data_table", "restyle_layout_table",
+    "restyle_highlights_table", "restyle_header_footer",
+    "insert_dean_name", "insert_dean_photo",
+    "configure_page",
+]

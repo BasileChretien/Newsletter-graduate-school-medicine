@@ -207,13 +207,23 @@ You're using the non-Outlook path. The newsletter is on your clipboard — click
 **❓ I'm getting an error message I don't understand.**
 Copy the full red text and send it to the developer. Most errors are clear about what went wrong (e.g. "image filename doesn't match the convention").
 
+**❓ Some recipients say the photos in the email are broken / missing.**
+Photos are hosted on GitHub (a developer service) at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain and strip the images, even though the rest of the email arrives fine. If a Nagoya University recipient reports this, ask the developer to set up a one-time GitHub Pages mirror — same files, but served from `<user>.github.io/<repo>/assets/...`, which sits on a different network and is rarely flagged. Until then, an affected recipient can still click each broken-image icon to view it.
+
+**❓ How many recipients can I BCC at once before mail is throttled?**
+Most universities (including Nagoya University) cap a single outgoing message at around **50 BCC recipients**. Beyond that the message can be quietly throttled or quarantined as bulk. If your distribution list is larger, send in batches of ≤ 50 (the launcher will happily BCC whatever is in `recipients.txt`, but the throttle is enforced by your mail server, not the toolkit). For very large lists, ask IT about a proper mailing-list address.
+
+**❓ Will recipients' spam filters trust the email?**
+Sending reputation depends on your university's mail server, not on the toolkit. If you're sending from `@med.nagoya-u.ac.jp` you're already inheriting a trusted SPF/DKIM/DMARC posture — no action needed. If you ever switch to sending from a personal Gmail / Outlook account, expect the same email to score worse with corporate filters.
+
 ---
 
 ## Quick reference card
 
 **The everyday way:** double-click `Make Newsletter.bat` (Windows) or `Make Newsletter.command` (macOS). Answer the two prompts. Done.
 
-**The advanced way** — if you prefer typing commands yourself:
+<details>
+<summary><strong>The advanced way</strong> — for developers / power users only (you do not need any of this; the launcher above does it all for you)</summary>
 
 | What you want to do | Type this |
 |---|---|
@@ -225,6 +235,8 @@ Copy the full red text and send it to the developer. Most errors are clear about
 | Check which email app the toolkit will use | `python build_newsletter.py detect-mail` |
 
 (Replace `N` with the issue number every time.)
+
+</details>
 
 ---
 

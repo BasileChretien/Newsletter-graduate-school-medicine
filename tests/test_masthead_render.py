@@ -1,4 +1,4 @@
-"""Regression tests for the masthead seal frame.
+"""Regression tests for the masthead seal frame and other visual fixes.
 
 Bundle 25 introduced a wrapping-table hairline frame around the seal
 so Outlook desktop wouldn't render the white padding with the
@@ -10,11 +10,16 @@ in that change:
 * The wrapping table had no `width` attribute; MSO renderer would
   balloon child tables, exposing the hairline as a vertical bar.
 
-Pin both fixes here so a future template edit can't silently
+Bundle 27 added Outlook-safe divider (3-cell layout) and pinned
+the subhead typography contract.
+
+Pin all the above here so a future template edit can't silently
 regress them.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from scripts.docx_parser import Masthead, Newsletter
 from scripts.inliner import inline
@@ -108,4 +113,66 @@ def test_masthead_logo_uses_white_background():
     block = html[block_start:block_start + 1200]
     assert "#FFFFFF" in block.upper() or 'bgcolor="#FFFFFF"' in block, (
         "Masthead seal frame must be white; got: {!r}".format(block[:300])
+    )
+
+
+# ---------- Bundle 27 visual fixes --------------------------------------
+
+def test_divider_uses_outlook_safe_three_cell_layout():
+    """Outlook desktop ignores `margin` on a <td>, which used to make
+    the gold rule extend full-width. Round 8 Visual L1 wraps the
+    divider in a 3-cell layout (28px spacer + rule + 28px spacer) so
+    the inset is consistent across Outlook, Gmail, Apple Mail.
+
+    Regression guard for round-8 Visual L1."""
+    from scripts.docx_parser import Heading, Newsletter, Section
+    nl = Newsletter(
+        masthead=Masthead("MERIDIAN", "tag", "sub", "VOL. 1"),
+        sections=(
+            Section(number=1, title="A", blocks=()),
+            Section(number=2, title="B", blocks=()),
+        ),
+    )
+    html = inline(render(nl))
+    # Two sections -> exactly one divider in the loop.
+    div_count = html.count('class="divider"')
+    assert div_count == 1, (
+        f"Expected exactly one divider between two sections; got {div_count}."
+    )
+    # The divider <td> must be inside a wrapping <table> (the 3-cell
+    # layout) -- check by looking for the spacer width="28" near it.
+    div_idx = html.find('class="divider"')
+    surrounding = html[max(0, div_idx - 400):div_idx + 200]
+    assert 'width="28"' in surrounding, (
+        "Divider must be inside the round-8 3-cell layout (28px spacer + "
+        "rule + 28px spacer) for Outlook-safe insetting."
+    )
+
+
+def test_print_stylesheet_strips_masthead_background():
+    """`@media print` must override the cream masthead bg + 8px blue
+    rule so editors don't waste ink on the band when printing.
+
+    Regression guard for round-8 Visual L3."""
+    from scripts.inliner import _KEPT_STYLES
+    assert ".masthead" in _KEPT_STYLES, (
+        "_KEPT_STYLES must carry a print-mode override for .masthead"
+    )
+    assert "background: #FFFFFF" in _KEPT_STYLES.replace(" ", "") \
+           or "background:#FFFFFF" in _KEPT_STYLES.replace(" ", "")
+
+
+def test_subhead_uses_smaller_distinct_typography():
+    """Round 8 Visual M4: subhead dropped to 12px + small caps + NU
+    blue so it doesn't compete with the section heading for header
+    rank. Pin the size so a future tweak can't silently regress."""
+    css_path = Path(__file__).parent.parent / "templates" / "styles.css"
+    css = css_path.read_text(encoding="utf-8")
+    # Find the .subhead block.
+    subhead_idx = css.find(".subhead")
+    assert subhead_idx >= 0
+    subhead_block = css[subhead_idx:subhead_idx + 600]
+    assert "font-size: 12px" in subhead_block, (
+        ".subhead font-size must be 12px (was 13px before bundle 27); "
+        "competing with the 16px section-heading otherwise."
     )

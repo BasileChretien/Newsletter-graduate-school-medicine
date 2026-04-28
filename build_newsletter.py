@@ -20,7 +20,7 @@ from pathlib import Path
 import click
 
 from scripts import build_template as bt
-from scripts.mail import compose, detect_default_mail_handler
+from scripts.mail import ComposeOutcome, compose, detect_default_mail_handler
 from scripts.publisher import publish_assets
 from scripts.recipients import load_recipients
 from scripts.config import (
@@ -79,23 +79,29 @@ def build_template_cmd(source: str, output: str):
     click.echo(f"Built: {out}")
 
 
-def _friendly_used(used: str) -> str:
-    """Translate the compose() return code into a human sentence."""
-    if used == "outlook":
-        return "Email draft opened in Outlook desktop."
-    if used.startswith("default:") and "fallback-from-outlook" in used:
+def _friendly_used(used: ComposeOutcome) -> str:
+    """Translate the compose() outcome into a human sentence.
+
+    Accepts a `ComposeOutcome` dataclass; uses `handler_kind` and
+    `is_fallback` to produce the right message. The legacy magic
+    strings ("outlook", "default:apple_mail", ...) are still
+    available via `str(used)` for log lines.
+    """
+    if used.is_fallback and used.fell_back_from == "outlook":
         return ("Outlook didn't open -- the newsletter is on your "
                 "clipboard and a blank draft is open in your default "
                 "email app. Click in the body and press Ctrl+V (Mac: Cmd+V).")
-    if used.startswith("default:apple_mail"):
+    if used.backend == "outlook":
+        return "Email draft opened in Outlook desktop."
+    if used.handler_kind == "apple_mail":
         return "Email draft opened in Apple Mail."
-    if used.startswith("default:thunderbird"):
+    if used.handler_kind == "thunderbird":
         return "Email draft opened in Thunderbird."
-    if used.startswith("default:browser"):
+    if used.handler_kind == "browser":
         return ("Email draft opened in your browser-based mail client. "
                 "The newsletter is on your clipboard -- press Ctrl+V "
                 "in the message body.")
-    if used.startswith("default:"):
+    if used.backend == "clipboard_mailto":
         return ("Email draft opened in your default email app. "
                 "The newsletter is on your clipboard -- press Ctrl+V "
                 "in the message body.")
@@ -342,7 +348,8 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
     if handler.is_outlook_desktop and backend in ("auto", "outlook"):
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
-            "time; please do not click anywhere)..."
+            "time; please wait -- clicking other windows may cancel "
+            "the draft)..."
         )
     used = compose(html, subject=subject, backend=backend,
                    preview_path=out, bcc=bcc)
@@ -397,7 +404,8 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
     if handler.is_outlook_desktop and backend in ("auto", "outlook"):
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
-            "time; please do not click anywhere)..."
+            "time; please wait -- clicking other windows may cancel "
+            "the draft)..."
         )
     try:
         used = compose(html, subject=subject, backend=backend,

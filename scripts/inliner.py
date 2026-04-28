@@ -25,6 +25,10 @@ log = logging.getLogger(__name__)
 _KEPT_STYLES: str = """
 @media print {
   body, .container { background: #FFFFFF !important; }
+  /* Round 8 Visual L3: don't waste ink on the cream masthead band
+     and the 8px solid blue top-rule. A thin 1pt blue rule under the
+     wordmark is plenty for a printed copy. */
+  .masthead { background: #FFFFFF !important; border-top: 1pt solid #003F88 !important; }
   .footer { background: #FFFFFF !important; color: #1C1C1E !important; }
   .footer a { color: #003F88 !important; }
 }

@@ -6,7 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.mail import MailHandler, compose, detect_default_mail_handler
+from scripts.mail import (
+    ComposeOutcome, MailHandler, compose, detect_default_mail_handler,
+)
 
 
 def test_mailhandler_outlook_flag():
@@ -34,7 +36,11 @@ def test_compose_routes_outlook_when_default_is_outlook():
          patch("scripts.mail.outlook.OutlookBackend.compose") as out_compose, \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
         used = compose("<html>x</html>", subject="Test")
-    assert used == "outlook"
+    assert isinstance(used, ComposeOutcome)
+    assert used.backend == "outlook"
+    assert not used.is_fallback
+    # Legacy str() format is preserved.
+    assert str(used) == "outlook"
     out_compose.assert_called_once()
     fb_compose.assert_not_called()
 
@@ -48,7 +54,10 @@ def test_compose_falls_back_to_default_when_not_outlook():
          patch("scripts.mail.outlook.OutlookBackend.compose") as out_compose, \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
         used = compose("<html>x</html>", subject="Test")
-    assert used.startswith("default:")
+    assert used.backend == "clipboard_mailto"
+    assert used.handler_kind == "apple_mail"
+    assert not used.is_fallback
+    assert str(used) == "default:apple_mail"
     out_compose.assert_not_called()
     fb_compose.assert_called_once()
 
@@ -63,7 +72,12 @@ def test_compose_falls_back_when_outlook_backend_throws():
                side_effect=RuntimeError("boom")), \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
         used = compose("<html>x</html>", subject="Test", backend="auto")
-    assert used.startswith("default:")
+    assert used.backend == "clipboard_mailto"
+    assert used.is_fallback
+    assert used.fell_back_from == "outlook"
+    # Legacy fallback magic-string format preserved for any older
+    # call site or log-grep.
+    assert str(used) == "default:outlook:fallback-from-outlook"
     fb_compose.assert_called_once()
 
 
@@ -91,6 +105,48 @@ def test_compose_default_backend_skips_outlook():
          patch("scripts.mail.outlook.OutlookBackend.compose") as out_compose, \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
         used = compose("<html>x</html>", subject="Test", backend="default")
-    assert used.startswith("default:")
+    assert used.backend == "clipboard_mailto"
+    assert used.handler_kind == "outlook"
+    assert not used.is_fallback
     out_compose.assert_not_called()
     fb_compose.assert_called_once()
+
+
+# ---------- Bundle 27: ComposeOutcome shape ------------------------------
+
+def test_compose_outcome_is_frozen_dataclass():
+    """`ComposeOutcome` must be immutable so callers can't mutate
+    the result and confuse downstream logging / audit."""
+    out = ComposeOutcome(backend="outlook", handler_kind="outlook")
+    with pytest.raises(Exception):  # FrozenInstanceError
+        out.backend = "other"  # type: ignore[misc]
+
+
+def test_compose_outcome_str_legacy_formats():
+    """The `__str__` shim must reproduce every legacy magic string
+    the round-7 stringly-typed return produced, so log-grep keeps
+    working during the migration."""
+    assert str(ComposeOutcome(
+        backend="outlook", handler_kind="outlook",
+    )) == "outlook"
+    assert str(ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="apple_mail",
+    )) == "default:apple_mail"
+    assert str(ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="browser",
+    )) == "default:browser"
+    assert str(ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="outlook",
+        fell_back_from="outlook",
+    )) == "default:outlook:fallback-from-outlook"
+
+
+def test_compose_outcome_startswith_compatibility():
+    """Legacy code may still call `outcome.startswith("default:")` --
+    keep the shim so existing log-grep / debug paths don't break."""
+    assert ComposeOutcome(
+        backend="clipboard_mailto", handler_kind="apple_mail",
+    ).startswith("default:")
+    assert not ComposeOutcome(
+        backend="outlook", handler_kind="outlook",
+    ).startswith("default:")

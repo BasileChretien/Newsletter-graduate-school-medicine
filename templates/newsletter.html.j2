@@ -85,7 +85,19 @@
   {% endfor %}
 </td></tr>
 {% if not loop.last %}
-<tr><td class="divider">&nbsp;</td></tr>
+{# Round 8 Visual L1: Outlook desktop ignores `margin` on a <td>, so
+   the gold rule used to extend full-width instead of aligning with
+   the section's 28px L/R padding. A 3-cell layout (28px spacer +
+   1px-tall rule + 28px spacer) gives the same inset in every client. #}
+<tr><td>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td width="28" style="width:28px;font-size:0;line-height:0;">&nbsp;</td>
+      <td class="divider" bgcolor="#A8864B" style="background-color:#A8864B;height:1px;font-size:0;line-height:0;">&nbsp;</td>
+      <td width="28" style="width:28px;font-size:0;line-height:0;">&nbsp;</td>
+    </tr>
+  </table>
+</td></tr>
 {% endif %}
 {% endfor %}
 
