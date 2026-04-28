@@ -1,0 +1,17 @@
+{
+  "issue": 3,
+  "title": "MERIDIAN",
+  "subject": "MERIDIAN — VOL. XX  |  ISSUE NO. XX  |  MONTH YEAR",
+  "docx_sha256": "6497bf40973f33a67d2c230bb808e3a093f04b03af73b581b8691af8abebd04d",
+  "built_at": "2026-04-28T09:00:06Z",
+  "dean_name": "Prof. Masahisa Katsuno",
+  "dean_title": "Dean, Graduate School of Medicine, Nagoya University",
+  "files": [
+    "image1.jpg",
+    "image2.jpg",
+    "image3.jpg"
+  ],
+  "file_count": 3,
+  "image_count": 3,
+  "output_html": "issue-3.html"
+}
