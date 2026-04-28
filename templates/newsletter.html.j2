@@ -17,8 +17,11 @@ table { border-collapse: collapse; }
 </head>
 <body>
 <center role="article" aria-roledescription="email" lang="en" style="width:100%;background-color:#F4EFE6;">
-<!-- Preheader (hidden) -->
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#F4EFE6;">{{ masthead.tagline }} — {{ masthead.issue_line }}</div>
+<!-- Preheader (hidden) -- a short teaser visible in the inbox-list
+     preview before the editor opens the email. NEVER include the
+     placeholder issue-line tokens (VOL. XX | ISSUE NO. XX | MONTH YEAR);
+     a leak there reads as "broken send" in recipients' inboxes. -->
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#F4EFE6;">{{ masthead.tagline or "Newsletter of the Graduate School of Medicine, Nagoya University." }}</div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F4EFE6;">
 <tr><td align="center" style="padding:24px 12px;">

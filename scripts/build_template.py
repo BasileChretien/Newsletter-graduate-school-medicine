@@ -79,9 +79,13 @@ TABLE_CONTACT = 6
 def _normalize_body_run(run) -> None:
     """Apply default body styling (Calibri / charcoal / 10.5pt) to a run.
 
-    Used inside table cells to avoid the original template's Arial /
-    blue / unsized defaults bleeding through. Idempotent -- non-default
-    fields the editor sets are preserved.
+    Also clears the original Nagoya template's blanket-italic placeholder
+    formatting (e.g. "[Author(s)]", `doi:[DOI]`) -- once the editor types
+    real content, persistent italic reads as "this whole list is a
+    footnote". The HTML pipeline does the same via `_strip_em` in the
+    renderer; this is the DOCX-side counterpart so both outputs ship
+    consistently. Idempotent -- non-default fields the editor sets later
+    are preserved.
     """
     if run.font.name in (None, "", "Arial"):
         run.font.name = "Calibri"
@@ -89,6 +93,11 @@ def _normalize_body_run(run) -> None:
         run.font.size = Pt(10.5)
     if run.font.color.rgb is None:
         run.font.color.rgb = TEXT
+    # Clear the template's default italics on placeholder text. Editors
+    # who genuinely need italic (a journal title, a pull quote) can
+    # re-enable it locally in Word.
+    if run.italic:
+        run.italic = False
 
 
 # ---------- run/paragraph styling helpers ----------

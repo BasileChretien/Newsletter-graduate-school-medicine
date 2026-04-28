@@ -8,6 +8,9 @@ lxml==5.3.0
 pytest==8.3.3
 pytest-cov==5.0.0
 
+# Backport for Python 3.10 -- 3.11+ ships tomllib in the stdlib.
+tomli>=2.0.1; python_version < "3.11"
+
 # Optional: enables Outlook draft + HTML clipboard on Windows.
 # (Pre-installed on most Windows Python distributions.)
 pywin32==308; platform_system == "Windows"

@@ -15,7 +15,7 @@ body {
   margin: 0;
   padding: 0;
   background-color: #F4EFE6;
-  font-family: Calibri, "Segoe UI", Arial, Helvetica, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
   color: #1C1C1E;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
@@ -43,7 +43,7 @@ body {
   vertical-align: top;
 }
 .masthead .title {
-  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 38px;
   font-weight: bold;
   letter-spacing: 2px;
@@ -53,7 +53,7 @@ body {
   line-height: 1.0;
 }
 .masthead .tagline {
-  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 16px;
   font-style: italic;
   color: #8B1A1F;
@@ -63,7 +63,7 @@ body {
   line-height: 1.3;
 }
 .masthead .subtitle {
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
   font-size: 11px;
   font-style: italic;
   color: #6B6B70;
@@ -71,7 +71,7 @@ body {
   line-height: 1.4;
 }
 .masthead .issue {
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
   font-size: 10px;
   font-weight: bold;
   letter-spacing: 3px;
@@ -88,7 +88,7 @@ body {
   padding: 24px 28px 4px 28px;
 }
 .section-heading {
-  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 16px;
   font-weight: bold;
   text-transform: uppercase;
@@ -111,7 +111,7 @@ body {
 }
 
 .subhead {
-  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 13px;
   font-weight: bold;
   color: #1C1C1E;
@@ -122,7 +122,7 @@ body {
 }
 
 p.body {
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.55;
   color: #1C1C1E;
@@ -141,12 +141,12 @@ table.data {
   width: 100%;
   border-collapse: collapse;
   margin: 6px 0 16px 0;
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
 }
 table.data th {
   background-color: #8B1A1F;
   color: #FFFFFF;
-  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 11px;
   font-weight: bold;
   text-transform: uppercase;
@@ -174,7 +174,7 @@ table.layout {
 table.layout td {
   vertical-align: top;
   padding: 6px 10px;
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
   font-size: 13px;
   color: #1C1C1E;
 }
@@ -191,7 +191,7 @@ table.highlights td.card {
   border-top: 3px solid #A8864B;
   padding: 16px 14px 14px 14px;
   vertical-align: top;
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
   font-size: 13px;
   line-height: 1.5;
   color: #1C1C1E;
@@ -203,7 +203,7 @@ table.highlights td.gutter {
   line-height: 0;
 }
 table.highlights td.card strong {
-  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-family: Cambria, Georgia, 'Times New Roman', serif;
   color: #8B1A1F;
   font-size: 14px;
   display: block;
@@ -223,7 +223,7 @@ table.highlights td.card strong {
   background-color: #1C1C1E;
   color: #C9A96E;
   padding: 18px 28px;
-  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
   font-size: 11px;
   line-height: 1.5;
   text-align: center;

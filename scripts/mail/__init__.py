@@ -60,7 +60,15 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             preview_path: Path | None = None,
             bcc: str | None = None,
             to: str | None = None) -> str:
-    """Open an email draft. Returns the backend used."""
+    """Open an email draft. Returns the backend used.
+
+    Failure modes:
+      - `backend="outlook"` explicit + Outlook throws  -> re-raise.
+        Caller MUST surface this to the editor so they don't think the
+        BCC list silently went out via clipboard.
+      - `backend="auto"` + Outlook throws -> warn loudly (so the editor
+        notices the change), then fall back to the clipboard backend.
+    """
     handler = detect_default_mail_handler()
     log.info("Default mail handler: %s [%s]", handler.name, handler.kind)
 
@@ -77,13 +85,20 @@ def compose(html: str, *, subject: str, backend: str = "auto",
         else:
             chosen.compose(draft)
     except Exception as e:
-        log.warning("%s backend failed (%s) -- falling back to default.",
-                    chosen.name, e)
         if backend != "auto":
+            # Explicit backend failed -- propagate so the caller can
+            # abort with a non-zero exit and avoid silently dropping BCC.
+            log.error("%s backend failed: %s", chosen.name, e)
             raise
+        # Auto-fallback: make the change of plan VISIBLE to the editor.
+        log.warning(
+            "Outlook draft failed (%s). Falling back to clipboard + "
+            "default mail handler. The newsletter is on your clipboard; "
+            "paste with Ctrl+V into the message body.", e,
+        )
         fallback = _BACKENDS[-1]
         fallback.compose(draft, handler=handler)
-        return f"default:{handler.kind}"
+        return f"default:{handler.kind}:fallback-from-{chosen.name}"
 
     if chosen.name == "outlook":
         return "outlook"
