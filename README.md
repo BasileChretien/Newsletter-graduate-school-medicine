@@ -93,7 +93,7 @@ In the file you just saved:
 - Replace the masthead's **issue line** ("VOL. XX | ISSUE NO. XX | MONTH YEAR") with the real volume, issue number, and month.
 - Replace the bracketed placeholders such as **`[Author(s)]`**, **`[Paper Title]`**, **`[Visitor Name]`**, **`[YYYY/MM/DD]`**, **`[Country]`** etc. with your real text.
 - Replace the gray "Lorem ipsum"-style paragraphs with the actual newsletter content.
-- **Do not rename the section titles** (1. Message from the Dean, 2. Featured Highlights, etc.) — the toolkit relies on them.
+- **Sections are flexible.** The toolkit ships with a 7-section starter template, but you can rename, add, remove, or reorder sections however you want. Just keep the **numbered heading pattern** — every section starts with `1.`, `2.`, `3.` … (or the styled `01 — TITLE`, `02 — TITLE` … the rebuilt template uses). Sub-sections (e.g. "Notable Publications") are detected automatically when you mark them with Word's **Heading 2** style or just type them as a short bold line.
 
 > **The dean's name and photo are already filled in for you** (currently *Prof. Masahisa Katsuno*) — you don't need to touch the credentials block or the signature line. If the dean changes, ask the developer to update the template.
 
@@ -245,7 +245,7 @@ You can ignore most of these — they just need to be there.
 Technical details for whoever maintains the toolkit:
 
 - **Stack:** Python 3.12, `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
-- **Visual identity:** primary `#8B1A1F` (NU wine red), accent `#C9A96E` (warm gold, decorative), `#A8864B` (warm gold, AA-compliant for text/markers), text `#1C1C1E`, muted `#6B6B70`, cream `#F7F2EA`, zebra `#EFE7D6`. Cambria headings, Calibri body.
+- **Visual identity** (per the [Nagoya University design guideline](https://www.med.nagoya-u.ac.jp/intranet/pr/logo/)): primary `#003F88` (NU blue), `#1A5BA8` soft blue, accent `#C9A96E` (warm gold, decorative), `#A8864B` (warm gold, AA-compliant for text/markers), text `#1C1C1E`, muted `#6B6B70`, cool off-white `#EEF2F7`, zebra `#DCE3EE`. Cambria headings, Calibri body.
 - **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline` plus a small kept-`<style>` block carrying `@media print`, dark-mode hints, and Apple-Mail data-detector overrides. MSO conditional ghost tables for Outlook desktop. `bgcolor` HTML attributes on masthead/header/footer survive Gmail iOS forced inversion. Validator: 80 KB early warning, 102 KB Gmail clip warning, broken-URL **warnings** (no longer hard errors).
 - **Module map:**
   - `scripts/build_template.py` — DOCX builder, named table indices (`TABLE_*`), `_normalize_body_run()` helper.

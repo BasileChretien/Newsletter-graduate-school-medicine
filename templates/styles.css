@@ -1,20 +1,21 @@
 /* MERIDIAN newsletter — email-safe styles
  * Web-safe fonts only, table-based layout, inlined by css_inline.
  *
- * Palette:
- *   #8B1A1F primary (NU wine red)
+ * Palette per the Nagoya University official design guideline:
+ *   #003F88 primary (NU blue)
+ *   #1A5BA8 primary-soft (hover / inverse)
  *   #C9A96E gold (decorative)
  *   #A8864B gold (AA-compliant for text/markers on white)
  *   #1C1C1E charcoal text
  *   #6B6B70 muted
- *   #F7F2EA cream (masthead)
- *   #EFE7D6 zebra (table rows)
+ *   #EEF2F7 cool off-white (masthead)
+ *   #DCE3EE zebra (table rows)
  */
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #F4EFE6;
+  background-color: #E6EBF2;
   font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
   color: #1C1C1E;
   -webkit-text-size-adjust: 100%;
@@ -30,8 +31,8 @@ body {
 
 /* ---------- masthead ------------------------------------------------- */
 .masthead {
-  background-color: #F7F2EA;
-  border-top: 8px solid #8B1A1F;
+  background-color: #EEF2F7;
+  border-top: 8px solid #003F88;
   border-bottom: 1px solid #C9A96E;
   padding: 24px 28px 16px 28px;
 }
@@ -47,7 +48,7 @@ body {
   font-size: 38px;
   font-weight: bold;
   letter-spacing: 2px;
-  color: #8B1A1F;
+  color: #003F88;
   text-transform: uppercase;
   margin: 0;
   line-height: 1.0;
@@ -56,7 +57,7 @@ body {
   font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 16px;
   font-style: italic;
-  color: #8B1A1F;
+  color: #003F88;
   margin: 8px 0 8px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid #C9A96E;
@@ -75,7 +76,7 @@ body {
   font-size: 10px;
   font-weight: bold;
   letter-spacing: 3px;
-  color: #8B1A1F;
+  color: #003F88;
   text-transform: uppercase;
   margin: 0;
 }
@@ -95,11 +96,11 @@ body {
   letter-spacing: 1.5px;
   margin: 0 0 16px 0;
   padding-left: 12px;
-  border-left: 4px solid #8B1A1F;
+  border-left: 4px solid #003F88;
   line-height: 1.2;
 }
 .section-heading .num {
-  color: #8B1A1F;
+  color: #003F88;
   margin-right: 4px;
 }
 .section-heading .sep {
@@ -107,7 +108,7 @@ body {
   margin: 0 4px;
 }
 .section-heading .label {
-  color: #8B1A1F;
+  color: #003F88;
 }
 
 .subhead {
@@ -115,7 +116,7 @@ body {
   font-size: 13px;
   font-weight: bold;
   color: #1C1C1E;
-  /* No left rule -- the section heading already has a strong wine-red
+  /* No left rule -- the section heading already has a strong blue
      left bar; an additional gold rule on every subhead made the page
      feel "ruled everywhere" (round-3 Visual LOW-9). */
   margin: 18px 0 8px 0;
@@ -145,7 +146,7 @@ table.data {
   font-family: Calibri, 'Segoe UI', Arial, sans-serif;
 }
 table.data th {
-  background-color: #8B1A1F;
+  background-color: #003F88;
   color: #FFFFFF;
   font-family: Cambria, Georgia, 'Times New Roman', serif;
   font-size: 11px;
@@ -159,11 +160,11 @@ table.data td {
   font-size: 13px;
   color: #1C1C1E;
   padding: 9px 11px;
-  border-bottom: 1px solid #D9D2C5;
+  border-bottom: 1px solid #C9D2DE;
   vertical-align: top;
 }
 table.data tr:nth-child(even) td {
-  background-color: #EFE7D6;
+  background-color: #DCE3EE;
 }
 
 /* ---------- layout tables -------------------------------------------- */
@@ -188,7 +189,7 @@ table.highlights {
   margin: 6px 0 16px 0;
 }
 table.highlights td.card {
-  background-color: #F7F2EA;
+  background-color: #EEF2F7;
   border-top: 3px solid #A8864B;
   padding: 16px 14px 14px 14px;
   vertical-align: top;
@@ -205,7 +206,7 @@ table.highlights td.gutter {
 }
 table.highlights td.card strong {
   font-family: Cambria, Georgia, 'Times New Roman', serif;
-  color: #8B1A1F;
+  color: #003F88;
   font-size: 14px;
   display: block;
   margin-bottom: 2px;
@@ -252,7 +253,7 @@ img.inline {
 }
 
 a {
-  color: #8B1A1F;
+  color: #003F88;
 }
 
 @media print {

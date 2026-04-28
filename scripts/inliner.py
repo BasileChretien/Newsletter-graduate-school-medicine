@@ -23,7 +23,7 @@ _KEPT_STYLES = """
 @media print {
   body, .container { background: #ffffff !important; }
   .footer { background: #ffffff !important; color: #1C1C1E !important; }
-  .footer a { color: #8B1A1F !important; }
+  .footer a { color: #003F88 !important; }
 }
 /* Apple Mail / iOS Mail: stop the OS auto-detecting dates and phone
    numbers, then re-styling them blue. format-detection meta covers

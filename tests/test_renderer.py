@@ -113,9 +113,10 @@ def test_inliner_inlines_styles():
     # overrides that intentionally cannot be inlined.
     assert "@media print" in final
     assert "x-apple-data-detectors" in final
-    # Inlined masthead background colour from styles.css.
-    assert "background-color: #F7F2EA".lower() in final.lower() or \
-           "background-color:#F7F2EA".lower() in final.lower()
+    # Inlined masthead background colour from styles.css (cool off-white
+    # under the new NU blue palette).
+    assert "background-color: #EEF2F7".lower() in final.lower() or \
+           "background-color:#EEF2F7".lower() in final.lower()
 
 
 def test_render_escapes_user_html_in_body():

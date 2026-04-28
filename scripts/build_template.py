@@ -224,8 +224,9 @@ def restyle_masthead(table) -> None:
                     space_before=0, space_after=0)
     if LOGO_PATH.exists():
         run_logo = p_logo.add_run()
-        # Reduced from 0.95" to 0.7" to dial back the blue logo's competition
-        # with the wine-red MERIDIAN wordmark.
+        # Compact masthead logo so it sits under the wordmark cleanly --
+        # with the new NU blue palette the seal harmonises rather than
+        # competes (rebrand B13).
         run_logo.add_picture(str(LOGO_PATH), width=Inches(0.70))
     # Column widths: ~0.9" logo column, ~6.0" masthead column.
     left.width = Inches(0.90)
@@ -257,7 +258,7 @@ def restyle_section_heading(p) -> None:
     style_run(r2, font="Cambria", size_pt=16, bold=True,
               color=PRIMARY, all_caps=True, tracking=20)
     # Vertical accent bar to the LEFT of the heading text (mirrors the HTML
-    # `border-left: 4px solid #8B1A1F`). Word renders paragraph left borders
+    # `border-left: 4px solid #003F88`). Word renders paragraph left borders
     # only as tall as the paragraph — so the bar is short, not a full-width
     # underline.
     set_paragraph_border(p, position="left", sz=24, color=PALETTE["primary"],
@@ -526,14 +527,20 @@ def build(src: Path = ORIGINAL_TEMPLATE, dst: Path = MERIDIAN_TEMPLATE) -> Path:
     if doc.tables:
         restyle_masthead(doc.tables[TABLE_MASTHEAD])
 
-    # 2) Body paragraphs — section heads, subheads, body, bullets.
+    # 2) Body paragraphs -- section heads, subheads, body, bullets.
+    # Sub-heading detection is identical to the parser's: built-in
+    # `Heading 2/3/...` style first, then the canonical-template list,
+    # then "short-bold-no-period" heuristic. Keeps the styled template
+    # in sync with what the parser will later recognise as sub-headings
+    # in any issue's filled-in DOCX.
+    from scripts.docx_parser import _is_subhead as _is_subhead_paragraph
     for p in doc.paragraphs:
         text = p.text.strip()
         if not text:
             continue
         if is_section_heading(text):
             restyle_section_heading(p)
-        elif text in SUBHEAD_TEXTS:
+        elif _is_subhead_paragraph(p, text):
             restyle_subhead(p)
         elif p.style.name == "List Paragraph":
             restyle_bullet(p)

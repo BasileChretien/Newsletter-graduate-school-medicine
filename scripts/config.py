@@ -55,16 +55,18 @@ SUBHEAD_TEXTS: frozenset[str] = frozenset({
 })
 
 
-# Brand palette (mirrors DOCX)
+# Brand palette per the Nagoya University official design guideline
+# (https://www.med.nagoya-u.ac.jp/intranet/pr/logo/).
 PALETTE = {
-    "primary": "#8B1A1F",      # NU wine red
+    "primary": "#003F88",      # NU blue (deep navy, official primary)
+    "primary_soft": "#1A5BA8", # lighter shade for hover / inverse contexts
     "accent": "#C9A96E",       # warm gold (decorative use only)
     "accent_aa": "#A8864B",    # darker gold for text/markers (WCAG AA on white)
     "text": "#1C1C1E",         # near-black charcoal
     "muted": "#6B6B70",        # cool gray
-    "cream": "#F7F2EA",        # warm cream tint (masthead)
-    "zebra": "#EFE7D6",        # darker cream for zebra rows (better contrast)
-    "hairline": "#D9D2C5",     # subtle rule
+    "cream": "#EEF2F7",        # cool off-white tint (masthead) -- harmonises with blue
+    "zebra": "#DCE3EE",        # cooler stripe for data tables
+    "hairline": "#C9D2DE",     # subtle rule
     "white": "#FFFFFF",
 }
 

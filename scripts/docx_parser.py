@@ -224,7 +224,54 @@ def _detect_section(text: str) -> tuple[int, str] | None:
     return None
 
 
-from scripts.config import SUBHEAD_TEXTS  # single source of truth
+from scripts.config import SUBHEAD_TEXTS  # known sub-headings from the canonical template
+
+
+# Maximum text length for a paragraph to be treated as a sub-heading via
+# the structural heuristic. Prevents long sentences from being mistaken
+# for headings just because they're bold.
+_SUBHEAD_MAX_CHARS = 80
+
+
+def _is_subhead(p: Paragraph, text: str) -> bool:
+    """Decide whether a paragraph is a sub-heading.
+
+    Detection is purely structural so editors can add / rename / remove
+    sub-sections in Word and the toolkit picks them up automatically:
+
+      1. Word's built-in `Heading 2` / `Heading 3` / ... styles.
+      2. Short, all-bold paragraph that doesn't end like a sentence.
+      3. Backwards-compat: text exactly matches one of `SUBHEAD_TEXTS`.
+
+    Section-level headings ("1. ..." / "01 — ...") are detected
+    separately in `_detect_section` and short-circuit before we get here.
+    """
+    if not text or len(text) > _SUBHEAD_MAX_CHARS:
+        return False
+
+    # 1. Word built-in heading style (Heading 2/3/... -- never Heading 1
+    # which we reserve for section headings).
+    style_name = (p.style.name or "")
+    if style_name.startswith("Heading") and not style_name.endswith(" 1"):
+        return True
+
+    # 2. Backwards-compat: hard-coded list of canonical sub-headings.
+    if text in SUBHEAD_TEXTS:
+        return True
+
+    # 3. Heuristic: short bold paragraph without sentence punctuation.
+    runs_with_text = [r for r in p.runs if r.text.strip()]
+    if not runs_with_text:
+        return False
+    if not all(bool(r.bold) for r in runs_with_text):
+        return False
+    if text.endswith((".", "!", "?", "…", "...")):
+        return False
+    # Avoid catching a single bold word inside a normal paragraph -- a
+    # sub-head is usually a complete short label.
+    if len(text) < 3:
+        return False
+    return True
 
 
 # ---------- table → block ----------
@@ -325,8 +372,8 @@ def parse(docx_path: Path) -> Newsletter:
                 continue
             flush_bullets()
 
-            # Subhead?
-            if text in SUBHEAD_TEXTS:
+            # Subhead? (Word style + heuristic + canonical-template list)
+            if _is_subhead(p, text):
                 current_blocks.append(Heading(level=3, text=text))
                 continue
 
