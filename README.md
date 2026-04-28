@@ -1,62 +1,92 @@
-# MERIDIAN — Nagoya University Graduate School of Medicine Newsletter
-
-Pipeline that turns a filled Word newsletter into a polished HTML email.
+# MERIDIAN — The Newsletter Toolkit
 
 > **MERIDIAN** — *Where medicine meets the world.*
 
-This repository contains:
+Welcome! This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It does two things for you:
 
-1. **`Meridian_Newsletter_Template.docx`** — the modernized newsletter template (wine red + warm gold, Cambria masthead, zebra-striped tables).
-2. **A Python pipeline** that takes a filled DOCX and produces a polished, email-client-compatible HTML file ready to paste into Gmail/Outlook compose.
+1. Gives you a **beautiful Word template** (`Meridian_Newsletter_Template.docx`) — already styled with the school's colors, fonts, logo, and Dean photo.
+2. Turns your filled-in Word file into a **polished email** (an HTML file) you can paste straight into Gmail or Outlook.
 
-The original template (`NagoyaU_MedSchool_Newsletter_Template-2.docx`) is preserved as a reference and is not modified.
+You do **not** need to be a programmer to use this. Follow the steps below.
 
 ---
 
-## Quick start (for editors)
+## What you need (one-time setup)
 
-```bash
-# 1. Set up Python (one-time)
-python -m venv .venv
-.venv\Scripts\activate         # Windows
+You'll set this up once on your computer. After that, every issue takes only a few minutes.
+
+### 1. Install Python
+
+Python is the small program that runs the toolkit.
+
+- **Windows:** download from <https://www.python.org/downloads/> and run the installer. **Important:** on the first screen, tick the box that says **"Add Python to PATH"**. Then click *Install Now*.
+- **macOS:** Python is usually already installed. Open the **Terminal** app and type `python3 --version` then press Enter. If it shows a number like `3.12.x`, you're done.
+
+### 2. Open a command window in the project folder
+
+A "command window" is a black/white box where you type instructions. Don't worry — you'll only ever type a couple of lines.
+
+- **Windows:** open File Explorer, find the folder `Newsletter-graduate-school-medicine`, click the address bar at the top, type `cmd`, and press Enter. A black window opens.
+- **macOS:** open **Terminal**, type `cd ` (with a space), then drag the folder onto the Terminal window, and press Enter.
+
+### 3. Install the toolkit
+
+Copy and paste this single line into the command window and press Enter:
+
+```
 pip install -r requirements.txt
-
-# 2. Open Meridian_Newsletter_Template.docx in Word, fill it in,
-#    and save as e.g. issue-3.docx
-
-# 3. Drop any photos into drop-images/ using the naming convention:
-#    s<section#>_<order>_<slug>.jpg
-#    e.g. s1_01_dean.jpg     (Dean photo, section 1)
-#         s4_01_partner.jpg  (Partner snapshot, section 4)
-
-# 4. Run the full pipeline
-python build_newsletter.py all --input issue-3.docx --issue 3
 ```
 
-The script will:
-- extract embedded images and ingest your `drop-images/` files into `assets/issue-3/`
-- render `dist/issue-3.html`
-- commit + push the assets so GitHub raw URLs are live
-- open the HTML preview in your browser
-
-Then **paste** the HTML into a Gmail compose window or Outlook "Send as email" and it will render correctly.
+You'll see lots of text scroll by. When it finishes, you're ready. **You will never have to do this again on this computer.**
 
 ---
 
-## Image workflow
+## How to make a newsletter (every issue)
 
-Two ways to add images:
+Here's the full routine. It takes about 10 minutes once you're used to it.
 
-| Method | When to use | Where |
-|---|---|---|
-| **Embed in DOCX** | Dean photo, anything you want visually placed in Word | inside the document |
-| **Drop folder** | Most images — clearest control over placement | `/drop-images/` |
+### Step 1 — Open the template in Word
 
-### Drop-folder naming convention
+Double-click **`Meridian_Newsletter_Template.docx`**. Word opens it. Save a copy with a clear name like:
 
-Filename pattern: `s<section>_<order>_<slug>.<ext>`
+```
+issue-3.docx
+```
 
-| Section | What it covers |
+(or whichever issue number you're working on).
+
+### Step 2 — Fill in your content
+
+In the file you just saved:
+
+- Replace the masthead's **issue line** ("VOL. XX | ISSUE NO. XX | MONTH YEAR") with the real volume, issue number, and month.
+- Replace **`[Dean's Name]`**, **`[Author(s)]`**, **`[Visitor Name]`**, **`[YYYY/MM/DD]`** etc. with your real text.
+- Replace the message paragraphs (the gray "Lorem ipsum"-style text) with the actual newsletter content.
+- **Do not rename the section titles** (1. Message from the Dean, 2. Featured Highlights, etc.) — the toolkit relies on them.
+
+Save the file when you're done.
+
+### Step 3 — Add photos (optional)
+
+If you want photos in the newsletter (a partner-lab snapshot, a signing-ceremony picture, an event photo, etc.):
+
+1. Open the folder **`drop-images/`** inside the project folder.
+2. Copy your photos in there.
+3. **Rename each photo** following this pattern:
+
+```
+s<section>_<order>_<short-name>.jpg
+```
+
+| Part | What it means |
+|---|---|
+| `s1` to `s7` | the section number where the photo belongs (see table below) |
+| `01`, `02`, ... | the order if you have several in the same section |
+| `short-name` | a short hyphenated label (lowercase letters, digits, hyphens) |
+
+Section numbers:
+
+| Number | Section |
 |---|---|
 | 1 | Message from the Dean |
 | 2 | Featured Highlights |
@@ -66,112 +96,120 @@ Filename pattern: `s<section>_<order>_<slug>.<ext>`
 | 6 | Events & Announcements |
 | 7 | Contact Information |
 
-Examples:
-- `s1_01_dean.jpg` — Dean photo, first image of section 1
-- `s4_01_signing-ceremony.jpg` — first image of section 4
-- `s4_02_partner-lab.png` — second image of section 4
+**Examples:**
 
-Allowed extensions: `jpg`, `jpeg`, `png`, `webp`, `gif`. Slug is lowercase letters / digits / hyphens.
+- `s2_01_award-ceremony.jpg` — first photo of section 2 (Featured Highlights), an award ceremony
+- `s4_01_mou-signing.jpg` — first photo of section 4 (International), an MOU signing
+- `s4_02_partner-lab.png` — second photo of section 4
 
-The script copies validated images into `assets/issue-<N>/` and refers to them via public GitHub raw URLs.
+Allowed file types: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`. **No spaces** in filenames.
+
+> **You don't need to add the Dean photo or the school logo** — those two are already built in.
+
+### Step 4 — Run the toolkit
+
+Back in the command window, type:
+
+```
+python build_newsletter.py all --input issue-3.docx --issue 3
+```
+
+(Replace `3` with the issue number you're working on, in both spots.)
+
+This does everything in one go:
+
+- Reads your Word file
+- Pulls in any photos from `drop-images/`
+- Uploads the photos so they're publicly visible
+- Builds the email and opens it in your web browser
+
+When the browser opens, you'll see exactly what the email will look like.
+
+### Step 5 — Send the email
+
+You have two options:
+
+**Option A — Paste into Gmail or Outlook (easiest):**
+
+1. In your web browser (showing the preview), select all the page (`Ctrl+A` on Windows, `⌘+A` on macOS).
+2. Copy it (`Ctrl+C` / `⌘+C`).
+3. Open Gmail or Outlook, click **Compose**, and paste into the message body (`Ctrl+V` / `⌘+V`).
+4. Add the recipients and a subject line, then send.
+
+**Option B — Send the HTML file:**
+
+The file `dist/issue-3.html` is a self-contained email. You can also forward it as an attachment, or upload it to a mailing platform that accepts HTML.
+
+That's it!
 
 ---
 
-## CLI commands
+## Common questions
 
-```bash
-# Generate the modern template (run once after a design tweak)
-python build_newsletter.py build-template
+**❓ I don't see the Dean photo or the logo in the preview.**
+Make sure you ran the full command (`python build_newsletter.py all ...`) and not just `build` — the `all` command also publishes the photos to the web. If they still don't show, try refreshing your browser.
 
-# Build only — produces dist/issue-N.html (no git push)
-python build_newsletter.py build --input filled.docx --issue 5 --no-remote-check
+**❓ The preview shows a broken-image icon for one of my drop-folder photos.**
+Most likely the filename doesn't match the expected pattern. Check that it starts with `s` then a digit between 1 and 7, then `_`, etc. Examples: `s3_01_lab.jpg`, **not** `S3-01-lab.jpg` or `lab photo.jpg`.
 
-# Push assets to GitHub so raw URLs go live
-python build_newsletter.py publish-images --issue 5
+**❓ I need to redo issue 3 — what do I do?**
+Just re-run `python build_newsletter.py all --input issue-3.docx --issue 3`. It will overwrite the previous output. No harm done.
 
-# Open the rendered HTML in a browser
-python build_newsletter.py preview --issue 5
+**❓ I want to change the colors / fonts / title of the template.**
+Those are intentionally fixed so every issue stays consistent. Ask the developer (or the person who set this up for you) to update the design.
 
-# All-in-one: build → publish → open preview
-python build_newsletter.py all --input filled.docx --issue 5
-```
+**❓ I want to add a new section.**
+Section names and the order are part of the design. If you really need a new section, ask the developer — it requires a small code change too.
 
----
+**❓ Where is the email file saved?**
+In the `dist/` folder. For issue 3, it's `dist/issue-3.html`. You can open it any time by double-clicking it.
 
-## Repo layout
+**❓ Where do my drop-folder photos end up?**
+In `assets/issue-3/` (for issue 3). They're also pushed to GitHub so they have a public web address.
 
-```
-.
-├── Meridian_Newsletter_Template.docx     # styled template (fill this)
-├── NagoyaU_MedSchool_Newsletter_Template-2.docx  # original (reference)
-├── build_newsletter.py                   # CLI entrypoint
-├── scripts/
-│   ├── build_template.py                 # rebuilds the styled template
-│   ├── config.py                         # palette, paths, repo coords
-│   ├── docx_parser.py                    # DOCX → structured Newsletter
-│   ├── image_handler.py                  # embedded + drop-folder ingest
-│   ├── inliner.py                        # CSS inlining (css_inline)
-│   ├── oxml_helpers.py                   # raw OXML utilities
-│   ├── publisher.py                      # git add/commit/push assets
-│   ├── renderer.py                       # Jinja2 → HTML
-│   └── validator.py                      # link/image/size checks
-├── templates/
-│   ├── newsletter.html.j2                # 600px table-based skeleton
-│   ├── partials/_block.html.j2
-│   └── styles.css                        # source CSS (inlined later)
-├── images/
-│   └── Nagoya_University_Graduate_school_medicine_logo.jpg  # permanent brand logo
-├── assets/
-│   └── issue-<N>/                        # per-issue published images
-├── drop-images/                          # editor drop zone (gitignored)
-├── dist/issue-<N>.html                   # final output (gitignored)
-└── tests/
-```
+**❓ I'm getting an error message I don't understand.**
+Copy the full red text and send it to the developer. Most errors are clear about what went wrong (e.g. "image filename doesn't match the convention").
 
 ---
 
-## Visual identity
+## Quick reference card
 
-| Role | Hex |
+| What you want to do | Type this |
 |---|---|
-| Primary (masthead band, section bars, table headers) | `#8B1A1F` (NU wine red) |
-| Accent (dividers, bullet markers, issue line pipes) | `#C9A96E` (warm gold) |
-| Body text | `#1C1C1E` |
-| Muted (captions, footer) | `#6B6B70` |
-| Cream tint (zebra rows, masthead backdrop) | `#F7F2EA` |
+| Make a newsletter for issue N (full routine) | `python build_newsletter.py all --input issue-N.docx --issue N` |
+| Just rebuild the email without uploading | `python build_newsletter.py build --input issue-N.docx --issue N --no-remote-check` |
+| Open the latest preview in your browser | `python build_newsletter.py preview --issue N` |
+| Re-upload only the photos | `python build_newsletter.py publish-images --issue N` |
 
-Headings: **Cambria**. Body: **Calibri**. Both ship with Office on Windows and macOS — no external font load is required for either Word or email rendering.
-
----
-
-## Email-client compatibility
-
-- **Gmail web / iOS / Android** — supported. Watch for the 102KB clip threshold; the validator warns if the HTML grows past it.
-- **Outlook 2016+ desktop** — supported via 600px ghost table and MSO conditional comments.
-- **Outlook.com / Apple Mail / iOS Mail** — supported.
-- **Dark mode** — best-effort via `meta name="color-scheme"`. Some clients (Gmail iOS) force inversion regardless.
-
-Validator output (`Size`, `Images`, `Links`) is printed after each `build`. A non-zero exit code indicates broken image URLs or other hard errors.
+(Replace `N` with the issue number every time.)
 
 ---
 
-## Constraints
+## What's in this folder?
 
-- Section names and section content cannot change. The template builder restyles only — it does not edit text. Add or rename sections only with editorial sign-off, then update `SUBHEAD_TEXTS` in `scripts/build_template.py` and `scripts/docx_parser.py`.
-- Nested tables in the DOCX are not supported by the parser.
-- `publish-images` requires the local clone to be a working git checkout with push access.
+You can ignore most of these — they just need to be there.
+
+| Folder / file | What it's for |
+|---|---|
+| `Meridian_Newsletter_Template.docx` | **The template you fill in.** Open in Word. |
+| `drop-images/` | **Drop photos here** (with the right filename). |
+| `dist/` | The finished email files end up here. |
+| `assets/` | Where uploaded photos are kept. |
+| `images/` | Permanent images (school logo, Dean photo). |
+| `NagoyaU_MedSchool_Newsletter_Template-2.docx` | Original template, kept as reference. |
+| `build_newsletter.py`, `scripts/`, `templates/`, `tests/` | The toolkit's machinery. **Don't touch.** |
 
 ---
 
-## Development
+## For developers
 
-```bash
-# Run tests
-python -m pytest tests/ --cov=scripts
+Technical details for whoever maintains the toolkit:
 
-# Rebuild the template after a design change
-python build_newsletter.py build-template
-
-# Quick end-to-end smoke test
-python build_newsletter.py build --input Meridian_Newsletter_Template.docx --issue 0 --no-remote-check
-```
+- **Stack:** Python 3.12, `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`.
+- **Visual identity:** primary `#8B1A1F` (NU wine red), accent `#C9A96E` (warm gold), text `#1C1C1E`, muted `#6B6B70`, cream `#F7F2EA`. Cambria headings, Calibri body.
+- **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline`, MSO conditional ghost tables for Outlook desktop, `meta color-scheme` for dark-mode best effort. Validator emits warning if rendered HTML exceeds Gmail's 102 KB clip threshold.
+- **Module map:** `scripts/build_template.py` (DOCX builder) · `scripts/docx_parser.py` (DOCX → `Newsletter` dataclass) · `scripts/image_handler.py` (embedded + drop-folder, GitHub raw URL builder) · `scripts/renderer.py` + `templates/*.j2` (Jinja2 → HTML) · `scripts/inliner.py` (`css_inline`) · `scripts/validator.py` (HEAD checks + size warning) · `scripts/publisher.py` (git add/commit/push of `assets/issue-N/`) · `scripts/oxml_helpers.py` (raw OXML for shading, borders, fields).
+- **Constraints:** section names and content are not edited by the script — only the visual style is. Nested tables in DOCX are unsupported. Drop-image regex: `^s(?P<section>\d+)_(?P<order>\d+)_(?P<slug>[a-z0-9-]+)\.(jpg|jpeg|png|webp|gif)$`.
+- **Tests:** `python -m pytest tests/ --cov=scripts` — currently 34 tests, core modules 76–100% covered.
+- **Rebuild the template after design tweaks:** `python build_newsletter.py build-template`.
+- **Smoke test:** `python build_newsletter.py build --input Meridian_Newsletter_Template.docx --issue 0 --no-remote-check`.
