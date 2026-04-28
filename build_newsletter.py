@@ -58,7 +58,17 @@ def build_template_cmd(source: str, output: str):
     click.echo(f"Built: {out}")
 
 
-def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool):
+def _subject_from_masthead(issue: int, masthead) -> str:
+    """Build the email subject from an already-parsed masthead."""
+    issue_line = (masthead.issue_line or "").strip() if masthead else ""
+    if issue_line:
+        return f"{TITLE} — {issue_line}"
+    return f"{TITLE} — Issue {issue}"
+
+
+def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
+                    ) -> tuple[int, str]:
+    """Run the build pipeline. Returns `(exit_code, subject_line)`."""
     out_html = DIST_DIR / f"issue-{issue}.html"
     DIST_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -99,7 +109,7 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool):
     click.echo(f"Wrote: {out_html}")
 
     # 8) Manifest -- audit trail for what was published when.
-    subject = _subject_for(issue, input_path)
+    subject = _subject_from_masthead(issue, newsletter.masthead)
     try:
         manifest = write_manifest(
             issue=issue,
@@ -118,8 +128,8 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool):
     click.echo(report(result))
     if not result.ok:
         click.echo(click.style("Validation failed.", fg="red"))
-        return 1
-    return 0
+        return 1, subject
+    return 0, subject
 
 
 @cli.command("build")
@@ -129,7 +139,7 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool):
               help="Skip HEAD requests to remote image URLs.")
 def build_cmd(input_path: str, issue: int, no_remote_check: bool):
     """Convert a filled DOCX into a polished HTML email."""
-    code = _build_pipeline(
+    code, _subject = _build_pipeline(
         Path(input_path), issue,
         validate_remote=not no_remote_check,
     )
@@ -233,7 +243,8 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
     # Build first to populate assets/, then publish, then re-validate remotely.
-    code = _build_pipeline(Path(input_path), issue, validate_remote=False)
+    code, subject = _build_pipeline(
+        Path(input_path), issue, validate_remote=False)
     if code != 0:
         sys.exit(code)
     try:
@@ -252,7 +263,8 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
         return
 
     html = out.read_text(encoding="utf-8")
-    subject = _subject_for(issue, Path(input_path))
+    # `subject` is already populated from the build step's masthead
+    # parse -- no need to re-parse the DOCX here.
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
     try:

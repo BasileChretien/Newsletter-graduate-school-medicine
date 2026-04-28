@@ -58,12 +58,15 @@ def test_validate_no_placeholders_when_clean():
     assert not any("placeholder" in w.lower() for w in r.warnings)
 
 
-def test_validate_broken_image_marks_error():
+def test_validate_broken_image_warns_not_errors():
+    """Broken image URLs are now WARNINGS not ERRORS -- a flaky HEAD
+    check shouldn't abort the editor's pipeline."""
     with patch("scripts.validator.requests.head", return_value=_mock_response(404)):
         r = validate(HTML_OK)
-    assert not r.ok
+    assert r.ok            # build still succeeds
     assert r.broken_images
-    assert "unreachable" in r.errors[0]
+    assert any("unreachable" in w for w in r.warnings)
+    assert not r.errors
 
 
 def test_validate_skip_remote():

@@ -1,5 +1,12 @@
 """Top-level mail-backend dispatch.
 
+Backends are registered in priority order. `compose()` walks them and
+picks the first one whose `matches()` accepts the detected handler AND
+which `is_available()` returns True. To add a new backend (Thunderbird
+XPCOM, Gmail OAuth, SMTP, ...), drop a module into `scripts/mail/`,
+expose a class implementing the `MailBackend` Protocol, and append it
+to `_BACKENDS` -- the dispatcher needs no edits.
+
 Public API:
     detect_default_mail_handler() -> MailHandler
     load_recipients(path) -> list[str]
@@ -10,38 +17,43 @@ Public API:
 from __future__ import annotations
 
 import logging
-import urllib.parse
-import webbrowser
 from pathlib import Path
 
-from scripts.mail.base import MailHandler
+from scripts.mail.base import DraftEmail, MailBackend, MailHandler
 from scripts.mail.clipboard import copy_html_to_clipboard
+from scripts.mail.clipboard_mailto import (
+    ClipboardMailtoBackend, compose_via_default,
+)
 from scripts.mail.detect import detect_default_mail_handler
-from scripts.mail.outlook import compose_outlook, is_available
+from scripts.mail.outlook import OutlookBackend, compose_outlook, is_available
 from scripts.recipients import load_recipients
 
 log = logging.getLogger(__name__)
 
 
-def compose_via_default(html: str, subject: str, *,
-                        preview_path: Path | None = None,
-                        handler: MailHandler | None = None) -> None:
-    """Copy HTML to clipboard and launch the OS default mail handler."""
-    copied = copy_html_to_clipboard(html)
-    mailto = "mailto:?subject=" + urllib.parse.quote(subject)
-    webbrowser.open(mailto)
-    if preview_path is not None and preview_path.exists():
-        webbrowser.open(preview_path.as_uri())
-    handler_label = f"({handler.name})" if handler else ""
-    if copied:
-        log.info("HTML copied to clipboard %s -- paste with Ctrl+V into the email body.",
-                 handler_label)
-    else:
-        log.warning(
-            "Could not copy HTML to clipboard automatically %s. "
-            "Copy from the preview window: Ctrl+A then Ctrl+C.",
-            handler_label,
-        )
+# Registry: ordered, priority high-to-low. The dispatcher iterates and
+# stops at the first backend whose `matches(handler)` returns True AND
+# whose `is_available()` returns True.
+_BACKENDS: list[MailBackend] = [
+    OutlookBackend(),         # Windows + Outlook desktop -- rich HTML draft
+    ClipboardMailtoBackend(), # universal fallback
+]
+
+
+def _select_backend(name: str, handler: MailHandler) -> MailBackend:
+    """Pick a backend by explicit name or auto-detect."""
+    if name == "auto":
+        for backend in _BACKENDS:
+            if backend.matches(handler) and backend.is_available():
+                return backend
+        # Universal fallback always matches; ClipboardMailtoBackend wins.
+        return _BACKENDS[-1]
+    if name == "outlook":
+        return next(b for b in _BACKENDS if b.name == "outlook")
+    if name == "default":
+        return next(b for b in _BACKENDS if b.name == "clipboard_mailto")
+    raise ValueError(
+        f"backend must be 'auto', 'outlook' or 'default' -- got {name!r}")
 
 
 def compose(html: str, *, subject: str, backend: str = "auto",
@@ -49,38 +61,44 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             bcc: str | None = None,
             to: str | None = None) -> str:
     """Open an email draft. Returns the backend used."""
-    if backend not in ("auto", "outlook", "default"):
-        raise ValueError(
-            f"backend must be 'auto', 'outlook' or 'default' -- got {backend!r}")
-
     handler = detect_default_mail_handler()
     log.info("Default mail handler: %s [%s]", handler.name, handler.kind)
 
-    use_outlook = (
-        backend == "outlook"
-        or (backend == "auto" and handler.is_outlook_desktop
-            and is_available())
+    chosen = _select_backend(backend, handler)
+    draft = DraftEmail(
+        html=html, subject=subject, bcc=bcc, to=to,
+        preview_path=preview_path,
     )
-    if use_outlook:
-        try:
-            compose_outlook(html, subject, bcc=bcc, to=to)
-            return "outlook"
-        except Exception as e:
-            log.warning("Outlook draft failed (%s) -- falling back to default handler.", e)
-            if backend == "outlook":
-                raise
 
-    compose_via_default(html, subject, preview_path=preview_path,
-                        handler=handler)
+    try:
+        if chosen.name == "clipboard_mailto":
+            # Universal fallback wants the handler for the log line.
+            chosen.compose(draft, handler=handler)
+        else:
+            chosen.compose(draft)
+    except Exception as e:
+        log.warning("%s backend failed (%s) -- falling back to default.",
+                    chosen.name, e)
+        if backend != "auto":
+            raise
+        fallback = _BACKENDS[-1]
+        fallback.compose(draft, handler=handler)
+        return f"default:{handler.kind}"
+
+    if chosen.name == "outlook":
+        return "outlook"
     return f"default:{handler.kind}"
 
 
 __all__ = [
+    "DraftEmail",
+    "MailBackend",
     "MailHandler",
     "compose",
     "compose_outlook",
     "compose_via_default",
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
+    "is_available",
     "load_recipients",
 ]

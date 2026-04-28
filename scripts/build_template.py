@@ -12,6 +12,7 @@ verbatim (text only), and restyles it per the Meridian visual spec:
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -61,6 +62,33 @@ ACCENT = rgb(PALETTE["accent"])
 ACCENT_AA = rgb(PALETTE["accent_aa"])
 TEXT = rgb(PALETTE["text"])
 MUTED = rgb(PALETTE["muted"])
+
+
+# Index of each table inside the DOCX (in document order). Named so the
+# orchestration in `build()` is grep-able instead of mystery-meat
+# `doc.tables[3]` calls.
+TABLE_MASTHEAD = 0
+TABLE_DEAN = 1
+TABLE_HIGHLIGHTS_TOP = 2
+TABLE_HIGHLIGHTS_BOTTOM = 3
+TABLE_VISITORS = 4
+TABLE_EVENTS = 5
+TABLE_CONTACT = 6
+
+
+def _normalize_body_run(run) -> None:
+    """Apply default body styling (Calibri / charcoal / 10.5pt) to a run.
+
+    Used inside table cells to avoid the original template's Arial /
+    blue / unsized defaults bleeding through. Idempotent -- non-default
+    fields the editor sets are preserved.
+    """
+    if run.font.name in (None, "", "Arial"):
+        run.font.name = "Calibri"
+    if run.font.size is None:
+        run.font.size = Pt(10.5)
+    if run.font.color.rgb is None:
+        run.font.color.rgb = TEXT
 
 
 # ---------- run/paragraph styling helpers ----------
@@ -250,24 +278,14 @@ def restyle_body(p) -> None:
         return
     style_paragraph(p, space_after=6, line_spacing=1.30)
     for r in p.runs:
-        if r.font.name in (None, "", "Arial"):
-            r.font.name = "Calibri"
-        if r.font.size is None:
-            r.font.size = Pt(10.5)
-        if r.font.color.rgb in (None,):
-            r.font.color.rgb = TEXT
+        _normalize_body_run(r)
 
 
 # ---------- bullet list ----------
 def restyle_bullet(p) -> None:
     style_paragraph(p, space_after=4, line_spacing=1.25, left_indent=0.25)
     for r in p.runs:
-        if r.font.name in (None, "", "Arial"):
-            r.font.name = "Calibri"
-        if r.font.size is None:
-            r.font.size = Pt(10.5)
-        if r.font.color.rgb in (None,):
-            r.font.color.rgb = TEXT
+        _normalize_body_run(r)
 
 
 # ---------- tables ----------
@@ -304,10 +322,8 @@ def restyle_data_table(table) -> None:
             )
             for p in cell.paragraphs:
                 for r in p.runs:
-                    if r.font.name in (None, "", "Arial"):
-                        r.font.name = "Calibri"
-                    r.font.size = Pt(10)
-                    r.font.color.rgb = TEXT
+                    _normalize_body_run(r)
+                    r.font.size = Pt(10)  # data tables run a touch smaller
 
 
 def restyle_layout_table(table, *, label_color=False) -> None:
@@ -325,12 +341,7 @@ def restyle_layout_table(table, *, label_color=False) -> None:
             set_cell_margins(cell, top=80, bottom=80, left=120, right=120)
             for p in cell.paragraphs:
                 for r in p.runs:
-                    if r.font.name in (None, "", "Arial"):
-                        r.font.name = "Calibri"
-                    if r.font.size is None:
-                        r.font.size = Pt(10.5)
-                    if r.font.color.rgb is None:
-                        r.font.color.rgb = TEXT
+                    _normalize_body_run(r)
                     if label_color and ci == 0 and r.bold:
                         r.font.color.rgb = PRIMARY
 
@@ -426,12 +437,7 @@ def restyle_highlights_table(table) -> None:
             )
             for p in cell.paragraphs:
                 for r in p.runs:
-                    if r.font.name in (None, "", "Arial"):
-                        r.font.name = "Calibri"
-                    if r.font.size is None:
-                        r.font.size = Pt(10.5)
-                    if r.font.color.rgb is None:
-                        r.font.color.rgb = TEXT
+                    _normalize_body_run(r)
 
 
 # ---------- header / footer ----------
@@ -509,7 +515,7 @@ def build(src: Path = ORIGINAL_TEMPLATE, dst: Path = MERIDIAN_TEMPLATE) -> Path:
 
     # 1) Masthead — Table 0.
     if doc.tables:
-        restyle_masthead(doc.tables[0])
+        restyle_masthead(doc.tables[TABLE_MASTHEAD])
 
     # 2) Body paragraphs — section heads, subheads, body, bullets.
     for p in doc.paragraphs:
@@ -525,31 +531,26 @@ def build(src: Path = ORIGINAL_TEMPLATE, dst: Path = MERIDIAN_TEMPLATE) -> Path:
         else:
             restyle_body(p)
 
-    # 3) Tables 1..N — content tables.
-    # Mapping based on inspection:
-    # Table 0: masthead (handled above)
-    # Table 1: Dean (2 cols) — layout table
-    # Table 2,3: Highlights (3 cols, gutter)
-    # Table 4: Visitors (3 cols data table)
-    # Table 5: Events (3 cols data table)
-    # Table 6: Contact (2 cols) — layout table
-    if len(doc.tables) > 1:
-        restyle_layout_table(doc.tables[1], label_color=False)
-        insert_dean_photo(doc.tables[1])
-        insert_dean_name(doc.tables[1])
-    for idx in (2, 3):
+    # 3) Apply per-table styling. Named indices (from constants at the
+    # top of this module) keep the orchestration grep-able.
+    if TABLE_DEAN < len(doc.tables):
+        restyle_layout_table(doc.tables[TABLE_DEAN], label_color=False)
+        insert_dean_photo(doc.tables[TABLE_DEAN])
+        insert_dean_name(doc.tables[TABLE_DEAN])
+    for idx in (TABLE_HIGHLIGHTS_TOP, TABLE_HIGHLIGHTS_BOTTOM):
         if idx < len(doc.tables):
             restyle_highlights_table(doc.tables[idx])
-    for idx in (4, 5):
+    for idx in (TABLE_VISITORS, TABLE_EVENTS):
         if idx < len(doc.tables):
             restyle_data_table(doc.tables[idx])
-    if len(doc.tables) > 6:
-        restyle_layout_table(doc.tables[6], label_color=True)
+    if TABLE_CONTACT < len(doc.tables):
+        restyle_layout_table(doc.tables[TABLE_CONTACT], label_color=True)
 
     doc.save(str(dst))
     return dst
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     out = build()
-    print(f"Built: {out}")
+    logging.getLogger(__name__).info("Built: %s", out)

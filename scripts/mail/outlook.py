@@ -1,14 +1,16 @@
 """Outlook desktop backend (Windows, via pywin32 COM).
 
-Opens a brand-new mail item with HTMLBody (and optional BCC list) already
-populated, then displays it -- the editor only types the To: field and
-clicks Send.
+Opens a brand-new mail item with HTMLBody (and optional BCC list)
+already populated, then displays it -- the editor only types the To:
+field and clicks Send.
 """
 
 from __future__ import annotations
 
 import logging
 import platform
+
+from scripts.mail.base import DraftEmail, MailHandler
 
 log = logging.getLogger(__name__)
 
@@ -39,4 +41,21 @@ def compose_outlook(html: str, subject: str, *,
     mail.Display(False)
 
 
-__all__ = ["compose_outlook", "is_available"]
+class OutlookBackend:
+    """MailBackend implementation for Outlook desktop on Windows."""
+
+    name = "outlook"
+
+    def is_available(self) -> bool:
+        return is_available()
+
+    def matches(self, handler: MailHandler) -> bool:
+        return handler.is_outlook_desktop
+
+    def compose(self, draft: DraftEmail) -> None:
+        compose_outlook(
+            draft.html, draft.subject, bcc=draft.bcc, to=draft.to,
+        )
+
+
+__all__ = ["compose_outlook", "is_available", "OutlookBackend"]

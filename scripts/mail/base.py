@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -18,4 +20,31 @@ class MailHandler:
         return self.kind == "outlook"
 
 
-__all__ = ["MailHandler"]
+@dataclass(frozen=True)
+class DraftEmail:
+    """Pure-data description of an email draft to open in a client."""
+
+    html: str
+    subject: str
+    bcc: str | None = None
+    to: str | None = None
+    preview_path: Path | None = None
+
+
+class MailBackend(Protocol):
+    """Strategy for opening an email-draft window.
+
+    Implementers register themselves in `scripts.mail._BACKENDS` (or just
+    expose a top-level `name` and `is_available()` and `compose(draft)`).
+    """
+
+    name: str
+
+    def is_available(self) -> bool: ...
+
+    def matches(self, handler: MailHandler) -> bool: ...
+
+    def compose(self, draft: DraftEmail) -> None: ...
+
+
+__all__ = ["MailHandler", "DraftEmail", "MailBackend"]

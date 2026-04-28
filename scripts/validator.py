@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,6 +14,11 @@ from bs4 import BeautifulSoup
 from scripts.config import GMAIL_CLIP_BYTES
 
 log = logging.getLogger(__name__)
+
+# Early-warn threshold -- 80 KB leaves ~22 KB headroom before Gmail clips.
+_GMAIL_EARLY_WARN_BYTES = 80_000
+_HEAD_WORKERS = 8
+_HEAD_TIMEOUT = 3.0
 
 
 # Matches typical leftover placeholder text like [Author(s)],
@@ -48,15 +54,38 @@ class ValidationResult:
         return not self.errors
 
 
-def _check_url(url: str, timeout: float = 3.0) -> bool:
+def _check_url(url: str, timeout: float = _HEAD_TIMEOUT) -> bool:
     try:
         r = requests.head(url, timeout=timeout, allow_redirects=True)
         if r.status_code == 405:  # HEAD not allowed — try GET
-            r = requests.get(url, timeout=timeout, stream=True)
+            with requests.get(url, timeout=timeout, stream=True) as r:
+                return 200 <= r.status_code < 400
         return 200 <= r.status_code < 400
     except Exception as e:
         log.debug("URL %s failed: %s", url, e)
         return False
+
+
+def _check_urls_parallel(urls: tuple[str, ...]) -> list[str]:
+    """Return the subset of `urls` that are not reachable.
+
+    Runs HEAD checks across a thread pool (max _HEAD_WORKERS). For 30
+    images this completes in ~3-5 seconds instead of ~90 seconds serial.
+    """
+    if not urls:
+        return []
+    broken: list[str] = []
+    with ThreadPoolExecutor(max_workers=_HEAD_WORKERS) as pool:
+        future_to_url = {pool.submit(_check_url, u): u for u in urls}
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                ok = future.result()
+            except Exception:
+                ok = False
+            if not ok:
+                broken.append(url)
+    return broken
 
 
 def _scan_placeholders(html: str) -> tuple[str, ...]:
@@ -94,13 +123,10 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     broken_images: list[str] = []
     broken_anchors: list[str] = []
     if check_remote:
-        for url in img_urls:
-            if url.startswith(("http://", "https://")):
-                if not _check_url(url):
-                    broken_images.append(url)
-        for url in anchor_urls:
-            if not _check_url(url):
-                broken_anchors.append(url)
+        http_imgs = tuple(u for u in img_urls
+                          if u.startswith(("http://", "https://")))
+        broken_images = _check_urls_parallel(http_imgs)
+        broken_anchors = _check_urls_parallel(anchor_urls)
 
     size = len(html.encode("utf-8"))
     placeholders = _scan_placeholders(html)
@@ -112,6 +138,11 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         warnings.append(
             f"HTML is {size:,} bytes -- Gmail clips messages above "
             f"{GMAIL_CLIP_BYTES:,} bytes. Consider trimming images or text."
+        )
+    elif size > _GMAIL_EARLY_WARN_BYTES:
+        warnings.append(
+            f"HTML is {size:,} bytes -- approaching Gmail's "
+            f"{GMAIL_CLIP_BYTES:,}-byte clip threshold."
         )
 
     if placeholders:
@@ -128,9 +159,14 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         )
 
     if broken_images:
-        errors.append(
-            f"{len(broken_images)} image URL(s) unreachable -- push assets "
-            "before sending."
+        # WARN, not ERROR -- a flaky HEAD check shouldn't abort the
+        # editor's pipeline. The publish step pushes assets anyway; if
+        # the URLs really are broken at send time, a recipient sees a
+        # broken image but the editor has already sent.
+        warnings.append(
+            f"{len(broken_images)} image URL(s) unreachable right now -- "
+            "publish-images may need to run first, or the URL(s) are "
+            "still propagating."
         )
 
     return ValidationResult(
