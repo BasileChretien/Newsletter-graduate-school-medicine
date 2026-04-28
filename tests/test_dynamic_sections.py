@@ -12,9 +12,7 @@ from pathlib import Path
 
 import docx  # python-docx is a hard requirement, not optional
 
-from scripts.docx_parser import (
-    BodyParagraph, Heading, Newsletter, Section, parse,
-)
+from scripts.docx_parser import Heading, parse
 
 
 def _make_doc(tmp_path: Path,

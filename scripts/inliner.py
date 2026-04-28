@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # AFTER inlining. Email clients that strip <style> blocks (notably
 # Gmail's classic webmail) lose these silently -- that's acceptable for
 # print and forced-colors, both of which degrade gracefully.
-_KEPT_STYLES = """
+_KEPT_STYLES: str = """
 @media print {
   body, .container { background: #FFFFFF !important; }
   .footer { background: #FFFFFF !important; color: #1C1C1E !important; }

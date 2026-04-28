@@ -17,6 +17,8 @@ import re
 import shutil
 from pathlib import Path
 
+from typing import Final
+
 from docx import Document
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
@@ -72,14 +74,15 @@ _LEGACY_PASTEL = RGBColor(0xAA, 0xBB, 0xCC)
 
 # Index of each table inside the DOCX (in document order). Named so the
 # orchestration in `build()` is grep-able instead of mystery-meat
-# `doc.tables[3]` calls.
-TABLE_MASTHEAD = 0
-TABLE_DEAN = 1
-TABLE_HIGHLIGHTS_TOP = 2
-TABLE_HIGHLIGHTS_BOTTOM = 3
-TABLE_VISITORS = 4
-TABLE_EVENTS = 5
-TABLE_CONTACT = 6
+# `doc.tables[3]` calls. `Final` so type-checkers flag accidental
+# reassignment.
+TABLE_MASTHEAD: Final[int] = 0
+TABLE_DEAN: Final[int] = 1
+TABLE_HIGHLIGHTS_TOP: Final[int] = 2
+TABLE_HIGHLIGHTS_BOTTOM: Final[int] = 3
+TABLE_VISITORS: Final[int] = 4
+TABLE_EVENTS: Final[int] = 5
+TABLE_CONTACT: Final[int] = 6
 
 
 def _normalize_body_run(run) -> None:

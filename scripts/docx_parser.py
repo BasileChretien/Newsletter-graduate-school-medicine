@@ -244,19 +244,24 @@ from scripts.config import SUBHEAD_TEXTS  # known sub-headings from the canonica
 _SUBHEAD_MAX_CHARS = 80
 
 
-def is_subheading_paragraph(p: Paragraph, text: str) -> bool:
+def is_subheading_paragraph(p: Paragraph, text: str | None = None) -> bool:
     """Decide whether a paragraph is a sub-heading.
 
     Detection is purely structural so editors can add / rename / remove
     sub-sections in Word and the toolkit picks them up automatically:
 
       1. Word's built-in `Heading 2` / `Heading 3` / ... styles.
-      2. Short, all-bold paragraph that doesn't end like a sentence.
-      3. Backwards-compat: text exactly matches one of `SUBHEAD_TEXTS`.
+      2. Backwards-compat: text exactly matches one of `SUBHEAD_TEXTS`.
+      3. Short, all-bold paragraph that doesn't end like a sentence.
 
     Section-level headings ("1. ..." / "01 — ...") are detected
     separately in `_detect_section` and short-circuit before we get here.
+
+    `text` is optional -- if not supplied we derive it from `p.text.strip()`.
+    Pass it when you already have it to save one strip() call.
     """
+    if text is None:
+        text = p.text.strip()
     if not text or len(text) > _SUBHEAD_MAX_CHARS:
         return False
 

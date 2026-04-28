@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -18,7 +20,6 @@ def _git_timeout() -> int:
     VPN). Set MERIDIAN_GIT_TIMEOUT to override (e.g. "300" for very
     slow CI pushes, "10" for snappy local-only checks).
     """
-    import os
     raw = os.environ.get("MERIDIAN_GIT_TIMEOUT", "120")
     try:
         return max(5, int(raw))
@@ -30,7 +31,6 @@ def _git_timeout() -> int:
 def _run(cmd: list[str], cwd: Path = PROJECT_ROOT) -> str:
     """Run a git command with a configurable timeout (default 120s)
     so a stale remote cannot hang the editor's pipeline indefinitely."""
-    import shlex
     log.debug("Running: %s", shlex.join(cmd))
     result = subprocess.run(
         cmd, cwd=str(cwd), capture_output=True, text=True,
