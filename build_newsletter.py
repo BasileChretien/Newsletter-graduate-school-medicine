@@ -19,6 +19,8 @@ from pathlib import Path
 
 import click
 
+from dataclasses import dataclass
+
 from scripts import build_template as bt
 from scripts.mail import compose, detect_default_mail_handler
 from scripts.recipients import load_recipients
@@ -31,11 +33,20 @@ from scripts.image_handler import (
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
 )
 from scripts.inliner import inline
-from scripts.manifest import write_manifest
+from scripts.manifest import IssueManifest, load_manifest, write_manifest
 from scripts.renderer import attach_image_urls, render
 from scripts.validator import report, validate
 
 RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
+
+
+@dataclass(frozen=True)
+class BuildResult:
+    """Return value of `_build_pipeline` -- replaces `(int, str)` tuple."""
+    exit_code: int
+    subject: str
+    html_path: Path
+    manifest: IssueManifest | None = None
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -66,9 +77,9 @@ def _subject_from_masthead(issue: int, masthead) -> str:
     return f"{TITLE} — Issue {issue}"
 
 
-def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
-                    ) -> tuple[int, str]:
-    """Run the build pipeline. Returns `(exit_code, subject_line)`."""
+def _build_pipeline(input_path: Path, issue: int, *,
+                    validate_remote: bool) -> BuildResult:
+    """Run the build pipeline. Returns a `BuildResult`."""
     out_html = DIST_DIR / f"issue-{issue}.html"
     DIST_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -110,6 +121,7 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
 
     # 8) Manifest -- audit trail for what was published when.
     subject = _subject_from_masthead(issue, newsletter.masthead)
+    manifest: IssueManifest | None = None
     try:
         manifest = write_manifest(
             issue=issue,
@@ -120,7 +132,7 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
         )
         log.debug("Manifest: %s files (sha %s...)",
                   manifest.file_count, manifest.docx_sha256[:8])
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         log.warning("Could not write manifest: %s", e)
 
     # 9) Validate
@@ -128,8 +140,8 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
     click.echo(report(result))
     if not result.ok:
         click.echo(click.style("Validation failed.", fg="red"))
-        return 1, subject
-    return 0, subject
+        return BuildResult(1, subject, out_html, manifest)
+    return BuildResult(0, subject, out_html, manifest)
 
 
 @cli.command("build")
@@ -139,11 +151,11 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
               help="Skip HEAD requests to remote image URLs.")
 def build_cmd(input_path: str, issue: int, no_remote_check: bool):
     """Convert a filled DOCX into a polished HTML email."""
-    code, _subject = _build_pipeline(
+    result = _build_pipeline(
         Path(input_path), issue,
         validate_remote=not no_remote_check,
     )
-    sys.exit(code)
+    sys.exit(result.exit_code)
 
 
 @cli.command("publish-images")
@@ -171,17 +183,27 @@ def preview_cmd(issue: int):
 
 
 def _subject_for(issue: int, input_path: Path | None = None) -> str:
-    """Build the email subject line. Pulls the issue line from the DOCX
-    masthead when available, otherwise falls back to a generic format."""
+    """Build the email subject line.
+
+    Resolution order:
+      1. The manifest written by `_build_pipeline` (cheap; one JSON read).
+      2. Re-parse the DOCX masthead (only when no manifest exists, e.g.
+         a `compose --issue N` invocation against an issue that was
+         built on another machine).
+      3. Generic fallback `MERIDIAN — Issue N`.
+    """
+    asset_dir = issue_dir(ASSETS_DIR, issue)
+    manifest = load_manifest(asset_dir)
+    if manifest is not None and manifest.subject:
+        return manifest.subject
+
     if input_path is not None and input_path.exists():
         try:
-            from scripts.docx_parser import parse as _parse
-            nl = _parse(input_path)
-            issue_line = nl.masthead.issue_line.strip()
-            if issue_line:
-                return f"{TITLE} — {issue_line}"
-        except Exception:
-            pass
+            nl = parse(input_path)
+            return _subject_from_masthead(issue, nl.masthead)
+        except (OSError, ValueError, TypeError) as e:
+            log.debug("Could not derive subject from %s: %s", input_path, e)
+
     return f"{TITLE} — Issue {issue}"
 
 
@@ -243,10 +265,11 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
     # Build first to populate assets/, then publish, then re-validate remotely.
-    code, subject = _build_pipeline(
+    result = _build_pipeline(
         Path(input_path), issue, validate_remote=False)
-    if code != 0:
-        sys.exit(code)
+    if result.exit_code != 0:
+        sys.exit(result.exit_code)
+    subject = result.subject
     try:
         sha = publish_assets(issue, push=True)
         if sha:

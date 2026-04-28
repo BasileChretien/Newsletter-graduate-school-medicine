@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -22,20 +22,36 @@ class MailHandler:
 
 @dataclass(frozen=True)
 class DraftEmail:
-    """Pure-data description of an email draft to open in a client."""
+    """Pure-data description of an email draft to open in a client.
+
+    All recipient/header fields are optional so a backend can ignore
+    what it doesn't support (e.g. mailto: only honours `subject` + `bcc`,
+    not `from_addr`). Adding fields here BEFORE more backends arrive
+    avoids breaking-change refactors of every backend later.
+    """
 
     html: str
     subject: str
     bcc: str | None = None
+    cc: str | None = None
     to: str | None = None
+    from_addr: str | None = None     # optional From: -- shared mailbox / department address
+    reply_to: str | None = None
+    attachments: tuple[Path, ...] = field(default_factory=tuple)
     preview_path: Path | None = None
+    # Identifies the OS-detected default mail client (when known) so a
+    # backend can use it for log messages without a back-channel call.
+    handler: MailHandler | None = None
 
 
 class MailBackend(Protocol):
     """Strategy for opening an email-draft window.
 
-    Implementers register themselves in `scripts.mail._BACKENDS` (or just
-    expose a top-level `name` and `is_available()` and `compose(draft)`).
+    Concrete backends live in `scripts/mail/<name>.py` and are added to
+    `scripts.mail._BACKENDS` in priority order. The Protocol is
+    structurally typed -- implementations don't `class Foo(MailBackend)`
+    explicitly; they just expose `name`, `is_available`, `matches`, and
+    `compose` with matching signatures.
     """
 
     name: str

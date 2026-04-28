@@ -61,7 +61,7 @@ def _check_url(url: str, timeout: float = _HEAD_TIMEOUT) -> bool:
             with requests.get(url, timeout=timeout, stream=True) as r:
                 return 200 <= r.status_code < 400
         return 200 <= r.status_code < 400
-    except Exception as e:
+    except (requests.RequestException, OSError) as e:
         log.debug("URL %s failed: %s", url, e)
         return False
 
@@ -81,7 +81,11 @@ def _check_urls_parallel(urls: tuple[str, ...]) -> list[str]:
             url = future_to_url[future]
             try:
                 ok = future.result()
-            except Exception:
+            except (requests.RequestException, OSError) as e:
+                log.debug("URL %s failed: %s", url, e)
+                ok = False
+            except Exception as exc:  # noqa: BLE001 -- log the unexpected
+                log.warning("URL check future raised unexpectedly: %s", exc)
                 ok = False
             if not ok:
                 broken.append(url)

@@ -108,7 +108,7 @@ def write_manifest(*, issue: int, asset_dir: Path, source_docx: Path,
                     "hash. Old manifest archived as %s.",
                     issue, PREVIOUS_FILENAME,
                 )
-        except Exception as e:
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             log.debug("Could not read previous manifest: %s", e)
 
     new = IssueManifest(

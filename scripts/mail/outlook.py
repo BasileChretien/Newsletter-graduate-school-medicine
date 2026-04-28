@@ -27,8 +27,13 @@ def is_available() -> bool:
 
 def compose_outlook(html: str, subject: str, *,
                     bcc: str | None = None,
-                    to: str | None = None) -> None:
-    """Create an Outlook mail draft with HTML body + optional BCC."""
+                    cc: str | None = None,
+                    to: str | None = None,
+                    from_addr: str | None = None,
+                    reply_to: str | None = None,
+                    attachments=(),
+                    ) -> None:
+    """Create an Outlook mail draft with HTML body + optional headers."""
     import win32com.client
     outlook = win32com.client.Dispatch("Outlook.Application")
     mail = outlook.CreateItem(0)  # 0 = olMailItem
@@ -36,8 +41,24 @@ def compose_outlook(html: str, subject: str, *,
     mail.HTMLBody = html
     if to:
         mail.To = to
+    if cc:
+        mail.CC = cc
     if bcc:
         mail.BCC = bcc
+    if from_addr:
+        # Shared mailbox / department address -- requires the user's
+        # account to have Send-As permission for from_addr.
+        mail.SentOnBehalfOfName = from_addr
+    if reply_to:
+        try:
+            mail.ReplyRecipients.Add(reply_to)
+        except Exception:
+            log.debug("Outlook ReplyRecipients.Add(%r) failed", reply_to)
+    for path in attachments or ():
+        try:
+            mail.Attachments.Add(str(path))
+        except Exception:
+            log.debug("Outlook Attachments.Add(%r) failed", path)
     mail.Display(False)
 
 
@@ -54,7 +75,10 @@ class OutlookBackend:
 
     def compose(self, draft: DraftEmail) -> None:
         compose_outlook(
-            draft.html, draft.subject, bcc=draft.bcc, to=draft.to,
+            draft.html, draft.subject,
+            bcc=draft.bcc, cc=draft.cc, to=draft.to,
+            from_addr=draft.from_addr, reply_to=draft.reply_to,
+            attachments=draft.attachments,
         )
 
 

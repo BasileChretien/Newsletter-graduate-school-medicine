@@ -59,7 +59,12 @@ def _select_backend(name: str, handler: MailHandler) -> MailBackend:
 def compose(html: str, *, subject: str, backend: str = "auto",
             preview_path: Path | None = None,
             bcc: str | None = None,
-            to: str | None = None) -> str:
+            cc: str | None = None,
+            to: str | None = None,
+            from_addr: str | None = None,
+            reply_to: str | None = None,
+            attachments=(),
+            ) -> str:
     """Open an email draft. Returns the backend used.
 
     Failure modes:
@@ -74,16 +79,16 @@ def compose(html: str, *, subject: str, backend: str = "auto",
 
     chosen = _select_backend(backend, handler)
     draft = DraftEmail(
-        html=html, subject=subject, bcc=bcc, to=to,
+        html=html, subject=subject,
+        bcc=bcc, cc=cc, to=to,
+        from_addr=from_addr, reply_to=reply_to,
+        attachments=tuple(attachments) if attachments else (),
         preview_path=preview_path,
+        handler=handler,
     )
 
     try:
-        if chosen.name == "clipboard_mailto":
-            # Universal fallback wants the handler for the log line.
-            chosen.compose(draft, handler=handler)
-        else:
-            chosen.compose(draft)
+        chosen.compose(draft)
     except Exception as e:
         if backend != "auto":
             # Explicit backend failed -- propagate so the caller can
@@ -97,7 +102,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             "paste with Ctrl+V into the message body.", e,
         )
         fallback = _BACKENDS[-1]
-        fallback.compose(draft, handler=handler)
+        fallback.compose(draft)
         return f"default:{handler.kind}:fallback-from-{chosen.name}"
 
     if chosen.name == "outlook":
@@ -115,5 +120,7 @@ __all__ = [
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
     "is_available",
+    # `load_recipients` is re-exported here for legacy callers; new code
+    # should import from `scripts.recipients` directly.
     "load_recipients",
 ]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import platform
+import re
 import subprocess
 from pathlib import Path
 
@@ -60,12 +61,18 @@ def _copy_html_windows(html: str) -> bool:
     return True
 
 
+_SAFE_TMP_PATH_RE = re.compile(r"^[/A-Za-z0-9._-]+$")
+
+
 def _copy_html_macos(html: str) -> bool:
     """Set the macOS clipboard to HTML.
 
     Writes the HTML to a temp file and asks AppleScript to read it as
     «class HTML» -- avoids string injection (backticks, backslashes,
     AppleScript continuation chars) for arbitrary editor content.
+    Also validates the temp file's path (which honours $TMPDIR) before
+    embedding it in the AppleScript -- a malicious TMPDIR containing
+    quotes or newlines would otherwise break out of the string literal.
     """
     import tempfile
     tf_path = ""
@@ -75,6 +82,11 @@ def _copy_html_macos(html: str) -> bool:
         ) as tf:
             tf.write(html)
             tf_path = tf.name
+        if not _SAFE_TMP_PATH_RE.fullmatch(tf_path):
+            log.warning(
+                "Refusing to use temp file path with special chars: %r",
+                tf_path)
+            return False
         script = (
             'set theFile to POSIX file "' + tf_path + '"\n'
             'set theHTML to read theFile as «class utf8»\n'
@@ -86,14 +98,14 @@ def _copy_html_macos(html: str) -> bool:
             capture_output=True, timeout=10,
         )
         return proc.returncode == 0
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         log.debug("macOS HTML clipboard failed: %s", e)
         return False
     finally:
         if tf_path:
             try:
                 Path(tf_path).unlink(missing_ok=True)
-            except Exception:
+            except OSError:
                 pass
 
 
