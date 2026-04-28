@@ -60,7 +60,6 @@ SUBHEAD_TEXTS: frozenset[str] = frozenset({
 PALETTE = {
     "primary": "#003F88",      # NU blue (deep navy, official primary)
     "accent": "#A8864B",       # warm gold (sole body gold; AA on white)
-    "accent_aa": "#A8864B",    # alias kept for backwards-compat
     "footer_link": "#E8C97F",  # brighter gold for footer link on charcoal
     "text": "#1C1C1E",         # near-black charcoal
     "muted": "#6B6B70",        # cool gray
@@ -68,11 +67,6 @@ PALETTE = {
     "stripe": "#DCE3EE",       # zebra-row stripe for data tables
     "hairline": "#C9D2DE",     # subtle rule
     "white": "#FFFFFF",
-    # Backwards-compatible aliases for callers that still use the
-    # warm-palette names (cream / zebra). Remove once those call sites
-    # migrate to surface / stripe.
-    "cream": "#EEF2F7",
-    "zebra": "#DCE3EE",
 }
 
 

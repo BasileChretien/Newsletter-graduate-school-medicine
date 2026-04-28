@@ -33,7 +33,7 @@ from scripts.image_handler import (
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
 )
 from scripts.inliner import inline
-from scripts.manifest import IssueManifest, load_manifest, write_manifest
+from scripts.manifest import load_manifest, write_manifest
 from scripts.renderer import attach_image_urls, render
 from scripts.validator import report, validate
 
@@ -46,7 +46,6 @@ class BuildResult:
     exit_code: int
     subject: str
     html_path: Path
-    manifest: IssueManifest | None = None
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -144,7 +143,6 @@ def _build_pipeline(input_path: Path, issue: int, *,
 
     # 8) Manifest -- audit trail for what was published when.
     subject = _subject_from_masthead(issue, newsletter.masthead)
-    manifest: IssueManifest | None = None
     try:
         manifest = write_manifest(
             issue=issue,
@@ -163,8 +161,8 @@ def _build_pipeline(input_path: Path, issue: int, *,
     click.echo(report(result))
     if not result.ok:
         click.echo(click.style("Validation failed.", fg="red"))
-        return BuildResult(1, subject, out_html, manifest)
-    return BuildResult(0, subject, out_html, manifest)
+        return BuildResult(1, subject, out_html)
+    return BuildResult(0, subject, out_html)
 
 
 @cli.command("build")

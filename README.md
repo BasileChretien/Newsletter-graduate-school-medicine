@@ -250,7 +250,7 @@ You can ignore most of these — they just need to be there.
 Technical details for whoever maintains the toolkit:
 
 - **Stack:** Python 3.12, `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
-- **Visual identity** (per the [Nagoya University design guideline](https://www.med.nagoya-u.ac.jp/intranet/pr/logo/)): primary `#003F88` (NU blue), `#1A5BA8` soft blue, accent `#C9A96E` (warm gold, decorative), `#A8864B` (warm gold, AA-compliant for text/markers), text `#1C1C1E`, muted `#6B6B70`, cool off-white `#EEF2F7`, zebra `#DCE3EE`. Cambria headings, Calibri body.
+- **Visual identity** (per the [Nagoya University design guideline](https://www.med.nagoya-u.ac.jp/intranet/pr/logo/)): primary `#003F88` (NU blue); accent gold `#A8864B` (AA-compliant on white) used for borders, dividers, bullet markers, section dashes; footer-link gold `#E8C97F` (brighter, on charcoal); text `#1C1C1E`; muted `#6B6B70`; cool off-white surface `#EEF2F7`; stripe `#DCE3EE`; hairline `#C9D2DE`; page background `#E6EBF2`. Cambria headings, Calibri body.
 - **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline` plus a small kept-`<style>` block carrying `@media print`, dark-mode hints, and Apple-Mail data-detector overrides. MSO conditional ghost tables for Outlook desktop. `bgcolor` HTML attributes on masthead/header/footer survive Gmail iOS forced inversion. Validator: 80 KB early warning, 102 KB Gmail clip warning, broken-URL **warnings** (no longer hard errors).
 - **Module map:**
   - `scripts/build_template.py` — DOCX builder, named table indices (`TABLE_*`), `_normalize_body_run()` helper.

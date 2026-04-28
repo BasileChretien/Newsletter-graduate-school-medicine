@@ -59,9 +59,15 @@ def rgb(hex_str: str) -> RGBColor:
 
 PRIMARY = rgb(PALETTE["primary"])
 ACCENT = rgb(PALETTE["accent"])
-ACCENT_AA = rgb(PALETTE["accent_aa"])
 TEXT = rgb(PALETTE["text"])
 MUTED = rgb(PALETTE["muted"])
+
+# Module-level constants for the legacy palette colors swept by
+# `_normalize_body_run`. Hoisted out of the inner loop -- previously
+# allocated 3 RGBColor objects per run on every restyle pass.
+_LEGACY_BLUE = RGBColor(0x2D, 0x2D, 0x8E)
+_LEGACY_MUSTARD = RGBColor(0xC8, 0xA4, 0x15)
+_LEGACY_PASTEL = RGBColor(0xAA, 0xBB, 0xCC)
 
 
 # Index of each table inside the DOCX (in document order). Named so the
@@ -100,15 +106,12 @@ def _normalize_body_run(run) -> None:
     # Without this sweep, runs the editor never touched ship with
     # template-leftover indigo/mustard/pastel.
     cur = run.font.color.rgb
-    _LEGACY_BLUE = RGBColor(0x2D, 0x2D, 0x8E)
-    _LEGACY_MUSTARD = RGBColor(0xC8, 0xA4, 0x15)
-    _LEGACY_PASTEL = RGBColor(0xAA, 0xBB, 0xCC)
     if cur is None:
         run.font.color.rgb = TEXT
     elif cur == _LEGACY_BLUE:
         run.font.color.rgb = PRIMARY
     elif cur == _LEGACY_MUSTARD:
-        run.font.color.rgb = ACCENT_AA
+        run.font.color.rgb = ACCENT
     elif cur == _LEGACY_PASTEL:
         run.font.color.rgb = TEXT
 
@@ -219,8 +222,8 @@ def restyle_masthead(table) -> None:
     p_iss = cell.add_paragraph()
     style_paragraph(p_iss, alignment=WD_ALIGN_PARAGRAPH.LEFT,
                     space_before=4, space_after=0)
-    parts = [("VOL. XX", PRIMARY), ("  |  ", ACCENT_AA),
-             ("ISSUE NO. XX", PRIMARY), ("  |  ", ACCENT_AA),
+    parts = [("VOL. XX", PRIMARY), ("  |  ", ACCENT),
+             ("ISSUE NO. XX", PRIMARY), ("  |  ", ACCENT),
              ("MONTH YEAR", PRIMARY)]
     for text, color in parts:
         r = p_iss.add_run(text)
@@ -272,7 +275,7 @@ def restyle_section_heading(p) -> None:
               color=PRIMARY, all_caps=True, tracking=15)
     r_dash = p.add_run(" —  ")
     style_run(r_dash, font="Cambria", size_pt=16, bold=True,
-              color=ACCENT_AA, all_caps=True, tracking=15)
+              color=ACCENT, all_caps=True, tracking=15)
     r2 = p.add_run(label.upper())
     style_run(r2, font="Cambria", size_pt=16, bold=True,
               color=PRIMARY, all_caps=True, tracking=20)
@@ -462,7 +465,7 @@ def restyle_highlights_table(table) -> None:
             # on left -- matches the HTML rendering and reads more editorial.
             set_cell_borders(
                 cell,
-                top={"sz": 18, "color": PALETTE["accent_aa"], "val": "single"},
+                top={"sz": 18, "color": PALETTE["accent"], "val": "single"},
             )
             for p in cell.paragraphs:
                 for r in p.runs:
