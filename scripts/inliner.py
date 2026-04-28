@@ -8,11 +8,14 @@ net for Outlook Windows high-contrast mode.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import css_inline
 
 from scripts.config import TEMPLATES_DIR
+
+log = logging.getLogger(__name__)
 
 
 # Rules that survive the css_inline pass by being injected into <head>
@@ -51,10 +54,26 @@ def inline(html: str, css_path: Path | None = None) -> str:
         load_remote_stylesheets=False,
     )
     inlined = inliner.inline(html)
-    # Inject the kept-style block right before </head>.
     style_block = f"<style type=\"text/css\">{_KEPT_STYLES}</style>"
+
+    # Inject before </head> for the common path (full HTML doc). Fall
+    # back gracefully when the inliner returned a fragment / partial -- the
+    # @media print + Apple-Mail data-detector rules still ship, just at
+    # the top of the body rather than inside <head>. Logged so the gap
+    # is visible in CI / verbose runs.
     if "</head>" in inlined:
         inlined = inlined.replace("</head>", style_block + "</head>", 1)
+    elif "<body" in inlined:
+        # Inject just before <body> (string-find avoids parsing).
+        idx = inlined.lower().find("<body")
+        inlined = inlined[:idx] + style_block + inlined[idx:]
+    else:
+        # No <head> and no <body> -- prepend so the rules at least exist.
+        log.warning(
+            "Rendered HTML had neither </head> nor <body>; kept-style "
+            "block prepended at the top of the document."
+        )
+        inlined = style_block + inlined
     return inlined
 
 

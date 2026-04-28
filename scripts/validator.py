@@ -30,14 +30,17 @@ _HEAD_TIMEOUT = 3.0
 # real citations are easy for the editor to dismiss visually.
 PLACEHOLDER_RE = re.compile(r"\[[A-Z][^\[\]]{1,60}\]")
 # Lines that look like citations or editorial markers we DO know are
-# legitimate -- exclude these from the warning.
+# legitimate -- exclude these from the warning. Anchored with `\]$` so
+# the pattern doesn't false-match arbitrary trailing junk like
+# `[Smith 2023xyz extra]`.
 _LEGIT_BRACKETED = re.compile(
     r"^\[(?:"
-    r"Sic|Ed\.?|Fig\.|Table\b|cf\.|et al\.|"
+    r"Sic|Ed\.?|Fig\.[^\[\]]*|Table[^\[\]]*|cf\.[^\[\]]*|"
     r"\d+|"                                          # [1] [42]
     r"[A-Z][a-z]+ \d{4}|"                            # [Smith 2023]
-    r"[A-Z][A-Za-z.]*(?:\s+[A-Z][A-Za-z.]*)+\s+\d{4}"  # [J Med Chem 2023]
-    r")"
+    r"[A-Z][A-Za-z.]*(?:\s+[A-Z][A-Za-z.]*)+\s+\d{4}|"  # [J Med Chem 2023]
+    r"[^\[\]]+et al\."                               # [Smith et al.]
+    r")\]$"
 )
 
 

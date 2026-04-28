@@ -246,7 +246,7 @@ from scripts.config import SUBHEAD_TEXTS  # known sub-headings from the canonica
 _SUBHEAD_MAX_CHARS = 80
 
 
-def _is_subhead(p: Paragraph, text: str) -> bool:
+def is_subheading_paragraph(p: Paragraph, text: str) -> bool:
     """Decide whether a paragraph is a sub-heading.
 
     Detection is purely structural so editors can add / rename / remove
@@ -393,7 +393,7 @@ def parse(docx_path: Path) -> Newsletter:
             flush_bullets()
 
             # Subhead? (Word style + heuristic + canonical-template list)
-            if _is_subhead(p, text):
+            if is_subheading_paragraph(p, text):
                 current_blocks.append(Heading(level=3, text=text))
                 continue
 
@@ -417,8 +417,9 @@ def parse(docx_path: Path) -> Newsletter:
     flush_bullets()
     flush_section()
 
-    if len(sections) != 7:
-        log.warning("Expected 7 sections, parsed %d", len(sections))
+    # Section count is intentionally flexible -- log at DEBUG so editors
+    # who add/remove sections don't see noisy warnings on every build.
+    log.debug("Parsed %d section(s)", len(sections))
 
     return Newsletter(masthead=masthead, sections=tuple(sections))
 
@@ -427,4 +428,5 @@ __all__ = [
     "Newsletter", "Masthead", "Section", "Heading",
     "BodyParagraph", "BulletList", "TableBlock", "ImageRef",
     "parse", "paragraph_to_html",
+    "is_subheading_paragraph",
 ]

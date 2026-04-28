@@ -59,15 +59,19 @@ SUBHEAD_TEXTS: frozenset[str] = frozenset({
 # (https://www.med.nagoya-u.ac.jp/intranet/pr/logo/).
 PALETTE = {
     "primary": "#003F88",      # NU blue (deep navy, official primary)
-    "primary_soft": "#1A5BA8", # lighter shade for hover / inverse contexts
     "accent": "#C9A96E",       # warm gold (decorative use only)
     "accent_aa": "#A8864B",    # darker gold for text/markers (WCAG AA on white)
     "text": "#1C1C1E",         # near-black charcoal
     "muted": "#6B6B70",        # cool gray
-    "cream": "#EEF2F7",        # cool off-white tint (masthead) -- harmonises with blue
-    "zebra": "#DCE3EE",        # cooler stripe for data tables
+    "surface": "#EEF2F7",      # cool off-white panel tint (masthead, cards)
+    "stripe": "#DCE3EE",       # zebra-row stripe for data tables
     "hairline": "#C9D2DE",     # subtle rule
     "white": "#FFFFFF",
+    # Backwards-compatible aliases for callers that still use the
+    # warm-palette names (cream / zebra). Remove once those call sites
+    # migrate to surface / stripe.
+    "cream": "#EEF2F7",
+    "zebra": "#DCE3EE",
 }
 
 

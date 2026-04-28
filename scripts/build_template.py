@@ -4,7 +4,7 @@ Reads the original NagoyaU template, preserves all section names and content
 verbatim (text only), and restyles it per the Meridian visual spec:
 
 - Title: MERIDIAN (replaces MEDICAL FRONTIER)
-- Wine red + warm gold palette
+- NU blue (#003F88) + warm gold palette per the official guideline
 - Cambria headings, Calibri body
 - Masthead band, section bars, gold dividers
 - Zebra-styled data tables, refined header/footer
@@ -32,11 +32,11 @@ from scripts.config import (
     MERIDIAN_TEMPLATE,
     ORIGINAL_TEMPLATE,
     PALETTE,
-    SUBHEAD_TEXTS,
     SUBTITLE,
     TAGLINE,
     TITLE,
 )
+from scripts.docx_parser import is_subheading_paragraph
 from scripts.oxml_helpers import (
     add_page_field,
     remove_table_borders,
@@ -183,7 +183,7 @@ def restyle_masthead(table) -> None:
         p._element.getparent().remove(p._element)
 
     # Cell shading: cream background.
-    set_cell_shading(cell, PALETTE["cream"])
+    set_cell_shading(cell, PALETTE["surface"])
     set_cell_margins(cell, top=240, bottom=160, left=200, right=160)
     set_cell_borders(
         cell,
@@ -231,7 +231,7 @@ def restyle_masthead(table) -> None:
     left = table.rows[0].cells[0]
     for p in list(left.paragraphs):
         p._element.getparent().remove(p._element)
-    set_cell_shading(left, PALETTE["cream"])
+    set_cell_shading(left, PALETTE["surface"])
     set_cell_margins(left, top=200, bottom=160, left=160, right=80)
     set_cell_borders(
         left,
@@ -286,7 +286,7 @@ def restyle_section_heading(p) -> None:
 
 
 # ---------- subhead (Notable Publications, etc.) ----------
-# SUBHEAD_TEXTS imported from scripts.config (single source of truth)
+# Sub-heading detection delegates to docx_parser.is_subheading_paragraph.
 
 
 def restyle_subhead(p) -> None:
@@ -343,7 +343,7 @@ def restyle_data_table(table) -> None:
         zebra = (ri % 2 == 1)
         for cell in row.cells:
             set_cell_shading(
-                cell, PALETTE["zebra"] if zebra else PALETTE["white"])
+                cell, PALETTE["stripe"] if zebra else PALETTE["white"])
             set_cell_margins(cell, top=60, bottom=60, left=120, right=120)
             set_cell_borders(
                 cell,
@@ -456,7 +456,7 @@ def restyle_highlights_table(table) -> None:
         for ci, cell in enumerate(row.cells):
             if ci == 1:
                 continue  # gutter
-            set_cell_shading(cell, PALETTE["cream"])
+            set_cell_shading(cell, PALETTE["surface"])
             set_cell_margins(cell, top=200, bottom=180, left=200, right=200)
             # Premium card affordance: gold rule on top instead of red bar
             # on left -- matches the HTML rendering and reads more editorial.
@@ -547,19 +547,17 @@ def build(src: Path = ORIGINAL_TEMPLATE, dst: Path = MERIDIAN_TEMPLATE) -> Path:
         restyle_masthead(doc.tables[TABLE_MASTHEAD])
 
     # 2) Body paragraphs -- section heads, subheads, body, bullets.
-    # Sub-heading detection is identical to the parser's: built-in
-    # `Heading 2/3/...` style first, then the canonical-template list,
-    # then "short-bold-no-period" heuristic. Keeps the styled template
-    # in sync with what the parser will later recognise as sub-headings
-    # in any issue's filled-in DOCX.
-    from scripts.docx_parser import _is_subhead as _is_subhead_paragraph
+    # Sub-heading detection delegates to docx_parser.is_subheading_paragraph
+    # (same 3-tier check the parser uses) so the styled template stays in
+    # sync with what the parser will recognise as sub-headings in any
+    # issue's filled-in DOCX.
     for p in doc.paragraphs:
         text = p.text.strip()
         if not text:
             continue
         if is_section_heading(text):
             restyle_section_heading(p)
-        elif _is_subhead_paragraph(p, text):
+        elif is_subheading_paragraph(p, text):
             restyle_subhead(p)
         elif p.style.name == "List Paragraph":
             restyle_bullet(p)
