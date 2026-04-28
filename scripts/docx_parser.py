@@ -101,6 +101,55 @@ def _run_to_html(run) -> str:
     return text
 
 
+# ---------- inline image (drawing → <img>) ----------
+DRAWING_TAG = qn("w:drawing")
+BLIP_TAG = qn("a:blip")
+EMBED_ATTR = qn("r:embed")
+EXTENT_TAG = qn("wp:extent")
+PIC_CNVPR_TAG = qn("pic:cNvPr")
+
+# EMU per pixel at 96 dpi (914400 EMU / inch / 96 px / inch).
+EMU_PER_PX = 9525
+# Cap image width to fit the 600 px email container with padding.
+MAX_IMG_PX = 560
+
+
+def _drawing_to_img(drawing, part) -> str:
+    """Return an <img> tag (with media:// sentinel src) for a w:drawing."""
+    blip = drawing.find(".//" + BLIP_TAG)
+    if blip is None:
+        return ""
+    rid = blip.get(EMBED_ATTR)
+    if not rid:
+        return ""
+    rel = part.rels.get(rid)
+    if rel is None or not rel.target_ref:
+        return ""
+    fname = Path(rel.target_ref).name
+
+    # Optional alt text from pic:cNvPr@descr or @name.
+    alt = ""
+    cnv_pr = drawing.find(".//" + PIC_CNVPR_TAG)
+    if cnv_pr is not None:
+        alt = cnv_pr.get("descr") or cnv_pr.get("name") or ""
+
+    # Width from wp:extent (in EMU). Cap to MAX_IMG_PX.
+    width_attr = ""
+    extent = drawing.find(".//" + EXTENT_TAG)
+    if extent is not None:
+        cx = extent.get("cx")
+        if cx and cx.isdigit():
+            px = max(1, min(int(cx) // EMU_PER_PX, MAX_IMG_PX))
+            width_attr = f' width="{px}"'
+
+    return (
+        f'<img src="media://{escape(fname, quote=True)}" '
+        f'alt="{escape(alt, quote=True)}"{width_attr} '
+        f'style="display:block;max-width:100%;height:auto;'
+        f'margin:8px auto;border:0;" />'
+    )
+
+
 def _hyperlinks(paragraph: Paragraph) -> dict[str, str]:
     """Map relationship ids to URLs for hyperlinks in this paragraph."""
     out = {}
@@ -122,6 +171,13 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
     for child in paragraph._p.iterchildren():
         tag = child.tag
         if tag == qn("w:r"):
+            # Inline drawing inside this run? Emit an <img> tag.
+            drawing = child.find(".//" + DRAWING_TAG)
+            if drawing is not None:
+                img = _drawing_to_img(drawing, paragraph.part)
+                if img:
+                    parts.append(img)
+                    continue
             for r in paragraph.runs:
                 if r._r is child:
                     parts.append(_run_to_html(r))
@@ -277,19 +333,14 @@ def parse(docx_path: Path) -> Newsletter:
                 continue
             flush_bullets()
 
-            # Image inline in paragraph?
-            for rid in _has_image(p):
-                rel = p.part.rels.get(rid)
-                fname = ""
-                if rel is not None and rel.target_ref:
-                    fname = Path(rel.target_ref).name
-                current_blocks.append(ImageRef(rel_id=rid, filename=fname))
-
             # Subhead?
             if text in SUBHEAD_TEXTS:
                 current_blocks.append(Heading(level=3, text=text))
                 continue
 
+            # `paragraph_to_html` now embeds inline images directly via
+            # media:// sentinel URLs, so a stand-alone image paragraph
+            # renders as <img> inside the body paragraph.
             html = paragraph_to_html(p)
             if html:
                 current_blocks.append(BodyParagraph(html=html))

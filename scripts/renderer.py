@@ -10,19 +10,34 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from scripts.config import (
-    DEAN_PHOTO_PLACEHOLDER,
-    DEAN_REL,
     DEFAULT_REPO,
     LOGO_REL,
     TEMPLATES_DIR,
 )
 from scripts.docx_parser import (
+    BodyParagraph,
     BulletList,
     ImageRef,
     Newsletter,
     Section,
     TableBlock,
 )
+
+
+# Pattern emitted by docx_parser._drawing_to_img for inline images.
+_MEDIA_SENTINEL_RE = re.compile(r'media://([^"\'\s>]+)')
+
+
+def _resolve_media(html: str, url_map: dict[str, str]) -> str:
+    """Replace `media://filename` sentinels with their public URLs."""
+    if not html or "media://" not in html:
+        return html
+
+    def _sub(m: re.Match) -> str:
+        name = m.group(1)
+        return url_map.get(name, m.group(0))
+
+    return _MEDIA_SENTINEL_RE.sub(_sub, html)
 
 
 def _issue_line_filter(text: str) -> str:
@@ -53,16 +68,31 @@ def attach_image_urls(newsletter: Newsletter, url_map: dict[str, str],
     """Return a new Newsletter with image URLs filled in.
 
     `url_map` maps embedded image filenames (basename) to public URLs.
-    `drop_inserts` maps section number → list of ImageRef to append at the
-    end of that section's blocks (drop-folder images).
+    Walks every block and resolves `media://filename` sentinels emitted by
+    the parser when it encountered inline images in paragraphs / table
+    cells. `drop_inserts` maps section number → list of ImageRef to append
+    at the end of that section's blocks (drop-folder images).
     """
     drop_inserts = drop_inserts or {}
     new_sections: list[Section] = []
     for section in newsletter.sections:
         new_blocks = []
         for block in section.blocks:
-            if isinstance(block, ImageRef):
-                url = url_map.get(block.filename, "")
+            if isinstance(block, BodyParagraph):
+                new_blocks.append(replace(
+                    block, html=_resolve_media(block.html, url_map)))
+            elif isinstance(block, BulletList):
+                new_items = tuple(
+                    _resolve_media(item, url_map) for item in block.items)
+                new_blocks.append(replace(block, items=new_items))
+            elif isinstance(block, TableBlock):
+                new_rows = tuple(
+                    tuple(_resolve_media(c, url_map) for c in row)
+                    for row in block.rows
+                )
+                new_blocks.append(replace(block, rows=new_rows))
+            elif isinstance(block, ImageRef):
+                url = block.url or url_map.get(block.filename, "")
                 new_blocks.append(replace(block, url=url))
             else:
                 new_blocks.append(block)
@@ -73,65 +103,23 @@ def attach_image_urls(newsletter: Newsletter, url_map: dict[str, str],
     return replace(newsletter, sections=tuple(new_sections))
 
 
-def _replace_dean_placeholder(newsletter: Newsletter, dean_url: str) -> Newsletter:
-    """Inject the Dean photo into Section 1's left layout-table cell.
+def render(newsletter: Newsletter, *, logo_url: str | None = None) -> str:
+    """Render a Newsletter to HTML.
 
-    Two cases handled:
-      1. Cell still contains the literal '[ Photo ]' placeholder (raw original
-         template) — replace the placeholder text with an <img>.
-      2. Cell no longer has the placeholder (Meridian template embedded the
-         photo as a Word picture, which the text-only parser drops) — prepend
-         the <img> to the first cell of the first table in Section 1.
+    All image content embedded by the editor in Word — including the Dean
+    photo — is detected by the parser as `<img src="media://…">` sentinels
+    and resolved during `attach_image_urls`. Nothing further is needed
+    here besides the standalone brand logo (which is referenced by URL,
+    not extracted from the DOCX).
     """
-    if not dean_url:
-        return newsletter
-    img_html = (
-        f'<img src="{dean_url}" alt="Dean of the Graduate School of Medicine" '
-        f'style="display:block;width:140px;max-width:100%;height:auto;'
-        f'margin:0 0 8px 0;border:2px solid #8B1A1F;" />'
-    )
-    new_sections = []
-    for section in newsletter.sections:
-        if section.number != 1:
-            new_sections.append(section)
-            continue
-        new_blocks = []
-        injected = False
-        for block in section.blocks:
-            if isinstance(block, TableBlock):
-                new_rows = list(block.rows)
-                if not injected and new_rows:
-                    first_row = list(new_rows[0])
-                    if first_row:
-                        if DEAN_PHOTO_PLACEHOLDER in first_row[0]:
-                            first_row[0] = first_row[0].replace(
-                                DEAN_PHOTO_PLACEHOLDER, img_html)
-                        else:
-                            first_row[0] = img_html + first_row[0]
-                        new_rows[0] = tuple(first_row)
-                        injected = True
-                new_blocks.append(replace(block, rows=tuple(new_rows)))
-            else:
-                new_blocks.append(block)
-        new_sections.append(replace(section, blocks=tuple(new_blocks)))
-    return replace(newsletter, sections=tuple(new_sections))
-
-
-def render(newsletter: Newsletter, *,
-           logo_url: str | None = None,
-           dean_url: str | None = None) -> str:
     env = make_env()
     template = env.get_template("newsletter.html.j2")
     if logo_url is None:
         logo_url = DEFAULT_REPO.raw_url(LOGO_REL)
-    if dean_url is None:
-        dean_url = DEFAULT_REPO.raw_url(DEAN_REL)
-    enriched = _replace_dean_placeholder(newsletter, dean_url)
     return template.render(
-        masthead=enriched.masthead,
-        sections=enriched.sections,
+        masthead=newsletter.masthead,
+        sections=newsletter.sections,
         logo_url=logo_url,
-        dean_url=dean_url,
         # expose dataclass classes so the partial can do isinstance-style checks
         BulletList=BulletList,
         TableBlock=TableBlock,

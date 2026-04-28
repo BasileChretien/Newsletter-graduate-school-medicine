@@ -68,43 +68,19 @@ Save the file when you're done.
 
 ### Step 3 — Add photos (optional)
 
-If you want photos in the newsletter (a partner-lab snapshot, a signing-ceremony picture, an event photo, etc.):
+**Just paste them straight into the Word file**, exactly where you want them to appear in the email. The toolkit will detect them automatically.
 
-1. Open the folder **`drop-images/`** inside the project folder.
-2. Copy your photos in there.
-3. **Rename each photo** following this pattern:
+In Word: place your cursor where you want the photo → **Insert → Picture** → choose the file → resize it by dragging the corners. That's it. The photo appears in the email at the same spot, at roughly the same size, with the email's standard styling around it.
 
-```
-s<section>_<order>_<short-name>.jpg
-```
+**Tips:**
 
-| Part | What it means |
-|---|---|
-| `s1` to `s7` | the section number where the photo belongs (see table below) |
-| `01`, `02`, ... | the order if you have several in the same section |
-| `short-name` | a short hyphenated label (lowercase letters, digits, hyphens) |
+- Resize the photo in Word to roughly the size you want it in the email (don't worry about being precise — the toolkit caps very large images so they fit nicely).
+- If the photo looks too big, drag a corner inward in Word.
+- You can add as many photos as you want, in any section.
 
-Section numbers:
+> **The Dean photo and the school logo are already built in.** You don't need to add them yourself.
 
-| Number | Section |
-|---|---|
-| 1 | Message from the Dean |
-| 2 | Featured Highlights |
-| 3 | Research & Academic Updates |
-| 4 | International Collaboration |
-| 5 | Education & Student Activities |
-| 6 | Events & Announcements |
-| 7 | Contact Information |
-
-**Examples:**
-
-- `s2_01_award-ceremony.jpg` — first photo of section 2 (Featured Highlights), an award ceremony
-- `s4_01_mou-signing.jpg` — first photo of section 4 (International), an MOU signing
-- `s4_02_partner-lab.png` — second photo of section 4
-
-Allowed file types: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`. **No spaces** in filenames.
-
-> **You don't need to add the Dean photo or the school logo** — those two are already built in.
+> Power-user shortcut: there's also a `drop-images/` folder for batch-adding photos via a filename convention (`s<section>_<order>_<slug>.jpg`). Most editors will never need this — pasting into Word is faster.
 
 ### Step 4 — Run the toolkit
 
@@ -149,8 +125,8 @@ That's it!
 **❓ I don't see the Dean photo or the logo in the preview.**
 Make sure you ran the full command (`python build_newsletter.py all ...`) and not just `build` — the `all` command also publishes the photos to the web. If they still don't show, try refreshing your browser.
 
-**❓ The preview shows a broken-image icon for one of my drop-folder photos.**
-Most likely the filename doesn't match the expected pattern. Check that it starts with `s` then a digit between 1 and 7, then `_`, etc. Examples: `s3_01_lab.jpg`, **not** `S3-01-lab.jpg` or `lab photo.jpg`.
+**❓ The preview shows a broken-image icon where one of my photos should be.**
+Most likely the photos haven't been pushed to the public web yet. Re-run `python build_newsletter.py all ...` (note: `all`, not `build`) — that step uploads them. Refresh the preview. If you used the `drop-images/` folder, also check that the filename matches the pattern `s<section>_<order>_<slug>.jpg` (e.g., `s3_01_lab.jpg`, **not** `S3-01-lab.jpg` or `lab photo.jpg`).
 
 **❓ I need to redo issue 3 — what do I do?**
 Just re-run `python build_newsletter.py all --input issue-3.docx --issue 3`. It will overwrite the previous output. No harm done.
