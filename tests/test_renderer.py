@@ -66,7 +66,9 @@ def test_render_bullet_list():
     # Bullets render as table rows with an inline marker so they survive
     # Gmail/Outlook style stripping.
     assert '<table class="bullets"' in html
-    assert "&#9632;" in html  # filled square glyph
+    # Inline marker glyph -- &#9642; (small filled square) reads less heavy
+    # than the larger U+25A0 we shipped initially.
+    assert "&#9642;" in html
 
 
 def test_render_table_with_header():

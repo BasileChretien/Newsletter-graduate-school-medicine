@@ -18,6 +18,15 @@ drop-images/*
 recipients.txt
 issue-*.docx
 
+# Per-issue published assets are PUBLIC and PERMANENT (raw URL +
+# git history). Two safeguards:
+#   1. Don't commit asset directories implicitly. The publish-images
+#      command stages exactly the per-issue dir explicitly.
+#   2. Editors can opt OUT entirely by setting MERIDIAN_NO_PUBLIC_ASSETS=1
+#      before running the toolkit (future flag).
+# (Allow .gitkeep so the assets/ directory itself is preserved.)
+assets/issue-*/manifest.previous.json
+
 # IDE
 .vscode/
 .idea/

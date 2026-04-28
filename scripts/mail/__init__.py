@@ -120,7 +120,6 @@ __all__ = [
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
     "is_available",
-    # `load_recipients` is re-exported here for legacy callers; new code
-    # should import from `scripts.recipients` directly.
-    "load_recipients",
 ]
+# `load_recipients` is intentionally NOT re-exported -- it's not a
+# mail-backend concern. New code imports from `scripts.recipients`.

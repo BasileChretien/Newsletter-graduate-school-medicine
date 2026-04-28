@@ -101,6 +101,8 @@ Save the file when you're done.
 
 ### Step 3 — Add photos (optional)
 
+> ⚠️ **Privacy note:** every photo you put in the newsletter is uploaded to **public** GitHub URLs (`raw.githubusercontent.com/...`) so that recipients' email clients can load it. They stay there permanently. **Do not paste in patient photos, identifiable faces without consent, or anything you wouldn't put on a public web page.**
+
 **Just paste them straight into the Word file**, exactly where you want them to appear in the email. The toolkit will detect them automatically.
 
 In Word: place your cursor where you want the photo → **Insert → Picture** → choose the file → resize it by dragging the corners. That's it. The photo appears in the email at the same spot, at roughly the same size, with the email's standard styling around it.
@@ -261,6 +263,6 @@ Technical details for whoever maintains the toolkit:
 - **Repo coordinates:** `scripts.config.get_default_repo()` resolves lazily from (1) `MERIDIAN_REPO_USER`/`_NAME`/`_BRANCH` env vars → (2) `git remote get-url origin` → (3) hard-coded fallback. Forks and renames "just work".
 - **Locale override:** `MERIDIAN_LOCALE=ja` for explicit Japanese; otherwise launchers detect system locale.
 - **Constraints:** section names and content are not edited by the script — only the visual style is. Nested tables in DOCX are unsupported. Drop-image regex: `^s(?P<section>\d+)_(?P<order>\d+)_(?P<slug>[a-z0-9-]+)\.(jpg|jpeg|png|webp|gif)$`.
-- **Tests:** `python -m pytest tests/ --cov=scripts` — pure-logic modules (parser, image handler, renderer, inliner, validator, composer, manifest, recipients, i18n) are well covered; `build_template.py`, `oxml_helpers.py`, and `publisher.py` are exercised end-to-end via the smoke build rather than unit tests.
+- **Tests:** `python -m pytest tests/ --cov=scripts` — pure-logic modules (parser, image handler, renderer, inliner, validator, mail, manifest, recipients, i18n) are well covered; `build_template.py`, `oxml_helpers.py`, and `publisher.py` are exercised end-to-end via the smoke build rather than unit tests.
 - **Rebuild the template after design tweaks:** `python build_newsletter.py build-template`.
 - **Smoke test:** `python build_newsletter.py build --input Meridian_Newsletter_Template.docx --issue 0 --no-remote-check`.
