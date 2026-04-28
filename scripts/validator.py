@@ -157,23 +157,21 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         )
 
     if placeholders:
-        # Friendly nudge -- the build SUCCEEDED. We just want to warn
-        # the editor that some bracket-style placeholders are still in
-        # the text. Cap at 5 so the message is scannable; non-blocking.
+        # Friendly nudge -- the build SUCCEEDED. Reframe as "brackets
+        # you may want to fill in" rather than "placeholder count
+        # remaining" so editors testing the toolkit don't feel scolded.
         sample = ", ".join(placeholders[:5])
         more = (f" (+{len(placeholders) - 5} more)"
                 if len(placeholders) > 5 else "")
-        # Detect "fresh template" by very-high count and add a calming
-        # parenthetical so editors testing the toolkit don't feel scolded.
         fresh_hint = (
-            " (this is normal for an unfilled template -- fill the "
-            "placeholders in Word and re-run)"
+            " -- this is normal for an unfilled template; fill the "
+            "brackets in Word and re-run"
             if len(placeholders) >= 20 else ""
         )
         warnings.append(
-            f"Reminder: {len(placeholders)} placeholder(s) still in the "
-            f"newsletter -- {sample}{more}.{fresh_hint} The email was "
-            "built; review before sending."
+            f"Reminder: there are still {len(placeholders)} brackets "
+            f"like {sample}{more} you may want to fill in"
+            f"{fresh_hint}. The email was built; review before sending."
         )
 
     if broken_images:

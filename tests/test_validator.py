@@ -48,7 +48,9 @@ def test_validate_flags_unfilled_placeholders():
     assert "[Author(s)]" in placeholders
     assert "[YYYY/MM/DD]" in placeholders
     assert "[Country]" in placeholders
-    assert any("placeholder" in w.lower() for w in r.warnings)
+    # Wording was reframed in B17 to "brackets like ... you may want to fill"
+    assert any("brackets" in w.lower() or "placeholder" in w.lower()
+               for w in r.warnings)
 
 
 def test_validate_no_placeholders_when_clean():

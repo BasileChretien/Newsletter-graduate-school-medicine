@@ -243,13 +243,13 @@ def restyle_masthead(table) -> None:
                     space_before=0, space_after=0)
     if LOGO_PATH.exists():
         run_logo = p_logo.add_run()
-        # Compact masthead logo so it sits under the wordmark cleanly --
-        # with the new NU blue palette the seal harmonises rather than
-        # competes (rebrand B13).
-        run_logo.add_picture(str(LOGO_PATH), width=Inches(0.70))
-    # Column widths: ~0.9" logo column, ~6.0" masthead column.
-    left.width = Inches(0.90)
-    cell.width = Inches(6.00)
+        # Logo size restored to 0.85" now that the NU blue palette
+        # harmonises with the seal -- no longer competing colors, so
+        # we don't need to keep it artificially small.
+        run_logo.add_picture(str(LOGO_PATH), width=Inches(0.85))
+    # Column widths: ~1.05" logo column, ~5.85" masthead column.
+    left.width = Inches(1.05)
+    cell.width = Inches(5.85)
 
 
 # ---------- section heading restyle ----------

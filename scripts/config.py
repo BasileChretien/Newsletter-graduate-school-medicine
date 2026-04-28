@@ -59,8 +59,9 @@ SUBHEAD_TEXTS: frozenset[str] = frozenset({
 # (https://www.med.nagoya-u.ac.jp/intranet/pr/logo/).
 PALETTE = {
     "primary": "#003F88",      # NU blue (deep navy, official primary)
-    "accent": "#C9A96E",       # warm gold (decorative use only)
-    "accent_aa": "#A8864B",    # darker gold for text/markers (WCAG AA on white)
+    "accent": "#A8864B",       # warm gold (sole body gold; AA on white)
+    "accent_aa": "#A8864B",    # alias kept for backwards-compat
+    "footer_link": "#E8C97F",  # brighter gold for footer link on charcoal
     "text": "#1C1C1E",         # near-black charcoal
     "muted": "#6B6B70",        # cool gray
     "surface": "#EEF2F7",      # cool off-white panel tint (masthead, cards)

@@ -24,8 +24,8 @@ log = logging.getLogger(__name__)
 # print and forced-colors, both of which degrade gracefully.
 _KEPT_STYLES = """
 @media print {
-  body, .container { background: #ffffff !important; }
-  .footer { background: #ffffff !important; color: #1C1C1E !important; }
+  body, .container { background: #FFFFFF !important; }
+  .footer { background: #FFFFFF !important; color: #1C1C1E !important; }
   .footer a { color: #003F88 !important; }
 }
 /* Apple Mail / iOS Mail: stop the OS auto-detecting dates and phone

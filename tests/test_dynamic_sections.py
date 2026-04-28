@@ -10,13 +10,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
+import docx  # python-docx is a hard requirement, not optional
 
-# Need a python-docx Document writer for the synthetic-DOCX scenarios.
-docx = pytest.importorskip("docx")
+from scripts.docx_parser import (
+    BodyParagraph, Heading, Newsletter, Section, parse,
+)
 
 
-def _make_doc(tmp_path: Path, paragraphs: list[tuple[str, str | None]]) -> Path:
+def _make_doc(tmp_path: Path,
+              paragraphs: list[tuple[str, str | None]]) -> Path:
     """Build a minimal one-table-masthead DOCX from a list of
     (text, style_name) tuples. style_name=None -> Normal paragraph."""
     doc = docx.Document()
@@ -35,10 +37,8 @@ def _make_doc(tmp_path: Path, paragraphs: list[tuple[str, str | None]]) -> Path:
     return out
 
 
-def test_three_sections_with_arbitrary_titles(tmp_path):
+def test_three_sections_with_arbitrary_titles(tmp_path: Path) -> None:
     """Editor adds three custom sections; toolkit accepts all three."""
-    from scripts.docx_parser import parse
-
     doc_path = _make_doc(tmp_path, [
         ("1.  Hospital News", None),
         ("Some hospital body text.", None),
@@ -54,10 +54,8 @@ def test_three_sections_with_arbitrary_titles(tmp_path):
     assert nl.sections[2].title == "Save the Date"
 
 
-def test_subheading_via_word_heading_style(tmp_path):
+def test_subheading_via_word_heading_style(tmp_path: Path) -> None:
     """Word's built-in 'Heading 2' style is recognised as a sub-heading."""
-    from scripts.docx_parser import Heading, parse
-
     doc_path = _make_doc(tmp_path, [
         ("1.  Free Section", None),
         ("Sub-heading via Word style", "Heading 2"),
@@ -70,10 +68,8 @@ def test_subheading_via_word_heading_style(tmp_path):
     assert "Sub-heading via Word style" in headings
 
 
-def test_subheading_via_bold_short_paragraph(tmp_path):
+def test_subheading_via_bold_short_paragraph(tmp_path: Path) -> None:
     """Heuristic: short bold paragraph without sentence punctuation."""
-    from scripts.docx_parser import Heading, parse
-
     doc = docx.Document()
     t = doc.add_table(rows=1, cols=2)
     t.rows[0].cells[1].text = "MERIDIAN\nTagline\nSubtitle\nVOL. X"
@@ -85,17 +81,14 @@ def test_subheading_via_bold_short_paragraph(tmp_path):
     out = tmp_path / "syn.docx"
     doc.save(str(out))
 
-    from scripts.docx_parser import parse
     nl = parse(out)
     headings = [b.text for b in nl.sections[0].blocks
                 if isinstance(b, Heading)]
     assert "Bold Subhead" in headings
 
 
-def test_long_bold_paragraph_is_NOT_a_subhead(tmp_path):
+def test_long_bold_paragraph_is_NOT_a_subhead(tmp_path: Path) -> None:
     """A long bold paragraph (e.g. an emphasised body sentence) is body, not heading."""
-    from scripts.docx_parser import BodyParagraph, Heading, parse
-
     doc = docx.Document()
     t = doc.add_table(rows=1, cols=2)
     t.rows[0].cells[1].text = "MERIDIAN\nTagline\nSubtitle\nVOL. X"
@@ -110,8 +103,31 @@ def test_long_bold_paragraph_is_NOT_a_subhead(tmp_path):
     out = tmp_path / "syn.docx"
     doc.save(str(out))
 
-    from scripts.docx_parser import parse
     nl = parse(out)
     headings = [b.text for b in nl.sections[0].blocks
                 if isinstance(b, Heading)]
     assert long_text not in headings
+
+
+def test_section_heading_with_colon(tmp_path: Path) -> None:
+    """`8: Title` (colon, common Japanese habit) is recognised as a section."""
+    doc_path = _make_doc(tmp_path, [
+        ("1: Opening Section", None),
+        ("Body of section one.", None),
+        ("2: Closing Section", None),
+        ("Body of section two.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 2
+    assert [s.title for s in nl.sections] == ["Opening Section", "Closing Section"]
+
+
+def test_section_heading_with_section_prefix(tmp_path: Path) -> None:
+    """`Section N. Title` (English-style prose prefix) is recognised."""
+    doc_path = _make_doc(tmp_path, [
+        ("Section 1. Opening Section", None),
+        ("Body.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 1
+    assert nl.sections[0].title == "Opening Section"
