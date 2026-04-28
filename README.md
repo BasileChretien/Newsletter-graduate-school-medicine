@@ -17,17 +17,34 @@ You'll set this up once on your computer. After that, every issue takes only a f
 
 ### 1. Download the toolkit onto your computer
 
-You need to copy this project's folder onto your machine. The simplest way:
+## ⬇️ [**CLICK HERE TO DOWNLOAD THE TOOLKIT (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
-1. Open this URL in a web browser: <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>
-2. Click the green **Code** button near the top right of the page.
+[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-8B1A1F?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
+
+Click the link above, save the ZIP file (it goes to your **Downloads** folder by default), then:
+
+1. Open the ZIP file and **extract / unzip** it to somewhere easy to find — your **Documents** folder works well.
+2. After extracting you'll have a folder called `Newsletter-graduate-school-medicine-main` — **rename it to `Newsletter-graduate-school-medicine`** if you want a cleaner name, or just leave it.
+3. Remember where you put it. You'll point the command window to this folder in step 3 below.
+
+<details>
+<summary><b>Prefer to use the GitHub website by hand?</b></summary>
+
+1. Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine> in a web browser.
+2. Click the green **Code** button near the top right.
 3. In the menu that drops down, click **Download ZIP**.
-4. Save the ZIP file (it goes to your Downloads folder by default).
-5. Open the ZIP file and **extract / unzip** it to somewhere easy to find — your **Documents** folder works well. After extracting you'll have a folder called `Newsletter-graduate-school-medicine-main` (or similar). **Rename it to `Newsletter-graduate-school-medicine`** if you want, or leave it as-is.
+4. Continue from step 1 above (extract, find, rename).
+</details>
 
-> **Where should I put the folder?** Anywhere you can find again. `Documents\Newsletter-graduate-school-medicine` is a good default. You'll point the command window to wherever you put it in step 3 below.
+<details>
+<summary><b>Power users — use Git instead?</b></summary>
 
-> **Power users:** if you're comfortable with Git, you can `git clone https://github.com/BasileChretien/Newsletter-graduate-school-medicine.git` instead — same effect, plus you get future updates by running `git pull`.
+```
+git clone https://github.com/BasileChretien/Newsletter-graduate-school-medicine.git
+```
+
+You get future updates with a single `git pull`.
+</details>
 
 ### 2. Install Python
 
