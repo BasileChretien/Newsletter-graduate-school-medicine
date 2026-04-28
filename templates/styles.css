@@ -1,0 +1,207 @@
+/* MERIDIAN newsletter — email-safe styles
+ * Web-safe fonts only, table-based layout, inlined by css_inline.
+ */
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #F4EFE6;
+  font-family: Calibri, "Segoe UI", Arial, Helvetica, sans-serif;
+  color: #1C1C1E;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+.container {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  background-color: #FFFFFF;
+}
+
+.masthead {
+  background-color: #F7F2EA;
+  border-top: 8px solid #8B1A1F;
+  border-bottom: 1px solid #C9A96E;
+  padding: 28px 28px 18px 28px;
+}
+.masthead .title {
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-size: 38px;
+  font-weight: bold;
+  letter-spacing: 4px;
+  color: #8B1A1F;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1.0;
+}
+.masthead .tagline {
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-style: italic;
+  color: #8B1A1F;
+  margin: 6px 0 0 0;
+}
+.masthead .subtitle {
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 12px;
+  font-style: italic;
+  color: #6B6B70;
+  margin: 6px 0 12px 0;
+  line-height: 1.4;
+}
+.masthead .issue {
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  color: #8B1A1F;
+  text-transform: uppercase;
+  margin: 0;
+}
+.masthead .issue .pipe {
+  color: #C9A96E;
+}
+
+.section {
+  padding: 22px 28px 4px 28px;
+}
+.section-heading {
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin: 0 0 14px 0;
+  padding-left: 10px;
+  border-left: 4px solid #8B1A1F;
+  line-height: 1.2;
+}
+.section-heading .num {
+  color: #C9A96E;
+  margin-right: 6px;
+}
+.section-heading .label {
+  color: #8B1A1F;
+}
+
+.subhead {
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-weight: bold;
+  color: #1C1C1E;
+  margin: 14px 0 6px 0;
+  line-height: 1.3;
+}
+
+p.body {
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #1C1C1E;
+  margin: 0 0 10px 0;
+}
+
+ul.bullets {
+  margin: 4px 0 12px 0;
+  padding-left: 18px;
+  list-style: none;
+}
+ul.bullets li {
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1C1C1E;
+  margin: 0 0 6px 0;
+  padding-left: 14px;
+  position: relative;
+}
+ul.bullets li::before {
+  content: "■";
+  color: #C9A96E;
+  font-size: 11px;
+  position: absolute;
+  left: 0;
+  top: 1px;
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 14px 0;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+}
+table.data th {
+  background-color: #8B1A1F;
+  color: #FFFFFF;
+  font-family: Cambria, Georgia, "Times New Roman", serif;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-align: left;
+  padding: 8px 10px;
+}
+table.data td {
+  font-size: 13px;
+  color: #1C1C1E;
+  padding: 8px 10px;
+  border-bottom: 1px solid #D9D2C5;
+  vertical-align: top;
+}
+table.data tr:nth-child(even) td {
+  background-color: #F7F2EA;
+}
+
+table.layout {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 14px 0;
+}
+table.layout td {
+  vertical-align: top;
+  padding: 6px 10px;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  color: #1C1C1E;
+}
+
+.divider {
+  height: 1px;
+  background-color: #C9A96E;
+  margin: 18px 28px;
+  font-size: 0;
+  line-height: 0;
+}
+
+.footer {
+  background-color: #1C1C1E;
+  color: #C9A96E;
+  padding: 18px 28px;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+.footer a {
+  color: #C9A96E;
+  text-decoration: underline;
+}
+.footer .institution {
+  color: #FFFFFF;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+img.inline {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0 12px 0;
+  border: 0;
+}
+
+a {
+  color: #8B1A1F;
+}

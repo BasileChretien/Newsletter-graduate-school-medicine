@@ -1,0 +1,40 @@
+{# Renders one Block (BodyParagraph | BulletList | TableBlock | ImageRef | Heading) #}
+{% set kind = block.__class__.__name__ %}
+{% if kind == "Heading" %}
+  <h3 class="subhead">{{ block.text }}</h3>
+{% elif kind == "BodyParagraph" %}
+  <p class="body">{{ block.html | safe }}</p>
+{% elif kind == "BulletList" %}
+  <ul class="bullets">
+    {% for item in block.items %}<li>{{ item | safe }}</li>{% endfor %}
+  </ul>
+{% elif kind == "TableBlock" %}
+  {% if block.has_header %}
+  <table class="data" role="presentation" cellpadding="0" cellspacing="0">
+    <thead><tr>
+      {% for cell in block.rows[0] %}<th>{{ cell | safe }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+      {% for row in block.rows[1:] %}
+      <tr>
+        {% for cell in row %}<td>{{ cell | safe }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <table class="layout" role="presentation" cellpadding="0" cellspacing="0">
+    <tbody>
+      {% for row in block.rows %}
+      <tr>
+        {% for cell in row %}<td>{{ cell | safe }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% elif kind == "ImageRef" %}
+  {% if block.url %}
+  <img class="inline" src="{{ block.url }}" alt="{{ block.alt or '' }}" />
+  {% endif %}
+{% endif %}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{ masthead.title }} — Newsletter</title>
+<!--[if mso]>
+<style type="text/css">
+table { border-collapse: collapse; }
+.fallback-font { font-family: Arial, sans-serif !important; }
+</style>
+<![endif]-->
+</head>
+<body>
+<center role="article" aria-roledescription="email" lang="en" style="width:100%;background-color:#F4EFE6;">
+<!-- Preheader (hidden) -->
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#F4EFE6;">{{ masthead.tagline }} — {{ masthead.issue_line }}</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F4EFE6;">
+<tr><td align="center" style="padding:24px 12px;">
+<!--[if mso]>
+<table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td>
+<![endif]-->
+<table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px;max-width:600px;background-color:#FFFFFF;">
+
+<!-- MASTHEAD -->
+<tr><td class="masthead">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      {% if logo_url %}
+      <td class="masthead-logo" width="92" style="width:92px;vertical-align:top;padding-right:14px;">
+        <img src="{{ logo_url }}" alt="Nagoya University Graduate School of Medicine" width="80" height="80" style="display:block;width:80px;height:80px;border:0;" />
+      </td>
+      {% endif %}
+      <td class="masthead-text" style="vertical-align:top;">
+        <p class="title">{{ masthead.title }}</p>
+        {% if masthead.tagline %}<p class="tagline">{{ masthead.tagline }}</p>{% endif %}
+        {% if masthead.subtitle %}<p class="subtitle">{{ masthead.subtitle }}</p>{% endif %}
+        {% if masthead.issue_line %}<p class="issue">{{ masthead.issue_line | issue_line | safe }}</p>{% endif %}
+      </td>
+    </tr>
+  </table>
+</td></tr>
+
+<!-- SECTIONS -->
+{% for section in sections %}
+<tr><td class="section">
+  <h2 class="section-heading">
+    <span class="num">{{ "%02d" | format(section.number) }}</span>
+    <span class="sep" style="color:#C9A96E;">—</span>
+    <span class="label">&nbsp;{{ section.title }}</span>
+  </h2>
+  {% for block in section.blocks %}
+    {% include "partials/_block.html.j2" %}
+  {% endfor %}
+</td></tr>
+{% if not loop.last %}
+<tr><td class="divider">&nbsp;</td></tr>
+{% endif %}
+{% endfor %}
+
+<!-- FOOTER -->
+<tr><td class="footer">
+  {% if logo_url %}
+  <p style="margin:0 0 10px 0;text-align:center;">
+    <img src="{{ logo_url }}" alt="Nagoya University Graduate School of Medicine" width="60" height="60" style="display:inline-block;width:60px;height:60px;border:0;opacity:0.95;" />
+  </p>
+  {% endif %}
+  <p style="margin:0 0 6px 0;" class="institution">Graduate School of Medicine · Nagoya University</p>
+  <p style="margin:0 0 6px 0;">
+    <a href="https://www.med.nagoya-u.ac.jp/">med.nagoya-u.ac.jp</a>
+  </p>
+  <p style="margin:6px 0 0 0;font-size:10px;color:#6B6B70;">
+    You are receiving this newsletter because of your affiliation with the Graduate School of Medicine, Nagoya University.
+  </p>
+</td></tr>
+
+</table>
+<!--[if mso]>
+</td></tr></table>
+<![endif]-->
+</td></tr>
+</table>
+</center>
+</body>
+</html>
