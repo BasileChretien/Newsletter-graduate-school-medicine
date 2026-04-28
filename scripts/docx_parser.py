@@ -203,16 +203,6 @@ def _is_list_paragraph(p: Paragraph) -> bool:
     return (p.style.name or "").startswith("List Paragraph")
 
 
-def _has_image(p: Paragraph) -> list[str]:
-    """Return list of relationship ids for embedded images in paragraph."""
-    rids = []
-    for blip in p._p.iter(qn("a:blip")):
-        rid = blip.get(qn("r:embed"))
-        if rid:
-            rids.append(rid)
-    return rids
-
-
 def _detect_section(text: str) -> tuple[int, str] | None:
     """Detect a section heading like '01 — RESEARCH' or '1. Research'."""
     m = NUMBERED_HEAD_RE.match(text)
@@ -270,8 +260,6 @@ def _extract_masthead(doc: DocxDocument) -> Masthead:
 def _iter_body_blocks(doc: DocxDocument) -> Iterable[tuple[str, object]]:
     """Yield ('paragraph', Paragraph) or ('table', Table) in document order."""
     body = doc.element.body
-    para_iter = iter(doc.paragraphs)
-    table_iter = iter(doc.tables)
     paragraphs = list(doc.paragraphs)
     tables = list(doc.tables)
     p_idx = 0

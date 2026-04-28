@@ -25,10 +25,18 @@ if errorlevel 1 (
 REM 2. Dependency check (install on first run) ------------------------------
 python -c "import docx, jinja2, click, css_inline" >nul 2>&1
 if errorlevel 1 (
-    echo First-time setup -- installing toolkit dependencies.
-    echo This takes about a minute. You only see this once.
+    echo ================================================
+    echo  FIRST-TIME SETUP IN PROGRESS
+    echo ================================================
+    echo  Installing toolkit dependencies. This takes
+    echo  about 1-2 minutes. You only see this once.
     echo.
-    python -m pip install --quiet --disable-pip-version-check -r requirements.txt
+    echo  *** PLEASE DO NOT CLOSE THIS WINDOW ***
+    echo  Even if it looks frozen for up to 2 minutes,
+    echo  it is still working. Just wait.
+    echo ================================================
+    echo.
+    python -m pip install --disable-pip-version-check -r requirements.txt
     if errorlevel 1 (
         echo.
         echo  ERROR: Could not install dependencies.
@@ -37,7 +45,8 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
-    echo Setup complete.
+    echo.
+    echo Setup complete. (You will not see this message again.)
     echo.
 )
 

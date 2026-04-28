@@ -38,6 +38,26 @@ def test_validate_size_warns_when_too_big():
     assert any("Gmail clips" in w for w in r.warnings)
 
 
+def test_validate_flags_unfilled_placeholders():
+    html = (
+        "<html><body><p>Welcome from [Author(s)] on "
+        "[YYYY/MM/DD] in [Country].</p></body></html>"
+    )
+    r = validate(html, check_remote=False)
+    placeholders = set(r.placeholders)
+    assert "[Author(s)]" in placeholders
+    assert "[YYYY/MM/DD]" in placeholders
+    assert "[Country]" in placeholders
+    assert any("placeholder" in w.lower() for w in r.warnings)
+
+
+def test_validate_no_placeholders_when_clean():
+    html = "<html><body><p>Hello world.</p></body></html>"
+    r = validate(html, check_remote=False)
+    assert r.placeholders == ()
+    assert not any("placeholder" in w.lower() for w in r.warnings)
+
+
 def test_validate_broken_image_marks_error():
     with patch("scripts.validator.requests.head", return_value=_mock_response(404)):
         r = validate(HTML_OK)

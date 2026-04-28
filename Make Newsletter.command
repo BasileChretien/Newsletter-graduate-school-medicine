@@ -31,10 +31,18 @@ fi
 
 # 2. Dependency check (install on first run) ---------------------------------
 if ! "$PY" -c "import docx, jinja2, click, css_inline" >/dev/null 2>&1; then
-    echo "First-time setup -- installing toolkit dependencies."
-    echo "This takes about a minute. You only see this once."
+    echo "================================================"
+    echo " FIRST-TIME SETUP IN PROGRESS"
+    echo "================================================"
+    echo " Installing toolkit dependencies. This takes"
+    echo " about 1-2 minutes. You only see this once."
     echo
-    "$PY" -m pip install --quiet --disable-pip-version-check -r requirements.txt
+    echo " *** PLEASE DO NOT CLOSE THIS WINDOW ***"
+    echo " Even if it looks frozen for up to 2 minutes,"
+    echo " it is still working. Just wait."
+    echo "================================================"
+    echo
+    "$PY" -m pip install --disable-pip-version-check -r requirements.txt
     if [[ $? -ne 0 ]]; then
         echo
         echo "  ERROR: Could not install dependencies."
@@ -43,7 +51,8 @@ if ! "$PY" -c "import docx, jinja2, click, css_inline" >/dev/null 2>&1; then
         read -r -p "Press Enter to close..."
         exit 1
     fi
-    echo "Setup complete."
+    echo
+    echo "Setup complete. (You will not see this message again.)"
     echo
 fi
 

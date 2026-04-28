@@ -63,13 +63,16 @@ def test_render_bullet_list():
     html = render(_sample_newsletter())
     assert "Paper one" in html
     assert "Paper two" in html
-    assert '<ul class="bullets"' in html
+    # Bullets render as table rows with an inline marker so they survive
+    # Gmail/Outlook style stripping.
+    assert '<table class="bullets"' in html
+    assert "&#9632;" in html  # filled square glyph
 
 
 def test_render_table_with_header():
     html = render(_sample_newsletter())
     assert '<table class="data"' in html
-    assert "<th>Name</th>" in html
+    assert "<th" in html and "Name</th>" in html
     assert "<td>Alice</td>" in html
 
 

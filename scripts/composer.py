@@ -91,15 +91,8 @@ def _detect_windows() -> MailHandler:
 
 
 def _detect_macos() -> MailHandler:
-    """Use LaunchServices to read the default mailto handler."""
+    """Use LaunchServices (via `defaults read`) to find the default mailto handler."""
     try:
-        result = subprocess.run(
-            ["/System/Library/Frameworks/CoreServices.framework/Frameworks"
-             "/LaunchServices.framework/Support/lsregister",
-             "-dump"],
-            capture_output=True, text=True, timeout=10, check=False,
-        )
-        # Heuristic — easier: ask the `defaults` command for the binding.
         out = subprocess.run(
             ["defaults", "read",
              "com.apple.LaunchServices/com.apple.launchservices.secure"],
