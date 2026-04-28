@@ -4,9 +4,33 @@
 
 > **MERIDIAN** — *Where medicine meets the world.*
 
-This is the toolkit for producing the **Graduate School of Medicine, Nagoya University** newsletter. It turns a filled-in Word file into a polished email that opens **directly in Outlook** (or Apple Mail / Thunderbird / Gmail in your browser) with the newsletter already in the body. You type the recipients and click Send.
+The official newsletter toolkit for the **Graduate School of Medicine, Nagoya University**.
 
-You do **not** need to be a programmer. Just follow the steps below in order.
+## Why this exists
+
+Producing a department newsletter the old way means an editor copy-pastes paragraphs from a Word draft into Outlook, watches the formatting fall apart, hand-uploads photos to a file share, and sends a message that recipients see clipped, mis-rendered, or full of broken-image icons. Every issue burns a half-day on plumbing instead of content.
+
+**MERIDIAN replaces that workflow with one double-click.** The editor fills in the Word template like any other document. The launcher reads it, builds a polished HTML email that renders the same in Outlook, Gmail, and Apple Mail, uploads the photos to a public web address, and opens an Outlook draft with the newsletter already in the body and the BCC list already filled in. The editor types the recipients (or loads a saved list), reviews, clicks Send. Done in minutes, every issue.
+
+## What you get
+
+- **Fill a Word file → get a polished email.** No copy-paste. No "why is everything Times New Roman now?" The Word template is pre-styled with the official Nagoya University design system (NU blue `#003F88`, warm gold accent, Cambria headings, Calibri body); the HTML output mirrors it pixel-for-pixel where it matters and degrades gracefully where email clients force it to.
+- **Real Outlook drafts, not mailto: links.** On Windows the toolkit talks directly to Outlook desktop and produces a multipart-alternative draft (HTML + plaintext) — corporate spam filters score it cleanly, and the editor never has to paste anything. On macOS it opens Apple Mail or your default client with the body on the clipboard ready to paste.
+- **Photos handled for you.** Drop images into the Word file and the toolkit extracts them, names them, uploads them to GitHub, and rewrites the email to use the public URLs. Recipients see real photos, not "click to load remote content" placeholders. Need a batch instead? Drop them into `drop-images/` with a numbered filename and the toolkit slots them into the right section.
+- **Multi-client by design.** 600 px table-based layout, every CSS rule inlined, Outlook ghost-tables for column survival, mso-line-height locks for 1-px gold rules, print stylesheet that swaps the cream-and-gold masthead for an ink-friendly black-and-white version. Tested across Outlook 2016+, Outlook web, Gmail web/mobile, Apple Mail macOS/iOS.
+- **Validation before you embarrass yourself.** A draft with `VOL. XX` still in the masthead won't ship — the validator hard-blocks unfilled placeholder text. Long-subject warnings before recipients see truncated previews. Broken-image audit. Gmail 102 KB clip-warning. The pipeline catches the things you'd otherwise discover from a colleague's reply.
+- **Bilingual JP / EN.** The README, the launcher prompts, and the error messages all ship in Japanese and English. macOS auto-detects locale.
+- **No programming required.** Editors run a `Make Newsletter.bat` or `Make Newsletter.command` double-click. Two prompts: issue number, and the file name of your filled Word doc. That's it.
+
+## Who it's for
+
+Primarily the editor at the Graduate School of Medicine producing the quarterly newsletter — but the toolkit is **fully forkable** for any institution with the same problem. Replace the logo + dean photo + colour palette in `scripts/config.py`, point it at your own GitHub repo, and you have a branded newsletter pipeline for your department in an afternoon.
+
+## Under the hood (for developers)
+
+Python 3.12, `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **201 tests** across 21 files covering parser, image handler, validator, plaintext converter, mail backends, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** (architect, Python, security, code, visual, UX, email-deliverability) — every change has at least one regression test pinned. The current production tag is `v1.0.1-bundle29`.
+
+You do **not** need any of the above to use the toolkit as an editor. The four setup steps below are everything.
 
 ---
 
