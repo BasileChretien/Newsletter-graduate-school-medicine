@@ -29,6 +29,17 @@ _HEAD_TIMEOUT = 3.0
 # "Reminder: …review before sending", not "ERROR". False positives in
 # real citations are easy for the editor to dismiss visually.
 PLACEHOLDER_RE = re.compile(r"\[[A-Z][^\[\]]{1,60}\]")
+# Tokens that mean the masthead's `VOL. XX | ISSUE NO. XX | MONTH YEAR`
+# placeholders weren't filled in. If any of these survive into the
+# rendered HTML, the recipient's inbox will preview a "broken send"
+# subject like "MERIDIAN -- VOL. XX | ISSUE NO. XX | MONTH YEAR".
+_UNFILLED_MASTHEAD_TOKENS = (
+    "VOL. XX",
+    "ISSUE NO. XX",
+    "MONTH YEAR",
+)
+
+
 # Lines that look like citations or editorial markers we DO know are
 # legitimate -- exclude these from the warning. Anchored with `\]$` so
 # the pattern doesn't false-match arbitrary trailing junk like
@@ -183,6 +194,21 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
             f"{len(broken_images)} photo(s) couldn't be reached on the "
             "web yet. They may still be uploading -- try previewing in "
             "a minute. If broken images persist, run 'publish-images'."
+        )
+
+    # Hard-blocker: the masthead "VOL. XX | ISSUE NO. XX | MONTH YEAR"
+    # placeholders MUST be filled before sending. Recipients see the
+    # subject line / inbox preview built from this -- shipping with
+    # `VOL. XX` looks like a broken send and triggers spam-filter
+    # heuristics. Not just a reminder -- abort the build.
+    leaked = [tok for tok in _UNFILLED_MASTHEAD_TOKENS if tok in html]
+    if leaked:
+        errors.append(
+            "The masthead's issue line still contains unfilled "
+            f"placeholder text ({', '.join(leaked)}). Please open your "
+            "Word file and replace it with real values "
+            "(e.g. 'VOL. 12 | ISSUE NO. 3 | MARCH 2026') before sending. "
+            "Recipients see this in their inbox preview."
         )
 
     return ValidationResult(

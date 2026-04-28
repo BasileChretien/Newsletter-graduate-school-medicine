@@ -131,3 +131,38 @@ def test_section_heading_with_section_prefix(tmp_path: Path) -> None:
     nl = parse(doc_path)
     assert len(nl.sections) == 1
     assert nl.sections[0].title == "Opening Section"
+
+
+def test_section_heading_japanese_dai_n_shou(tmp_path: Path) -> None:
+    """`第N章 Title` (Japanese chapter prefix) is recognised."""
+    doc_path = _make_doc(tmp_path, [
+        ("第3章 Lab News", None),
+        ("Body of the Japanese-titled section.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 1
+    assert nl.sections[0].number == 3
+    assert nl.sections[0].title == "Lab News"
+
+
+def test_section_heading_japanese_dai_n_gou_with_dash(tmp_path: Path) -> None:
+    """`第N号 — Title` (Japanese issue prefix + em-dash) is recognised."""
+    doc_path = _make_doc(tmp_path, [
+        ("第8号 — タイトル", None),
+        ("Body.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 1
+    assert nl.sections[0].number == 8
+    assert nl.sections[0].title == "タイトル"
+
+
+def test_section_heading_japanese_no_kanji_suffix(tmp_path: Path) -> None:
+    """`第3 Title` (no kanji suffix, plain digit + title) still works."""
+    doc_path = _make_doc(tmp_path, [
+        ("第3 Lab News", None),
+        ("Body.", None),
+    ])
+    nl = parse(doc_path)
+    assert len(nl.sections) == 1
+    assert nl.sections[0].title == "Lab News"

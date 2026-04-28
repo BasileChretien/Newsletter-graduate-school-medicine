@@ -27,16 +27,14 @@ SECTION_HEAD_RE = re.compile(r"^\s*(\d+)\s*[\.\-—]?\s*[—-]?\s*(.+?)\s*$")
 NUMBERED_HEAD_RE = re.compile(
     r"^\s*0?(\d+)\s*[—–\-:.]\s+(.+?)\s*$"
 )
-# Tolerant of period or colon (common Japanese habit) and the optional
-# `Section ` / `Sec. ` / 第N号 / 第N章 prefixes.
+# Tolerant of period / colon / em-dash / hyphen and the optional English
+# (`Section N` / `Sec. N`) and Japanese (`第N章` / `第N号` / `第N節`)
+# prefixes. The Japanese form has a kanji *suffix* (章/号/節) directly
+# after the digit; the separator after it is optional.
 LEGACY_HEAD_RE = re.compile(
-    r"^\s*(?:Section\s+|Sec\.?\s+|第\s*)?"
-    r"(\d+)\s*[\.:]\s+(.+?)\s*$"
-)
-# Lines that LOOK like a section heading but didn't quite match -- used
-# by `_iter_potential_misses` to flag silent-failure candidates.
-NEAR_HEAD_RE = re.compile(
-    r"^\s*(?:Section\s+|Sec\.?\s+)?(\d+)\s*[^\d\s]\s*\S"
+    r"^\s*(?:Section\s+|Sec\.?\s+)?"            # English prefix (optional)
+    r"(?:第\s*)?(\d+)\s*(?:[章号節])?"          # number, optional kanji suffix
+    r"\s*[\.:—–\-]?\s+(.+?)\s*$"                # optional separator + title
 )
 
 

@@ -60,6 +60,30 @@ def test_validate_no_placeholders_when_clean():
     assert not any("placeholder" in w.lower() for w in r.warnings)
 
 
+def test_validate_blocks_unfilled_masthead():
+    """Sending with `VOL. XX | ISSUE NO. XX | MONTH YEAR` in the masthead
+    leaks "broken send" into recipients' inbox previews. Hard-block."""
+    html = (
+        "<html><body><p class='issue'>"
+        "VOL. XX | ISSUE NO. XX | MONTH YEAR"
+        "</p></body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert not r.ok
+    assert any("VOL. XX" in e for e in r.errors)
+
+
+def test_validate_passes_filled_masthead():
+    html = (
+        "<html><body><p class='issue'>"
+        "VOL. 12 | ISSUE NO. 3 | MARCH 2026"
+        "</p></body></html>"
+    )
+    r = validate(html, check_remote=False)
+    assert r.ok
+    assert not any("VOL. XX" in e for e in r.errors)
+
+
 def test_validate_broken_image_warns_not_errors():
     """Broken image URLs are now WARNINGS not ERRORS -- a flaky HEAD
     check shouldn't abort the editor's pipeline."""
