@@ -61,15 +61,29 @@ That's it for setup. **No command window, no `pip install`, no `cd` — the tool
 
 Here's the full routine. It takes about 10 minutes once you're used to it.
 
-### Step 1 — Open the template in Word
+### Step 1 — Open the template in Word and save with the right name
 
-Double-click **`Meridian_Newsletter_Template.docx`**. Word opens it. Save a copy with a clear name like:
+Double-click **`Meridian_Newsletter_Template.docx`**. Word opens it. Use **File → Save As** and save a **copy** in the **same folder** (next to `Make Newsletter.bat`).
 
-```
-issue-3.docx
-```
+> ⚠️ **The filename matters.** Save it as exactly:
+>
+> ```
+> issue-N.docx
+> ```
+>
+> where `N` is the issue number — for example **`issue-3.docx`** for issue 3, **`issue-12.docx`** for issue 12.
 
-(or whichever issue number you're working on).
+If you stick to that pattern, the launcher (Step 4) will **auto-fill the filename for you** — you just press Enter. You don't have to type it.
+
+| ✅ Good | ❌ Will work but you'll have to type the full name |
+|---|---|
+| `issue-3.docx` | `Issue 3.docx` *(space, capital I)* |
+| `issue-12.docx` | `newsletter-spring-2026.docx` |
+| `issue-04.docx` | `Meridian Issue 3.docx` |
+
+Rules: lowercase `issue`, then a hyphen, then digits, then `.docx`. **No spaces.**
+
+> **Don't overwrite the original template.** Always save a copy — keep `Meridian_Newsletter_Template.docx` untouched so you can start fresh next issue.
 
 ### Step 2 — Fill in your content
 
