@@ -1,13 +1,16 @@
 # MERIDIAN — ニュースレター作成ツール
 
-> **MERIDIAN** — *Where medicine meets the world.*
-
 > 🇬🇧 [English version](README.md)
 
-ようこそ。これは**名古屋大学大学院医学系研究科**ニュースレターを作成するためのツールです。次の2つのことを行います:
+## ⬇️ [**ここをクリックしてツールをダウンロード (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
-1. **美しいWordテンプレート** (`Meridian_Newsletter_Template.docx`) を提供します。学校のカラー、フォント、ロゴ、学長の写真があらかじめ設定されています。
-2. 入力したWordファイルを**洗練されたメール**に変換し、**いつものメールアプリで直接開きます** (Outlook、Apple Mail、Thunderbird、ブラウザのGmailなど)。本文にはニュースレターが既に入っており、宛先を入力して「送信」をクリックするだけです。
+[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-003F88?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
+
+**3 ステップ:** ① ダウンロード (上のボタン) ② Python をインストール (Windows は「Add Python to PATH」にチェック) ③ `Make Newsletter.bat` (Windows) / `Make Newsletter.command` (macOS) をダブルクリック。
+
+> **MERIDIAN** — *Where medicine meets the world.*
+
+これは**名古屋大学大学院医学系研究科**ニュースレターを作成するためのツールです。**美しい Word テンプレート** (`Meridian_Newsletter_Template.docx`) — 学校のカラー、フォント、ロゴ、学長の写真があらかじめ設定済 — と、入力した Word ファイルを**洗練されたメール**に変換し**いつものメールアプリで直接開く**機能を提供します。本文にはニュースレターが既に入っており、宛先を入力して「送信」をクリックするだけです。
 
 プログラマーである必要は**ありません**。以下の手順に従ってください。
 
@@ -19,11 +22,7 @@
 
 ### 1. ツールをコンピュータにダウンロード
 
-## ⬇️ [**ここをクリックしてツールをダウンロード (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-003F88?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
-
-上のリンクをクリックし、ZIPファイルを保存してから:
+ページ上部の**ダウンロードボタン**をクリックし、ZIPファイルを保存してから:
 
 1. ZIPファイルを開いて、わかりやすい場所に**展開/解凍**します。**ドキュメント**フォルダがおすすめです。
 2. 展開すると `Newsletter-graduate-school-medicine-main` というフォルダができます。お好みで `Newsletter-graduate-school-medicine` にリネームするか、そのままでも構いません。
@@ -63,7 +62,13 @@ Pythonはこのツールを動作させる小さなプログラムです。
 - マスト見出しの **発行情報** ("VOL. XX | ISSUE NO. XX | MONTH YEAR") を実際の巻号と月年に置き換えます。
 - **`[Author(s)]`**, **`[Paper Title]`**, **`[Visitor Name]`**, **`[YYYY/MM/DD]`**, **`[Country]`** などの角括弧で囲まれたプレースホルダーを実際のテキストに置き換えます。
 - グレーの「Lorem ipsum」風の段落を実際のニュースレター内容に置き換えます。
-- **セクションは自由に編集できます。** ツールは7セクションのテンプレートで配布されますが、号ごとにセクション名の変更、追加、削除、並び替えができます。**番号付き見出しパターン**だけ守ってください — 各セクションは `1.`、`2.`、`3.` … (またはテンプレートが使う `01 — タイトル`、`02 — タイトル` …) で始めます。サブ見出し (例「Notable Publications」) は Word の **見出し 2** スタイルか、短い太字の1行であれば自動で認識されます。
+- **セクションは自由に編集できます。** ツールは7セクションのテンプレートで配布されますが、号ごとに名前の変更、追加、削除、並び替えができます。
+  - **セクション名を変える:** Word で見出しの文字を編集するだけ。番号はそのままで構いません。
+  - **新しいセクションを追加:** 追加したい場所の空行にカーソルを置き、次の番号、ピリオド、半角スペース、タイトルの順で入力 — 例 `8. Special Feature: Nobel Prize Winner`。(コロン `8:` も使えます。`第8章 — タイトル` 形式も認識されます。) その行を選択し、*ホーム → スタイル*の**見出し 1** をクリック (または Windows: *Ctrl+Alt+1* / Mac: *⌘+Option+1*)。
+  - **セクションを削除:** 見出しと、その下にあるそのセクションの全内容 (段落、箇条書き、表) を選択して **Delete** キー。
+  - **サブ見出し** (例「Notable Publications」) は Word の**見出し 2** スタイルを使ってください: 行を選択して *ホーム → スタイル* の**見出し 2** をクリック (または *Ctrl+Alt+2* / *⌘+Option+2*)。スタイルを忘れても、ピリオドのない短い太字の1行であれば自動で認識されます。
+
+> **テンプレートを壊す心配は不要です。** あなたが作る `issue-3.docx` はコピーであり、元の `Meridian_Newsletter_Template.docx` が変更されることはありません。**コピーが壊れたと思ったら、削除してテンプレートをもう一度開いてください。** 何も失われません。
 
 > **学長のお名前と写真は既に入力されています** (現在は *勝野雅央先生*)。学長が変わった場合は、メンテナーに依頼してテンプレートを更新してください。
 
@@ -124,7 +129,13 @@ Word file / Wordファイル [issue-3.docx]:        ← Enterキーを押すだ�
 これらは号ごとに統一感を保つため意図的に固定されています。デザイン変更が必要な場合は、開発者 (またはこのツールをセットアップした担当者) にご相談ください。
 
 **❓ 新しいセクションを追加したい**
-セクション名と順序はデザインの一部です。本当に必要な場合は、開発者にご相談ください。コードの修正も必要になります。
+できます — Word で追加したい場所にカーソルを置き、次の番号、ピリオド、タイトルの順で入力してください (例: `8. Special Feature: Nobel Prize`)。その行を選択し、*ホーム → スタイル* の**見出し 1** をクリック (または *Ctrl+Alt+1* / *⌘+Option+1*)。コードの修正は不要です。
+
+**❓ セクションやサブ見出しを削除したい**
+見出しと、その下にあるそのセクションの全内容 (段落、箇条書き、表) を選択して **Delete** キーを押してください。ツールは削除されたセクションをそのままスキップします。
+
+**❓ テンプレートを壊してしまわないか不安です**
+心配無用です — あなたの `issue-3.docx` はコピーで、元の `Meridian_Newsletter_Template.docx` は変更されません。**コピーが壊れたら、削除してテンプレートをもう一度開いてください。** 何も失われません。
 
 **❓ メールファイルはどこに保存されますか?**
 `dist/` フォルダの中です。第3号なら `dist/issue-3.html` です。いつでもダブルクリックして開けます。

@@ -93,7 +93,13 @@ In the file you just saved:
 - Replace the masthead's **issue line** ("VOL. XX | ISSUE NO. XX | MONTH YEAR") with the real volume, issue number, and month.
 - Replace the bracketed placeholders such as **`[Author(s)]`**, **`[Paper Title]`**, **`[Visitor Name]`**, **`[YYYY/MM/DD]`**, **`[Country]`** etc. with your real text.
 - Replace the gray "Lorem ipsum"-style paragraphs with the actual newsletter content.
-- **Sections are flexible.** The toolkit ships with a 7-section starter template, but you can rename, add, remove, or reorder sections however you want. Just keep the **numbered heading pattern** — every section starts with `1.`, `2.`, `3.` … (or the styled `01 — TITLE`, `02 — TITLE` … the rebuilt template uses). Sub-sections (e.g. "Notable Publications") are detected automatically when you mark them with Word's **Heading 2** style or just type them as a short bold line.
+- **Sections are flexible.** The toolkit ships with a 7-section starter template, but you can rename, add, remove, or reorder sections however you want.
+  - **To rename a section:** just edit the heading text in Word. The section number can stay the same.
+  - **To add a new section:** in Word, place your cursor on a blank line where you want it, type the next number followed by a period, a space, and the title — for example `8. Special Feature: Nobel Prize Winner`. (A colon `8:` works too; so does `Section 8 — Title`.) Highlight that line and click **Heading 1** in the *Home → Styles* ribbon (or press *Ctrl+Alt+1* on Windows / *⌘+Option+1* on Mac).
+  - **To remove a section:** select the heading and everything below it that belongs to that section (paragraphs, bullet lists, tables) and press **Delete**.
+  - **For sub-sections** (e.g. "Notable Publications"), use Word's **Heading 2** style: select the line, then click **Heading 2** in *Home → Styles* (or press *Ctrl+Alt+2* / *⌘+Option+2*). A short bold line without a period also works as a fallback if you forget the style.
+
+> **Don't worry about breaking the template.** Your filled-in copy is just a copy — the original `Meridian_Newsletter_Template.docx` is never touched. **If your copy gets mangled, just delete it and open the template again.** Nothing is lost.
 
 > **The dean's name and photo are already filled in for you** (currently *Prof. Masahisa Katsuno*) — you don't need to touch the credentials block or the signature line. If the dean changes, ask the developer to update the template.
 

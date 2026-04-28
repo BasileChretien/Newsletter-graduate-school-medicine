@@ -264,7 +264,14 @@ def _is_subhead(p: Paragraph, text: str) -> bool:
 
     # 1. Word built-in heading style (Heading 2/3/... -- never Heading 1
     # which we reserve for section headings).
-    style_name = (p.style.name or "")
+    # `style_id` is the locale-invariant Word identifier
+    # ("Heading2", "Heading3"...). `style.name` is localized
+    # ("見出し 2", "Überschrift 2"). Prefer style_id; fall back to name.
+    style = p.style
+    style_id = getattr(style, "style_id", None) or ""
+    style_name = (getattr(style, "name", "") or "")
+    if style_id.startswith("Heading") and style_id != "Heading1":
+        return True
     if style_name.startswith("Heading") and not style_name.endswith(" 1"):
         return True
 
