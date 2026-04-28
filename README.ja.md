@@ -21,7 +21,7 @@
 
 ## ⬇️ [**ここをクリックしてツールをダウンロード (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
-[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-8B1A1F?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
+[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-003F88?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
 上のリンクをクリックし、ZIPファイルを保存してから:
 

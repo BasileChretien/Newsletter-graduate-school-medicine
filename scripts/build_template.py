@@ -84,15 +84,34 @@ def _normalize_body_run(run) -> None:
     real content, persistent italic reads as "this whole list is a
     footnote". The HTML pipeline does the same via `_strip_em` in the
     renderer; this is the DOCX-side counterpart so both outputs ship
-    consistently. Idempotent -- non-default fields the editor sets later
-    are preserved.
+    consistently.
+
+    Stale-palette sweep: the original Nagoya template carried hard-coded
+    `#2D2D8E` (old indigo), `#C8A415` (mustard), and `#AABBCC` (placeholder
+    pastel) on certain runs. After the NU blue rebrand those clash with
+    `#003F88`; we promote them to the new palette here.
     """
     if run.font.name in (None, "", "Arial"):
         run.font.name = "Calibri"
     if run.font.size is None:
         run.font.size = Pt(10.5)
-    if run.font.color.rgb is None:
+
+    # Replace stale legacy palette colors with the NU blue palette.
+    # Without this sweep, runs the editor never touched ship with
+    # template-leftover indigo/mustard/pastel.
+    cur = run.font.color.rgb
+    _LEGACY_BLUE = RGBColor(0x2D, 0x2D, 0x8E)
+    _LEGACY_MUSTARD = RGBColor(0xC8, 0xA4, 0x15)
+    _LEGACY_PASTEL = RGBColor(0xAA, 0xBB, 0xCC)
+    if cur is None:
         run.font.color.rgb = TEXT
+    elif cur == _LEGACY_BLUE:
+        run.font.color.rgb = PRIMARY
+    elif cur == _LEGACY_MUSTARD:
+        run.font.color.rgb = ACCENT_AA
+    elif cur == _LEGACY_PASTEL:
+        run.font.color.rgb = TEXT
+
     # Clear the template's default italics on placeholder text. Editors
     # who genuinely need italic (a journal title, a pull quote) can
     # re-enable it locally in Word.

@@ -7,7 +7,7 @@ from dataclasses import replace
 from html import escape
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 
 from scripts.config import (
     DEFAULT_REPO,
@@ -79,7 +79,12 @@ def _issue_line_filter(text: str) -> str:
 def make_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
-        autoescape=select_autoescape(["html", "xml"]),
+        # `autoescape=True` (not select_autoescape) -- our templates use
+        # the .html.j2 suffix which select_autoescape does NOT recognise
+        # by default, leaving autoescape silently OFF. Forcing True is
+        # the safe choice. Pre-escaped content (run HTML built by the
+        # parser) is wrapped via `| safe` in the partial template.
+        autoescape=True,
         trim_blocks=True,
         lstrip_blocks=True,
     )

@@ -4,7 +4,7 @@
 
 ## ⬇️ [**CLICK HERE TO DOWNLOAD THE TOOLKIT (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
-[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-8B1A1F?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
+[![Download ZIP](https://img.shields.io/badge/⬇%20Download-Toolkit%20(ZIP)-003F88?style=for-the-badge&logo=github)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip)
 
 **Three steps:** ① download (button above) ② install Python (Windows users tick "Add Python to PATH") ③ double-click `Make Newsletter.bat` (Windows) / `Make Newsletter.command` (macOS).
 
@@ -182,7 +182,13 @@ Just double-click the launcher again and enter `3` when asked. It will overwrite
 Those are intentionally fixed so every issue stays consistent. Ask the developer (or the person who set this up for you) to update the design.
 
 **❓ I want to add a new section.**
-Section names and the order are part of the design. If you really need a new section, ask the developer — it requires a small code change too.
+Yes — go ahead. In Word, place your cursor on a blank line where you want the new section, type the next number followed by a period and a space, then the title (e.g. `8. Special Feature: Nobel Prize`). Highlight that line and click **Heading 1** in the *Home → Styles* ribbon (or press *Ctrl+Alt+1* on Windows / *⌘+Option+1* on Mac). The toolkit will pick it up automatically — no code change needed.
+
+**❓ I want to remove a section or sub-section.**
+Select the section heading (or sub-heading) and everything below it that belongs to that section — paragraphs, bullet lists, tables — and press **Delete**. The toolkit simply skips deleted sections.
+
+**❓ I'm worried I'll break the template by editing it.**
+Don't worry — your filled-in copy (`issue-3.docx`) is just a copy. The original `Meridian_Newsletter_Template.docx` is never modified. **If you mangle your copy, just delete it and open the template again** — nothing is lost.
 
 **❓ Where is the email file saved?**
 In the `dist/` folder. For issue 3, it's `dist/issue-3.html`. You can open it any time by double-clicking it.

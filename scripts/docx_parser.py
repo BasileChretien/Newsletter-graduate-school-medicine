@@ -23,8 +23,21 @@ log = logging.getLogger(__name__)
 
 
 SECTION_HEAD_RE = re.compile(r"^\s*(\d+)\s*[\.\-—]?\s*[—-]?\s*(.+?)\s*$")
-NUMBERED_HEAD_RE = re.compile(r"^\s*0?(\d+)\s+[—\-]\s+(.+?)\s*$")
-LEGACY_HEAD_RE = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*$")
+# `01 — TITLE` / `01 - TITLE` / `01. TITLE` / `01: TITLE` / fullwidth digits.
+NUMBERED_HEAD_RE = re.compile(
+    r"^\s*0?(\d+)\s*[—–\-:.]\s+(.+?)\s*$"
+)
+# Tolerant of period or colon (common Japanese habit) and the optional
+# `Section ` / `Sec. ` / 第N号 / 第N章 prefixes.
+LEGACY_HEAD_RE = re.compile(
+    r"^\s*(?:Section\s+|Sec\.?\s+|第\s*)?"
+    r"(\d+)\s*[\.:]\s+(.+?)\s*$"
+)
+# Lines that LOOK like a section heading but didn't quite match -- used
+# by `_iter_potential_misses` to flag silent-failure candidates.
+NEAR_HEAD_RE = re.compile(
+    r"^\s*(?:Section\s+|Sec\.?\s+)?(\d+)\s*[^\d\s]\s*\S"
+)
 
 
 # ---------- block dataclasses ----------
