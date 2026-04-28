@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from scripts.composer import (
+from scripts.mail import (
     MailHandler, compose, detect_default_mail_handler,
 )
 
@@ -30,7 +30,7 @@ def test_compose_routes_outlook_when_default_is_outlook():
     handler = MailHandler(kind="outlook", name="Microsoft Outlook")
     with patch("scripts.mail.detect_default_mail_handler",
                return_value=handler), \
-         patch("scripts.mail._outlook_com_available", return_value=True), \
+         patch("scripts.mail.is_available", return_value=True), \
          patch("scripts.mail.compose_outlook") as mock_outlook, \
          patch("scripts.mail.compose_via_default") as mock_default:
         used = compose("<html>x</html>", subject="Test")
@@ -43,7 +43,7 @@ def test_compose_falls_back_to_default_when_not_outlook():
     handler = MailHandler(kind="apple_mail", name="Apple Mail")
     with patch("scripts.mail.detect_default_mail_handler",
                return_value=handler), \
-         patch("scripts.mail._outlook_com_available", return_value=False), \
+         patch("scripts.mail.is_available", return_value=False), \
          patch("scripts.mail.compose_outlook") as mock_outlook, \
          patch("scripts.mail.compose_via_default") as mock_default:
         used = compose("<html>x</html>", subject="Test")
@@ -56,7 +56,7 @@ def test_compose_falls_back_when_outlook_com_throws():
     handler = MailHandler(kind="outlook", name="Microsoft Outlook")
     with patch("scripts.mail.detect_default_mail_handler",
                return_value=handler), \
-         patch("scripts.mail._outlook_com_available", return_value=True), \
+         patch("scripts.mail.is_available", return_value=True), \
          patch("scripts.mail.compose_outlook",
                side_effect=RuntimeError("boom")), \
          patch("scripts.mail.compose_via_default") as mock_default:
@@ -70,7 +70,7 @@ def test_compose_explicit_outlook_backend_raises_on_failure():
     handler = MailHandler(kind="outlook", name="Microsoft Outlook")
     with patch("scripts.mail.detect_default_mail_handler",
                return_value=handler), \
-         patch("scripts.mail._outlook_com_available", return_value=True), \
+         patch("scripts.mail.is_available", return_value=True), \
          patch("scripts.mail.compose_outlook",
                side_effect=RuntimeError("forced")):
         with pytest.raises(RuntimeError, match="forced"):

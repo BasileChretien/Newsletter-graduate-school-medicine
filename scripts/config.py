@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -102,22 +103,44 @@ _FALLBACK_REPO = RepoConfig(
 )
 
 
+# Match GitHub HTTPS, SSH (git@github.com:user/repo) and ssh:// forms.
+# Allows dots in repo names (e.g. `meridian.newsletter`).
 _GIT_REMOTE_RE = re.compile(
-    r"^(?:https?://github\.com/|git@github\.com:)"
-    r"(?P<user>[^/]+)/(?P<repo>[^/.]+?)(?:\.git)?/?$"
+    r"^(?:https?://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"(?P<user>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?/?$"
 )
 
 
-def _resolve_repo_config(cwd: Path = PROJECT_ROOT) -> RepoConfig:
+def _read_git_origin(cwd: Path) -> str:
+    """Return `git remote get-url origin` stdout, or '' on any failure.
+
+    Narrow exception handling so a real bug in subprocess wiring
+    doesn't get masked by the broad `except Exception` of the past.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=str(cwd), capture_output=True, text=True,
+            timeout=5, check=False,
+        )
+        return (result.stdout or "").strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired,
+            subprocess.SubprocessError, OSError) as e:
+        log.debug("Could not read git origin: %s", e)
+        return ""
+
+
+@functools.cache
+def get_default_repo() -> RepoConfig:
     """Resolve the GitHub repo coordinates used to build raw image URLs.
 
     Resolution order:
       1. Env vars MERIDIAN_REPO_USER / MERIDIAN_REPO_NAME / MERIDIAN_REPO_BRANCH
-      2. `git remote get-url origin` (parsed for github.com/<user>/<repo>)
+      2. `git remote get-url origin` (HTTPS / SSH / ssh:// all accepted)
       3. Hard-coded fallback (project's original home)
 
-    Forks, renames and clones into a different account all "just work"
-    without code edits.
+    Lazy + cached: not called at import time. Avoids a 5-second
+    blocking subprocess on every test collection / module reload.
     """
     env_user = os.environ.get("MERIDIAN_REPO_USER")
     env_repo = os.environ.get("MERIDIAN_REPO_NAME")
@@ -127,24 +150,20 @@ def _resolve_repo_config(cwd: Path = PROJECT_ROOT) -> RepoConfig:
             user=env_user, repo=env_repo, branch=env_branch or "main",
         )
 
-    try:
-        result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            cwd=str(cwd), capture_output=True, text=True,
-            timeout=5, check=False,
+    url = _read_git_origin(PROJECT_ROOT)
+    m = _GIT_REMOTE_RE.match(url) if url else None
+    if m:
+        return RepoConfig(
+            user=m.group("user"),
+            repo=m.group("repo"),
+            branch=env_branch or "main",
         )
-        url = (result.stdout or "").strip()
-        m = _GIT_REMOTE_RE.match(url)
-        if m:
-            return RepoConfig(
-                user=m.group("user"),
-                repo=m.group("repo"),
-                branch=env_branch or "main",
-            )
-    except Exception as e:
-        log.debug("Could not auto-detect repo from git remote: %s", e)
-
     return _FALLBACK_REPO
 
 
-DEFAULT_REPO = _resolve_repo_config()
+def __getattr__(name: str):
+    """Lazy attribute lookup so legacy `from scripts.config import DEFAULT_REPO`
+    still works, but the `git remote` call only fires on first access."""
+    if name == "DEFAULT_REPO":
+        return get_default_repo()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

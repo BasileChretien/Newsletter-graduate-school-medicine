@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.composer import load_recipients
+from scripts.recipients import load_recipients
 
 
 def test_load_recipients_empty_when_missing(tmp_path: Path):

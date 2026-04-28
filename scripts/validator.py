@@ -15,10 +15,21 @@ from scripts.config import GMAIL_CLIP_BYTES
 log = logging.getLogger(__name__)
 
 
-# Matches typical leftover placeholder text like [Author(s)], [YYYY/MM/DD],
-# [Country], [Paper Title]. Excludes already-filled bracketed text by
-# requiring the first character to be uppercase letter.
+# Matches typical leftover placeholder text like [Author(s)],
+# [YYYY/MM/DD], [Country], [Paper Title]. The pattern is intentionally
+# broad -- it catches every unfilled placeholder in the template -- so
+# legitimate scholarly citations like `[Fig. 1]` or `[J Med Chem 2023]`
+# may be flagged too. Acceptable trade-off: validator output now says
+# "Reminder: …review before sending", not "ERROR". False positives in
+# real citations are easy for the editor to dismiss visually.
 PLACEHOLDER_RE = re.compile(r"\[[A-Z][^\[\]]{1,60}\]")
+# Lines that look like citations or editorial markers we DO know are
+# legitimate -- exclude these from the warning.
+_LEGIT_BRACKETED = re.compile(
+    r"^\[(?:Sic|Ed\.?|Fig\.|Table\b|cf\.|et al\.|"
+    r"\d+|"                    # numbered citation
+    r"[A-Z][a-z]+ \d{4})"      # author-year [Smith 2023]
+)
 
 
 @dataclass(frozen=True)
@@ -49,17 +60,24 @@ def _check_url(url: str, timeout: float = 3.0) -> bool:
 
 
 def _scan_placeholders(html: str) -> tuple[str, ...]:
-    """Find unfilled [Placeholder] text in the rendered HTML body."""
+    """Find unfilled [Placeholder] text in the rendered HTML body.
+
+    Recognised citation forms (`[Fig. 1]`, `[1]`, `[Smith 2023]`,
+    `[Sic]`, etc.) are excluded so legitimate scholarly content
+    doesn't trigger the warning.
+    """
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
     found = PLACEHOLDER_RE.findall(text)
-    # De-duplicate while preserving order.
     seen: set[str] = set()
     out: list[str] = []
     for ph in found:
-        if ph not in seen:
-            seen.add(ph)
-            out.append(ph)
+        if _LEGIT_BRACKETED.match(ph):
+            continue
+        if ph in seen:
+            continue
+        seen.add(ph)
+        out.append(ph)
     return tuple(out)
 
 
@@ -97,12 +115,16 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         )
 
     if placeholders:
-        # Don't block the build, but make the warning loud.
+        # Friendly nudge -- the build SUCCEEDED. We just want to warn the
+        # editor that some bracket-style placeholders are still in the
+        # text. Cap at 5 so the message is scannable; non-blocking.
+        sample = ", ".join(placeholders[:5])
+        more = (f" (+{len(placeholders) - 5} more)"
+                if len(placeholders) > 5 else "")
         warnings.append(
-            f"{len(placeholders)} unfilled placeholder(s) found in the "
-            f"newsletter body: {', '.join(placeholders[:6])}"
-            + ("..." if len(placeholders) > 6 else "")
-            + " -- these will appear literally in the sent email."
+            f"Reminder: {len(placeholders)} placeholder(s) still in the "
+            f"newsletter -- {sample}{more}. The email was built; review "
+            "before sending."
         )
 
     if broken_images:

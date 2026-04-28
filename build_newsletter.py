@@ -20,12 +20,11 @@ from pathlib import Path
 import click
 
 from scripts import build_template as bt
-from scripts.composer import (
-    compose as compose_email, detect_default_mail_handler, load_recipients,
-)
+from scripts.mail import compose, detect_default_mail_handler
+from scripts.recipients import load_recipients
 from scripts.config import (
-    ASSETS_DIR, DEFAULT_REPO, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
-    ORIGINAL_TEMPLATE, PROJECT_ROOT, TITLE,
+    ASSETS_DIR, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
+    ORIGINAL_TEMPLATE, PROJECT_ROOT, TITLE, get_default_repo,
 )
 from scripts.docx_parser import ImageRef, parse
 from scripts.image_handler import (
@@ -76,14 +75,14 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool):
 
     # 3) Build URL map for embedded images (by basename)
     url_map = {
-        name: to_raw_url(p, PROJECT_ROOT, DEFAULT_REPO)
+        name: to_raw_url(p, PROJECT_ROOT, get_default_repo())
         for name, p in embedded.items()
     }
 
     # 4) Build drop-image inserts grouped by section
     drop_inserts: dict[int, list[ImageRef]] = defaultdict(list)
     for d in drops:
-        url = to_raw_url(d.dst_path, PROJECT_ROOT, DEFAULT_REPO)
+        url = to_raw_url(d.dst_path, PROJECT_ROOT, get_default_repo())
         drop_inserts[d.section].append(ImageRef(
             rel_id="", filename=d.dst_path.name, alt=d.slug, url=url,
         ))
@@ -207,14 +206,17 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
         sys.exit(1)
     html = out.read_text(encoding="utf-8")
     subject = _subject_for(issue, Path(input_path) if input_path else None)
-    bcc = "; ".join(load_recipients(RECIPIENTS_PATH)) or None
-    used = compose_email(html, subject=subject, backend=backend,
-                         preview_path=out, bcc=bcc)
+    recipients = load_recipients(RECIPIENTS_PATH)
+    bcc = "; ".join(recipients) or None
+    used = compose(html, subject=subject, backend=backend,
+                   preview_path=out, bcc=bcc)
     click.echo(f"Email draft opened via: {used}")
     click.echo(f"Subject: {subject}")
-    if bcc:
-        n = len(load_recipients(RECIPIENTS_PATH))
-        click.echo(f"BCC pre-filled with {n} recipient(s) from recipients.txt")
+    if recipients:
+        click.echo(
+            f"BCC pre-filled with {len(recipients)} recipient(s) "
+            "from recipients.txt"
+        )
 
 
 @cli.command("all")
@@ -251,15 +253,18 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
 
     html = out.read_text(encoding="utf-8")
     subject = _subject_for(issue, Path(input_path))
-    bcc = "; ".join(load_recipients(RECIPIENTS_PATH)) or None
+    recipients = load_recipients(RECIPIENTS_PATH)
+    bcc = "; ".join(recipients) or None
     try:
-        used = compose_email(html, subject=subject, backend=backend,
-                             preview_path=out, bcc=bcc)
+        used = compose(html, subject=subject, backend=backend,
+                       preview_path=out, bcc=bcc)
         click.echo(f"Email draft opened via: {used}")
         click.echo(f"Subject: {subject}")
-        if bcc:
-            n = len(load_recipients(RECIPIENTS_PATH))
-            click.echo(f"BCC pre-filled with {n} recipient(s) from recipients.txt")
+        if recipients:
+            click.echo(
+                f"BCC pre-filled with {len(recipients)} recipient(s) "
+                "from recipients.txt"
+            )
     except Exception as e:
         click.echo(f"Could not open email draft ({e}). Opening preview instead.",
                    err=True)

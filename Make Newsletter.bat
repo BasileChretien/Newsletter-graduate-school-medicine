@@ -4,25 +4,73 @@ cd /d "%~dp0"
 chcp 65001 >nul
 title Make Newsletter - Meridian
 
+REM Detect locale: if Windows / user language tag begins with `ja`, switch
+REM to Japanese-only output. Otherwise English-only. The editor sees ONE
+REM language per run (round-2 UX H1) instead of the bilingual wall.
+set "LANG_PREFIX="
+for /f "usebackq tokens=*" %%L in (`powershell -NoProfile -Command "(Get-WinSystemLocale).Name + ' ' + (Get-Culture).Name" 2^>nul`) do set "LANG_PREFIX=%%L"
+set "JP=0"
+echo !LANG_PREFIX! | findstr /b /i "ja" >nul && set "JP=1"
+echo !LANG_PREFIX! | findstr /i "ja-" >nul && set "JP=1"
+
+if "!JP!"=="1" (
+    set "BANNER=  MERIDIAN  -  ニュースレター作成ツール"
+    set "PROMPT_ISSUE=号数 (例 3): "
+    set "PROMPT_DOCX_DEFAULT=Wordファイル"
+    set "PROMPT_DOCX_EXPLICIT=Wordファイル名"
+    set "MSG_NO_PYTHON=エラー: Python がインストールされていないか、PATH に登録されていません。"
+    set "MSG_NO_PYTHON_HINT=https://www.python.org/downloads/ から Python をインストールしてください。最初の画面で「Add Python to PATH」のチェックを入れてください。"
+    set "MSG_SETUP_HEADING=初回セットアップを実行中"
+    set "MSG_SETUP_BODY=ツールの依存関係をインストールしています。1〜2分かかります。"
+    set "MSG_DONT_CLOSE=*** このウィンドウを閉じないでください ***"
+    set "MSG_DONT_CLOSE_BODY=最大2分間、固まっているように見える場合があります。正常に動作中ですので、そのままお待ちください。"
+    set "MSG_SETUP_FAIL=エラー: 依存関係のインストールに失敗しました。"
+    set "MSG_SETUP_DONE=セットアップ完了。(このメッセージは次回以降表示されません)"
+    set "MSG_NO_ISSUE=号数が入力されていません。終了します。"
+    set "MSG_BAD_ISSUE=エラー: 有効な号数ではありません。3 や 12 のような正の整数を入力してください。"
+    set "MSG_NO_FILE=ファイル名が入力されていません。終了します。"
+    set "MSG_FILE_NOT_FOUND=エラー: ファイルが見つかりません:"
+    set "MSG_FILE_HINT=Word ファイルがこのフォルダにあることを確認してください:"
+    set "MSG_BUILD=作成中..."
+    set "MSG_DONE_OK=完了。メールの下書きが開いているはずです。"
+    set "MSG_DONE_NOTE=重要: メールはまだ送信されていません。宛先を入力し、内容を確認してから「送信」をクリックしてください。"
+    set "MSG_DONE_FAIL=問題が発生しました。上のメッセージをご確認ください。"
+) else (
+    set "BANNER=  MERIDIAN  -  Newsletter Builder"
+    set "PROMPT_ISSUE=Issue number (e.g. 3): "
+    set "PROMPT_DOCX_DEFAULT=Word file"
+    set "PROMPT_DOCX_EXPLICIT=Word file name"
+    set "MSG_NO_PYTHON=ERROR: Python is not installed or not on PATH."
+    set "MSG_NO_PYTHON_HINT=Install Python from https://www.python.org/downloads/ and tick \"Add Python to PATH\" on the first install screen."
+    set "MSG_SETUP_HEADING=FIRST-TIME SETUP IN PROGRESS"
+    set "MSG_SETUP_BODY=Installing toolkit dependencies. This takes about 1-2 minutes."
+    set "MSG_DONT_CLOSE=*** PLEASE DO NOT CLOSE THIS WINDOW ***"
+    set "MSG_DONT_CLOSE_BODY=Even if it looks frozen for up to 2 minutes, it is still working. Just wait."
+    set "MSG_SETUP_FAIL=ERROR: Could not install dependencies."
+    set "MSG_SETUP_DONE=Setup complete. (You will not see this message again.)"
+    set "MSG_NO_ISSUE=No issue number entered -- exiting."
+    set "MSG_BAD_ISSUE=ERROR: not a valid issue number. Please enter a positive integer like 3 or 12."
+    set "MSG_NO_FILE=No file name entered -- exiting."
+    set "MSG_FILE_NOT_FOUND=ERROR: file not found:"
+    set "MSG_FILE_HINT=Make sure your filled-in Word file is in this folder:"
+    set "MSG_BUILD=Building..."
+    set "MSG_DONE_OK=Done. Your email draft should now be open."
+    set "MSG_DONE_NOTE=IMPORTANT: nothing has been sent yet. Add recipients in the To: field, review, then click Send yourself."
+    set "MSG_DONE_FAIL=Something went wrong. See the messages above."
+)
+
 echo.
 echo ================================================
-echo   MERIDIAN  -  Newsletter Builder
-echo   メリディアン  -  ニュースレター作成ツール
+echo !BANNER!
 echo ================================================
 echo.
 
 REM 1. Python check ---------------------------------------------------------
 where python >nul 2>&1
 if errorlevel 1 (
-    echo  ERROR: Python is not installed or not on PATH.
-    echo  エラー: Python がインストールされていないか、PATH に登録されていません。
+    echo  !MSG_NO_PYTHON!
     echo.
-    echo  - Install Python from https://www.python.org/downloads/
-    echo    https://www.python.org/downloads/ から Python をインストールしてください。
-    echo  - On the first install screen, tick "Add Python to PATH".
-    echo    最初の画面で「Add Python to PATH」のチェックを入れてください。
-    echo  - Then re-run this launcher.
-    echo    その後、このランチャーをもう一度実行してください。
+    echo  !MSG_NO_PYTHON_HINT!
     echo.
     pause
     exit /b 1
@@ -32,54 +80,39 @@ REM 2. Dependency check (install on first run) ------------------------------
 python -c "import docx, jinja2, click, css_inline" >nul 2>&1
 if errorlevel 1 (
     echo ================================================
-    echo  FIRST-TIME SETUP IN PROGRESS
-    echo  初回セットアップを実行中
+    echo  !MSG_SETUP_HEADING!
     echo ================================================
-    echo  Installing toolkit dependencies. This takes
-    echo  about 1-2 minutes. You only see this once.
-    echo  ツールの依存関係をインストールしています。
-    echo  1〜2分かかります。表示されるのはこの一度だけです。
+    echo  !MSG_SETUP_BODY!
     echo.
-    echo  *** PLEASE DO NOT CLOSE THIS WINDOW ***
-    echo  *** このウィンドウを閉じないでください ***
-    echo  Even if it looks frozen for up to 2 minutes,
-    echo  it is still working. Just wait.
-    echo  最大2分間、固まっているように見える場合があります。
-    echo  正常に動作中ですので、そのままお待ちください。
+    echo  !MSG_DONT_CLOSE!
+    echo  !MSG_DONT_CLOSE_BODY!
     echo ================================================
     echo.
     python -m pip install --disable-pip-version-check -r requirements.txt
     if errorlevel 1 (
         echo.
-        echo  ERROR: Could not install dependencies.
-        echo  エラー: 依存関係のインストールに失敗しました。
-        echo  Please run:  python -m pip install -r requirements.txt
+        echo  !MSG_SETUP_FAIL!
         pause
         exit /b 1
     )
     echo.
-    echo Setup complete. (You will not see this message again.)
-    echo セットアップ完了。(このメッセージは次回以降表示されません)
+    echo !MSG_SETUP_DONE!
     echo.
 )
 
 REM 3. Prompts ---------------------------------------------------------------
 set "ISSUE="
-set /p "ISSUE=Issue number / 号数 (e.g. 3): "
+set /p "ISSUE=!PROMPT_ISSUE!"
 if "!ISSUE!"=="" (
     echo.
-    echo  No issue number entered -- exiting.
-    echo  号数が入力されていません。終了します。
+    echo  !MSG_NO_ISSUE!
     pause
     exit /b 1
 )
 echo !ISSUE! | findstr /r "^[0-9][0-9]*$" >nul
 if errorlevel 1 (
     echo.
-    echo  ERROR: "!ISSUE!" is not a valid issue number.
-    echo  エラー: 有効な号数ではありません。
-    echo  Please enter a positive integer like 3 or 12.
-    echo  3 や 12 のような正の整数を入力してください。
+    echo  !MSG_BAD_ISSUE!
     pause
     exit /b 1
 )
@@ -87,26 +120,23 @@ if errorlevel 1 (
 set "DEFAULT_DOCX=issue-!ISSUE!.docx"
 set "DOCX="
 if exist "!DEFAULT_DOCX!" (
-    set /p "DOCX=Word file / Wordファイル [!DEFAULT_DOCX!]: "
+    set /p "DOCX=!PROMPT_DOCX_DEFAULT! [!DEFAULT_DOCX!]: "
     if "!DOCX!"=="" set "DOCX=!DEFAULT_DOCX!"
 ) else (
-    set /p "DOCX=Word file name / Wordファイル名 (e.g. issue-!ISSUE!.docx): "
+    set /p "DOCX=!PROMPT_DOCX_EXPLICIT! (e.g. issue-!ISSUE!.docx): "
 )
 
 if "!DOCX!"=="" (
     echo.
-    echo  No file name entered -- exiting.
-    echo  ファイル名が入力されていません。終了します。
+    echo  !MSG_NO_FILE!
     pause
     exit /b 1
 )
 
 if not exist "!DOCX!" (
     echo.
-    echo  ERROR: file not found:  !DOCX!
-    echo  エラー: ファイルが見つかりません:  !DOCX!
-    echo  Make sure your filled-in Word file is in this folder:
-    echo  Word ファイルがこのフォルダにあることを確認してください:
+    echo  !MSG_FILE_NOT_FOUND!  !DOCX!
+    echo  !MSG_FILE_HINT!
     echo    %CD%
     pause
     exit /b 1
@@ -114,8 +144,7 @@ if not exist "!DOCX!" (
 
 REM 4. Run the pipeline ------------------------------------------------------
 echo.
-echo Building issue !ISSUE! from !DOCX! ...
-echo 第 !ISSUE! 号を !DOCX! から作成中...
+echo !MSG_BUILD!
 echo.
 python build_newsletter.py all --input "!DOCX!" --issue !ISSUE!
 set "RC=!errorlevel!"
@@ -123,17 +152,11 @@ set "RC=!errorlevel!"
 echo.
 echo ================================================
 if "!RC!"=="0" (
-    echo  Done. Your email draft should now be open.
-    echo  メールの下書きが開いているはずです。
+    echo  !MSG_DONE_OK!
     echo.
-    echo  IMPORTANT: nothing has been sent yet.
-    echo  Add recipients in the To: field, review,
-    echo  then click Send yourself.
-    echo  重要: メールはまだ送信されていません。
-    echo  宛先を入力し、内容を確認してから「送信」をクリックしてください。
+    echo  !MSG_DONE_NOTE!
 ) else (
-    echo  Something went wrong. See the messages above.
-    echo  問題が発生しました。上のメッセージをご確認ください。
+    echo  !MSG_DONE_FAIL!
 )
 echo ================================================
 echo.

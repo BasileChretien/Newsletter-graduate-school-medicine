@@ -40,6 +40,18 @@ def _resolve_media(html: str, url_map: dict[str, str]) -> str:
     return _MEDIA_SENTINEL_RE.sub(_sub, html)
 
 
+# The Nagoya template wraps every placeholder in <em> italic. Once an
+# editor types real content, those <em> wrappers persist into the email
+# and make the whole list/table read like grey-italic placeholder text.
+# Strip <em>...</em> wrappers from rendered body / bullet / cell content.
+# We DO NOT strip <strong> -- bold is still meaningful.
+_EM_WRAPPER_RE = re.compile(r"</?em>", re.IGNORECASE)
+
+
+def _strip_em(html: str) -> str:
+    return _EM_WRAPPER_RE.sub("", html) if html else html
+
+
 def _issue_line_filter(text: str) -> str:
     """Color the pipes in the issue line gold."""
     parts = re.split(r"(\s*\|\s*)", text)
@@ -90,15 +102,17 @@ def attach_image_urls(newsletter: Newsletter, url_map: dict[str, str],
         new_blocks = []
         for block in section.blocks:
             if isinstance(block, BodyParagraph):
-                new_blocks.append(replace(
-                    block, html=_resolve_media(block.html, url_map)))
+                html = _strip_em(_resolve_media(block.html, url_map))
+                new_blocks.append(replace(block, html=html))
             elif isinstance(block, BulletList):
                 new_items = tuple(
-                    _resolve_media(item, url_map) for item in block.items)
+                    _strip_em(_resolve_media(item, url_map))
+                    for item in block.items
+                )
                 new_blocks.append(replace(block, items=new_items))
             elif isinstance(block, TableBlock):
                 new_rows = tuple(
-                    tuple(_resolve_media(c, url_map) for c in row)
+                    tuple(_strip_em(_resolve_media(c, url_map)) for c in row)
                     for row in block.rows
                 )
                 new_blocks.append(replace(block, rows=new_rows))
