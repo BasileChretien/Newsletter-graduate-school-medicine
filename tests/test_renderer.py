@@ -105,13 +105,13 @@ def test_inliner_inlines_styles():
     nl = _sample_newsletter()
     raw = render(nl)
     final = inline(raw)
-    # The only <style> remaining should be inside the MSO conditional comment.
-    # Strip MSO comments and confirm no orphan <style> blocks exist.
-    import re
-    stripped = re.sub(r"<!--\[if mso\]>.*?<!\[endif\]-->", "", final,
-                      flags=re.DOTALL)
-    assert "<style" not in stripped
-    # Inlined background color from masthead style
+    # Most rules are inlined as style="..." attributes; the only <style>
+    # blocks that survive are (a) the MSO conditional fallback and
+    # (b) a small kept-block carrying @media print + Apple data-detector
+    # overrides that intentionally cannot be inlined.
+    assert "@media print" in final
+    assert "x-apple-data-detectors" in final
+    # Inlined masthead background colour from styles.css.
     assert "background-color: #F7F2EA".lower() in final.lower() or \
            "background-color:#F7F2EA".lower() in final.lower()
 

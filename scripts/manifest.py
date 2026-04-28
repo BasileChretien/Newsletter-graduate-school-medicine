@@ -129,26 +129,27 @@ def write_manifest(*, issue: int, asset_dir: Path, source_docx: Path,
 
 
 def load_manifest(asset_dir: Path) -> IssueManifest | None:
-    """Return the manifest for an issue's asset dir, or None if missing."""
+    """Return the manifest for an issue's asset dir, or None if missing
+    or unreadable. Robust against corrupted / null fields."""
     p = asset_dir / MANIFEST_FILENAME
     if not p.exists():
         return None
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
         return IssueManifest(
-            issue=int(data["issue"]),
-            title=data.get("title", ""),
-            subject=data.get("subject", ""),
-            docx_sha256=data["docx_sha256"],
-            built_at=data["built_at"],
-            dean_name=data.get("dean_name", ""),
-            dean_title=data.get("dean_title", ""),
-            files=tuple(data.get("files", ())),
-            file_count=int(data.get("file_count", 0)),
-            image_count=int(data.get("image_count", 0)),
-            output_html=data.get("output_html", ""),
+            issue=int(data.get("issue") or 0),
+            title=data.get("title") or "",
+            subject=data.get("subject") or "",
+            docx_sha256=data.get("docx_sha256") or "",
+            built_at=data.get("built_at") or "",
+            dean_name=data.get("dean_name") or "",
+            dean_title=data.get("dean_title") or "",
+            files=tuple(data.get("files") or ()),
+            file_count=int(data.get("file_count") or 0),
+            image_count=int(data.get("image_count") or 0),
+            output_html=data.get("output_html") or "",
         )
-    except Exception as e:
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
         log.debug("Could not parse manifest at %s: %s", p, e)
         return None
 

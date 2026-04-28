@@ -33,7 +33,7 @@ if "!JP!"=="1" (
     set "MSG_FILE_HINT=Word ファイルがこのフォルダにあることを確認してください:"
     set "MSG_BUILD=作成中..."
     set "MSG_DONE_OK=完了。メールの下書きが開いているはずです。"
-    set "MSG_DONE_NOTE=重要: メールはまだ送信されていません。宛先を入力し、内容を確認してから「送信」をクリックしてください。"
+    set "MSG_DONE_NOTE=重要: メールはまだ送信されていません。宛先を入力し、内容を確認してから「送信」をクリックしてください。ヒント: 毎号同じ宛先なら recipients.example.txt を recipients.txt にコピーして編集すれば、次回以降 BCC に自動で入ります。"
     set "MSG_DONE_FAIL=問題が発生しました。上のメッセージをご確認ください。"
 ) else (
     set "BANNER=  MERIDIAN  -  Newsletter Builder"
@@ -55,7 +55,7 @@ if "!JP!"=="1" (
     set "MSG_FILE_HINT=Make sure your filled-in Word file is in this folder:"
     set "MSG_BUILD=Building..."
     set "MSG_DONE_OK=Done. Your email draft should now be open."
-    set "MSG_DONE_NOTE=IMPORTANT: nothing has been sent yet. Add recipients in the To: field, review, then click Send yourself."
+    set "MSG_DONE_NOTE=IMPORTANT: nothing has been sent yet. Add recipients in the To: field, review, then click Send yourself. Tip: copy recipients.example.txt to recipients.txt to skip typing the list next issue."
     set "MSG_DONE_FAIL=Something went wrong. See the messages above."
 )
 

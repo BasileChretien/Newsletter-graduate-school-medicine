@@ -12,13 +12,17 @@ log = logging.getLogger(__name__)
 
 
 def _run(cmd: list[str], cwd: Path = PROJECT_ROOT) -> str:
-    log.debug("Running: %s", " ".join(cmd))
+    """Run a git command with a 60-second timeout so a stale remote
+    cannot hang the editor's pipeline indefinitely."""
+    import shlex
+    log.debug("Running: %s", shlex.join(cmd))
     result = subprocess.run(
-        cmd, cwd=str(cwd), capture_output=True, text=True, check=False
+        cmd, cwd=str(cwd), capture_output=True, text=True,
+        check=False, timeout=60,
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"Command failed: {' '.join(cmd)}\n"
+            f"Command failed: {shlex.join(cmd)}\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
     return result.stdout.strip()

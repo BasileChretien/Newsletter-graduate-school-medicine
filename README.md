@@ -243,11 +243,25 @@ You can ignore most of these — they just need to be there.
 
 Technical details for whoever maintains the toolkit:
 
-- **Stack:** Python 3.12, `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`.
-- **Visual identity:** primary `#8B1A1F` (NU wine red), accent `#C9A96E` (warm gold), text `#1C1C1E`, muted `#6B6B70`, cream `#F7F2EA`. Cambria headings, Calibri body.
-- **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline`, MSO conditional ghost tables for Outlook desktop, `meta color-scheme` for dark-mode best effort. Validator emits warning if rendered HTML exceeds Gmail's 102 KB clip threshold.
-- **Module map:** `scripts/build_template.py` (DOCX builder) · `scripts/docx_parser.py` (DOCX → `Newsletter` dataclass) · `scripts/image_handler.py` (embedded + drop-folder, GitHub raw URL builder) · `scripts/renderer.py` + `templates/*.j2` (Jinja2 → HTML) · `scripts/inliner.py` (`css_inline`) · `scripts/validator.py` (HEAD checks + size warning) · `scripts/publisher.py` (git add/commit/push of `assets/issue-N/`) · `scripts/oxml_helpers.py` (raw OXML for shading, borders, fields).
+- **Stack:** Python 3.12, `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
+- **Visual identity:** primary `#8B1A1F` (NU wine red), accent `#C9A96E` (warm gold, decorative), `#A8864B` (warm gold, AA-compliant for text/markers), text `#1C1C1E`, muted `#6B6B70`, cream `#F7F2EA`, zebra `#EFE7D6`. Cambria headings, Calibri body.
+- **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline` plus a small kept-`<style>` block carrying `@media print`, dark-mode hints, and Apple-Mail data-detector overrides. MSO conditional ghost tables for Outlook desktop. `bgcolor` HTML attributes on masthead/header/footer survive Gmail iOS forced inversion. Validator: 80 KB early warning, 102 KB Gmail clip warning, broken-URL **warnings** (no longer hard errors).
+- **Module map:**
+  - `scripts/build_template.py` — DOCX builder, named table indices (`TABLE_*`), `_normalize_body_run()` helper.
+  - `scripts/docx_parser.py` — DOCX → `Newsletter` dataclass; inline-image detection via `media://` sentinels.
+  - `scripts/image_handler.py` — embedded + drop-folder, magic-bytes allowlist, raw-URL builder.
+  - `scripts/renderer.py` + `templates/*.j2` — Jinja2 → HTML, highlight-card detection, `<em>` stripping.
+  - `scripts/inliner.py` — `css_inline` + kept-`<style>` block.
+  - `scripts/validator.py` — parallel HEAD checks (max 8 workers), placeholder regex, size + reminder warnings.
+  - `scripts/publisher.py` — `git add/commit/push` of `assets/issue-N/`; 60-second subprocess timeout.
+  - `scripts/manifest.py` — per-issue audit trail (DOCX SHA-256, dean info, file inventory); preserves audit data on same-hash re-builds.
+  - `scripts/mail/` — backend package with `MailBackend` Protocol; `OutlookBackend` (Windows COM), `ClipboardMailtoBackend` (universal). Add backends by appending to `_BACKENDS` in `__init__.py`.
+  - `scripts/recipients.py` — `recipients.txt` reader with RFC-5322 + injection guard.
+  - `scripts/i18n.py` — `tomllib` locale loader (`en` + `ja`).
+  - `scripts/oxml_helpers.py` — raw OXML for shading, borders, fields, fixed table layout.
+- **Repo coordinates:** `scripts.config.get_default_repo()` resolves lazily from (1) `MERIDIAN_REPO_USER`/`_NAME`/`_BRANCH` env vars → (2) `git remote get-url origin` → (3) hard-coded fallback. Forks and renames "just work".
+- **Locale override:** `MERIDIAN_LOCALE=ja` for explicit Japanese; otherwise launchers detect system locale.
 - **Constraints:** section names and content are not edited by the script — only the visual style is. Nested tables in DOCX are unsupported. Drop-image regex: `^s(?P<section>\d+)_(?P<order>\d+)_(?P<slug>[a-z0-9-]+)\.(jpg|jpeg|png|webp|gif)$`.
-- **Tests:** `python -m pytest tests/ --cov=scripts` — pure-logic modules (parser, image handler, renderer, inliner, validator, composer) are well covered; `build_template.py`, `oxml_helpers.py`, and `publisher.py` are exercised end-to-end via the smoke build rather than unit tests.
+- **Tests:** `python -m pytest tests/ --cov=scripts` — pure-logic modules (parser, image handler, renderer, inliner, validator, composer, manifest, recipients, i18n) are well covered; `build_template.py`, `oxml_helpers.py`, and `publisher.py` are exercised end-to-end via the smoke build rather than unit tests.
 - **Rebuild the template after design tweaks:** `python build_newsletter.py build-template`.
 - **Smoke test:** `python build_newsletter.py build --input Meridian_Newsletter_Template.docx --issue 0 --no-remote-check`.

@@ -118,8 +118,8 @@ def _build_pipeline(input_path: Path, issue: int, *, validate_remote: bool
             subject=subject,
             output_html=out_html,
         )
-        log.info("Manifest: %s files (sha %s...)",
-                 manifest.file_count, manifest.docx_sha256[:8])
+        log.debug("Manifest: %s files (sha %s...)",
+                  manifest.file_count, manifest.docx_sha256[:8])
     except Exception as e:
         log.warning("Could not write manifest: %s", e)
 

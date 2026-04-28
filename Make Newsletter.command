@@ -42,7 +42,7 @@ if [[ $JP -eq 1 ]]; then
     MSG_FILE_HINT="Word ファイルがこのフォルダにあることを確認してください:"
     MSG_BUILD="作成中..."
     MSG_DONE_OK="完了。メールの下書きが開いているはずです。"
-    MSG_DONE_NOTE="重要: メールはまだ送信されていません。宛先を入力し、内容を確認してから「送信」をクリックしてください。"
+    MSG_DONE_NOTE="重要: メールはまだ送信されていません。宛先を入力し、内容を確認してから「送信」をクリックしてください。ヒント: 毎号同じ宛先なら recipients.example.txt を recipients.txt にコピーして編集すれば、次回以降 BCC に自動で入ります。"
     MSG_DONE_FAIL="問題が発生しました。上のメッセージをご確認ください。"
     PRESS_ENTER="Enter キーで閉じる..."
 else
@@ -65,7 +65,7 @@ else
     MSG_FILE_HINT="Make sure your filled-in Word file is in this folder:"
     MSG_BUILD="Building..."
     MSG_DONE_OK="Done. Your email draft should now be open."
-    MSG_DONE_NOTE="IMPORTANT: nothing has been sent yet. Add recipients in the To: field, review, then click Send yourself."
+    MSG_DONE_NOTE="IMPORTANT: nothing has been sent yet. Add recipients in the To: field, review, then click Send yourself. Tip: copy recipients.example.txt to recipients.txt to skip typing the list next issue."
     MSG_DONE_FAIL="Something went wrong. See the messages above."
     PRESS_ENTER="Press Enter to close..."
 fi
