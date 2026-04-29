@@ -3,34 +3,34 @@
 # literal accuracy.
 
 [launcher]
-banner = "MERIDIAN  -  ニュースレター作成ツール"
+banner = "MERIDIAN — ニュースレター作成ツール"
 
 [setup]
-heading = "初回セットアップを実行中"
-body_1 = "ツールの依存関係をインストールしています。"
-body_2 = "1〜2分かかります。表示されるのはこの一度だけです。"
-do_not_close = "*** このウィンドウを閉じないでください ***"
-do_not_close_2 = "最大2分間、固まっているように見える場合があります。"
-do_not_close_3 = "正常に動作中ですので、そのままお待ちください。"
-done = "セットアップ完了。(このメッセージは次回以降表示されません)"
+heading = "初回セットアップを実行しています"
+body_1 = "ツールの依存ライブラリをインストールしています。"
+body_2 = "完了まで 1〜2 分ほどかかります。このメッセージが表示されるのは初回のみです。"
+do_not_close = "【重要】この画面は閉じないでください"
+do_not_close_2 = "処理中に画面が止まったように見える場合があります（最大 2 分程度）。"
+do_not_close_3 = "処理は正常に進行していますので、そのままお待ちください。"
+done = "セットアップが完了しました。（このメッセージは次回以降表示されません。）"
 
 [prompts]
-issue_number = "号数 / Issue number (例 3)"
-docx_filename_default = "Wordファイル / Word file"
-docx_filename_explicit = "Wordファイル名 (例 issue-{n}.docx)"
+issue_number = "号数（例：3）"
+docx_filename_default = "Word ファイル"
+docx_filename_explicit = "Word ファイル名（例：issue-{n}.docx）"
 
 [errors]
-no_python = "エラー: Pythonがインストールされていないか、PATHが通っていません。"
-no_python_hint_1 = "https://www.python.org/downloads/ からPythonをインストールしてください。"
+no_python = "エラー：Python がインストールされていないか、PATH が通っていません。"
+no_python_hint_1 = "https://www.python.org/downloads/ から Python をインストールしてください。"
 no_python_hint_2 = "最初の画面で「Add Python to PATH」のチェックを入れてください。"
-no_python_hint_3 = "その後、このランチャーをもう一度実行してください。"
-no_issue = "号数が入力されていません。終了します。"
-bad_issue = "エラー: 有効な号数ではありません。3 や 12 のような正の整数を入力してください。"
-no_filename = "ファイル名が入力されていません。終了します。"
-file_not_found = "エラー: ファイルが見つかりません:"
-file_not_found_hint = "Wordファイルがこのフォルダ内にあることを確認してください。"
+no_python_hint_3 = "インストール後、本ランチャーをもう一度実行してください。"
+no_issue = "号数が入力されていないため、処理を中止します。"
+bad_issue = "エラー：号数の形式が正しくありません。3 や 12 のような正の整数を入力してください。"
+no_filename = "ファイル名が入力されていないため、処理を中止します。"
+file_not_found = "エラー：ファイルが見つかりません："
+file_not_found_hint = "Word ファイルが本フォルダ内に保存されているかご確認ください。"
 
 [outcomes]
-done_ok = "完了。メールの下書きが開いているはずです。"
+done_ok = "完了しました。メールの下書きが表示されているかご確認ください。"
 done_fail = "問題が発生しました。上のメッセージをご確認ください。"
-press_enter = "Enter キーで閉じる..."
+press_enter = "Enter キーを押して閉じてください…"
