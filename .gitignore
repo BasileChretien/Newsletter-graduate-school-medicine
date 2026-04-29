@@ -18,6 +18,11 @@ drop-images/*
 recipients.txt
 issue-*.docx
 
+# Per-machine first-run marker dropped by the launcher to suppress the
+# "first run" welcome banner on subsequent runs. Per-clone state, never
+# committed.
+.meridian_first_run
+
 # Per-issue published assets are PUBLIC and PERMANENT (raw URL +
 # git history). Two safeguards:
 #   1. Don't commit asset directories implicitly. The publish-images

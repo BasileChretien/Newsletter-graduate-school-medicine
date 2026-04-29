@@ -76,6 +76,44 @@ echo "$BANNER"
 echo "================================================"
 echo
 
+# 0. First-run welcome -------------------------------------------------------
+# If the editor just clicked through macOS Gatekeeper, they want to know it
+# was supposed to do that. Show the welcome ONCE, then drop a marker so it
+# doesn't reappear. The marker is .gitignore'd.
+if [[ ! -f ".meridian_first_run" ]]; then
+    if [[ $JP -eq 1 ]]; then
+        echo "  ようこそ MERIDIAN へ。本ランチャーの初回起動です。"
+        echo
+        echo "  このウィンドウが開く前に macOS が「Apple は不正な"
+        echo "  ソフトウェアでないか確認できません」と警告を表示した"
+        echo "  場合、それは想定どおりの動作です。本ランチャーは"
+        echo "  小さなスクリプトファイルであり、署名済みの商用"
+        echo "  アプリケーションではないため、macOS は内容に関わらず"
+        echo "  この種のスクリプトすべてに同じ警告を表示します。"
+        echo
+        echo "  macOS は今回の「開く」操作を記憶しますので、このファイル"
+        echo "  に対して同じ警告が再度表示されることはありません。本歓迎"
+        echo "  メッセージも次回以降は表示されません。"
+    else
+        echo "  Welcome to MERIDIAN -- this is your first run."
+        echo
+        echo "  If macOS showed an \"Apple cannot check it for"
+        echo "  malicious software\" warning before this window"
+        echo "  opened, that's expected. The launcher is a small"
+        echo "  script, not a signed commercial app, so macOS warns"
+        echo "  about it the same way it warns about every"
+        echo "  unsigned script -- regardless of what's in it."
+        echo
+        echo "  macOS now remembers your decision; you won't see"
+        echo "  the warning again on this launcher. This welcome"
+        echo "  message also won't reappear after this run."
+    fi
+    echo
+    echo "================================================"
+    echo
+    echo "first-run completed" > .meridian_first_run
+fi
+
 # 1. Python check ------------------------------------------------------------
 if command -v python3 >/dev/null 2>&1; then
     PY=python3

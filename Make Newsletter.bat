@@ -21,6 +21,29 @@ echo   MERIDIAN  -  Newsletter Builder
 echo ================================================
 echo.
 
+REM 0. First-run welcome -----------------------------------------------------
+REM Detect first run via a marker file. If the editor just clicked through
+REM Windows SmartScreen ("Windows protected your PC"), they're going to want
+REM reassurance that it was supposed to do that. Print the welcome ONCE.
+REM .meridian_first_run is gitignored so it doesn't pollute the repo.
+if not exist ".meridian_first_run" (
+    echo  Welcome to MERIDIAN -- this is your first run.
+    echo.
+    echo  If Windows showed a "Windows protected your PC" warning
+    echo  before this window opened, that's expected. The launcher
+    echo  is a small script, not a signed commercial app, so Windows
+    echo  warns about it the same way it warns about every script
+    echo  downloaded from the internet -- regardless of what's in it.
+    echo.
+    echo  Windows now remembers your "Run anyway" choice for this
+    echo  file; you won't see the warning again on this launcher.
+    echo  This welcome message also won't reappear after this run.
+    echo.
+    echo ================================================
+    echo.
+    > ".meridian_first_run" echo first-run completed
+)
+
 REM 1. Python check ---------------------------------------------------------
 where python >nul 2>&1
 if errorlevel 1 (

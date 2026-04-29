@@ -186,6 +186,13 @@ In the project folder, find this file and **double-click it**:
 - **Windows:** `Make Newsletter.bat`
 - **macOS:** `Make Newsletter.command`
 
+> ⚠️ **First time only — your computer will warn you. This is expected, not a problem.**
+>
+> - **Windows** shows a blue full-screen warning: *"Windows protected your PC."* Click **More info → Run anyway**. This appears because the launcher is a small script (not a signed commercial app); Windows shows this dialog for every script downloaded from the internet, regardless of what's in it. Once you click "Run anyway" once, Windows remembers and won't ask again for this file.
+> - **macOS** may show: *"Apple cannot check it for malicious software."* Click **OK** to dismiss, then **right-click** the file → **Open** → click **Open** in the smaller dialog that follows. Same logic as Windows: macOS does this for every unsigned script. After you confirm once, it stops asking. (If macOS refuses entirely, open Terminal in the folder and run `chmod +x "Make Newsletter.command"` once, then double-click again.)
+>
+> **Why doesn't the launcher just sign itself to skip this?** Code-signing requires a paid developer certificate ($100–500/year) for each operating system, plus a separate certificate per institution that forks the toolkit. For a tool that runs once a quarter, the click-through is the better trade-off. We may revisit this when adoption grows. Either way: the launcher source is plain text in this repo — feel free to read `Make Newsletter.bat` / `Make Newsletter.command` before running.
+
 A small black window opens and asks you two things:
 
 ```
