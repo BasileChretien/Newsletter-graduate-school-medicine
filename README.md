@@ -81,15 +81,21 @@ You do **not** need any of the above to use the toolkit as an editor. The setup 
 
 ### Step 1 — Download the toolkit
 
-A small numbered procedure, because "extract a ZIP" trips up more first-time users than any other step:
+The fastest way:
 
-1. Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine> in your web browser.
-2. Click the green **Code** button (top right of the file list).
-3. In the menu that drops down, click **Download ZIP**. Your browser saves a file called `Newsletter-graduate-school-medicine-main.zip` to your **Downloads** folder.
-4. Open the **Downloads** folder (Windows: *File Explorer → Downloads*; macOS: *Finder → Downloads*).
-5. **Right-click** the ZIP file and choose **Extract All…** (Windows) / **double-click** to extract it (macOS).
-6. On Windows, change the destination from the default to **Documents**, then click **Extract**. On macOS the extracted folder lands next to the ZIP — drag it into **Documents** afterwards.
-7. You now have a folder called **`Newsletter-graduate-school-medicine-main`** inside Documents. The trailing `-main` is normal — it's not a sign anything went wrong. **That folder is what you use for every newsletter from now on.**
+> ### 👉 [**Click here to download the toolkit (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip) 👈
+>
+> *(The download starts immediately — no GitHub login, no menus to navigate.)*
+
+Then extract it. Detailed steps, because "extract a ZIP" trips up more first-time users than any other step:
+
+1. Click the download link above. Your browser saves a file called `Newsletter-graduate-school-medicine-main.zip` to your **Downloads** folder.
+2. Open the **Downloads** folder (Windows: *File Explorer → Downloads*; macOS: *Finder → Downloads*).
+3. **Right-click** the ZIP file and choose **Extract All…** (Windows) / **double-click** to extract it (macOS).
+4. On Windows, change the destination from the default to **Documents**, then click **Extract**. On macOS the extracted folder lands next to the ZIP — drag it into **Documents** afterwards.
+5. You now have a folder called **`Newsletter-graduate-school-medicine-main`** inside Documents. The trailing `-main` is normal — it's not a sign anything went wrong. **That folder is what you use for every newsletter from now on.**
+
+> **Prefer the manual route?** Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>, click the green **Code** button (top right of the file list), then click **Download ZIP** in the dropdown. You end up with the same file as the one-click link above.
 
 > ⚠️ **Don't run the launcher from inside the ZIP preview window.** On Windows, double-clicking *into* the ZIP shows the files but they're still compressed; the launcher can't write photos from there. Always extract first, then open the extracted folder.
 

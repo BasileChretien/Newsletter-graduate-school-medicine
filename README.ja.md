@@ -83,15 +83,21 @@ Python 3.12、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`Beautiful
 
 ### ステップ 1 — ツールをダウンロード
 
-ZIP の展開操作で戸惑われる方が多いため、手順を細かく区切って記載します。
+最も簡単な方法：
 
-1. ブラウザで <https://github.com/BasileChretien/Newsletter-graduate-school-medicine> を開きます。
-2. ファイル一覧の右上にある緑色の **Code** ボタンをクリックします。
-3. 開いたメニューから **Download ZIP** をクリックします。`Newsletter-graduate-school-medicine-main.zip` というファイルが **ダウンロード** フォルダに保存されます。
-4. **ダウンロード** フォルダを開きます（Windows：*エクスプローラー → ダウンロード*、macOS：*Finder → ダウンロード*）。
-5. ZIP ファイルを **右クリック** し、**すべて展開…**（Windows）を選択します。macOS では ZIP を **ダブルクリック** すると展開されます。
-6. Windows では展開先を既定値から **ドキュメント** に変更し、**展開** をクリックします。macOS では展開後に出来上がるフォルダを **ドキュメント** にドラッグして移動してください。
-7. ドキュメントの中に **`Newsletter-graduate-school-medicine-main`** というフォルダが作成されます。末尾の `-main` が付いているのは正常な状態です（不具合ではありません）。**毎号、このフォルダをご利用ください。**
+> ### 👉 [**こちらをクリックしてツールをダウンロード（ZIP）**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip) 👈
+>
+> *（クリックすると即座にダウンロードが始まります。GitHub へのログインもメニュー操作も不要です。）*
+
+ダウンロード後の展開手順です。ZIP の展開操作で戸惑われる方が多いため、手順を細かく区切って記載します。
+
+1. 上のリンクをクリックすると、`Newsletter-graduate-school-medicine-main.zip` というファイルが **ダウンロード** フォルダに保存されます。
+2. **ダウンロード** フォルダを開きます（Windows：*エクスプローラー → ダウンロード*、macOS：*Finder → ダウンロード*）。
+3. ZIP ファイルを **右クリック** し、**すべて展開…**（Windows）を選択します。macOS では ZIP を **ダブルクリック** すると展開されます。
+4. Windows では展開先を既定値から **ドキュメント** に変更し、**展開** をクリックします。macOS では展開後に出来上がるフォルダを **ドキュメント** にドラッグして移動してください。
+5. ドキュメントの中に **`Newsletter-graduate-school-medicine-main`** というフォルダが作成されます。末尾の `-main` が付いているのは正常な状態です（不具合ではありません）。**毎号、このフォルダをご利用ください。**
+
+> **手動でダウンロードする場合。** <https://github.com/BasileChretien/Newsletter-graduate-school-medicine> を開き、ファイル一覧右上の緑色の **Code** ボタンをクリックし、ドロップダウンから **Download ZIP** を選択してください。上記のワンクリックリンクと同じファイルが取得できます。
 
 > ⚠️ **ZIP のプレビュー画面の中からランチャーを起動しないでください。** Windows では ZIP をダブルクリックするとファイル一覧が見える状態になりますが、内部はまだ圧縮されたままで、ランチャーは写真を書き出せません。必ず先に「すべて展開」を実行してから、展開後のフォルダ内のランチャーをご利用ください。
 
