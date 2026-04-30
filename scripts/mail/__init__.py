@@ -134,8 +134,18 @@ _BACKENDS: list[MailBackend] = [
 ]
 
 
-def _select_backend(name: str, handler: MailHandler) -> MailBackend:
-    """Pick a backend by explicit name or auto-detect."""
+def select_backend(name: str, handler: MailHandler) -> MailBackend:
+    """Pick a backend by explicit name or auto-detect.
+
+    Public since round-15: `build_newsletter.py:all_cmd` needs to know
+    which backend will actually be used BEFORE running the build, so
+    it can refuse `--image-mode=cid` early when the chosen backend
+    can't attach inline images. Prior to round-15 this was private
+    and `all_cmd` peeked at `handler.is_outlook_desktop` instead --
+    which diverged from the dispatcher's real choice when
+    `OutlookBackend.is_available()` returned False on a Windows box
+    with a partial pywin32 install (round-15 architect HIGH 1).
+    """
     if name == "auto":
         for backend in _BACKENDS:
             if backend.matches(handler) and backend.is_available():
@@ -148,6 +158,10 @@ def _select_backend(name: str, handler: MailHandler) -> MailBackend:
         return next(b for b in _BACKENDS if b.name == "clipboard_mailto")
     raise ValueError(
         f"backend must be 'auto', 'outlook' or 'default' -- got {name!r}")
+
+
+# Backwards-compat alias for any caller still importing the private name.
+_select_backend = select_backend
 
 
 def resolve_image_mode(image_mode: str, handler: MailHandler,
@@ -336,6 +350,7 @@ __all__ = [
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
     "resolve_image_mode",
+    "select_backend",
 ]
 # `load_recipients` is intentionally NOT re-exported -- it's not a
 # mail-backend concern. New code imports from `scripts.recipients`.

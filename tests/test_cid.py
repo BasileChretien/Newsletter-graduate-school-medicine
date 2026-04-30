@@ -486,3 +486,62 @@ def test_inline_image_is_frozen():
     import dataclasses
     with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
         img.cid = "tampered"  # type: ignore[misc]
+
+
+# -- Round-15 architect LOW 4: documented bypass-vector tests ----------
+
+def test_resolve_local_path_rejects_windows_drive_letter(tmp_path: Path):
+    """A crafted URL that smuggles a Windows drive letter into the
+    /assets/ segment must NOT resolve to a file outside the project.
+    On Windows, `joinpath('C:', 'Windows', ...)` produces a drive-anchored
+    absolute path; `Path.resolve()` then escapes the project root,
+    and `is_relative_to()` rejects. On POSIX, `C:` is just an opaque
+    directory name that doesn't exist. Either way the result must
+    be None.
+
+    Pure documentation/regression value -- the round-15 audit
+    confirmed this is already defended; we pin it so a future
+    refactor of `_confined()` can't silently regress."""
+    asset_dir = _make_asset_layout(tmp_path)
+    # Smuggle a drive-letter segment in place of `issue-1`.
+    url = f"{REPO_PREFIX}/assets/C:/Windows/win.ini"
+    resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX)
+    assert resolved is None, (
+        f"Windows drive letter in URL must not resolve outside the "
+        f"project root; got {resolved!r}"
+    )
+
+
+def test_resolve_local_path_rejects_symlink_escape(tmp_path: Path):
+    """If `assets/issue-1/photo1.jpg` is a symlink pointing to a file
+    OUTSIDE the project tree, `_resolve_local_path` must reject it.
+    `Path.resolve(strict=False)` follows symlinks and `is_relative_to()`
+    then catches the escape.
+
+    Skipped on Windows, where creating a symlink requires admin
+    privileges or developer-mode -- `os.symlink` raises OSError
+    otherwise, and we don't want flaky CI."""
+    import os
+    import sys
+
+    asset_dir = _make_asset_layout(tmp_path)
+    outside = tmp_path / "outside" / "secret.jpg"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_bytes(b"\xff\xd8\xff\xe0secret")
+
+    link = asset_dir / "evil.jpg"
+    try:
+        os.symlink(outside, link)
+    except (OSError, NotImplementedError) as e:
+        pytest.skip(f"symlinks unavailable on this platform: {e}")
+
+    if sys.platform == "win32" and not link.is_symlink():
+        pytest.skip("symlink creation silently succeeded but produced "
+                    "a regular file -- developer mode disabled")
+
+    url = f"{REPO_PREFIX}/assets/issue-1/evil.jpg"
+    resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX)
+    assert resolved is None, (
+        f"symlink pointing outside the project root must be rejected; "
+        f"got {resolved!r}"
+    )

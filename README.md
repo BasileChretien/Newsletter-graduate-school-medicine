@@ -75,7 +75,7 @@ You do **not** need any of the above to use the toolkit as an editor. The setup 
 
 **Most editors send their newsletter from Microsoft Outlook on Windows.** That's the default flow, and it's just two steps.
 
-> 🆕 **Updated April 2026:** the **ZIP download** path below is now the recommended flow for Outlook editors. Earlier versions of this README warned against ZIP — that warning **no longer applies** if you're on Outlook desktop, because photos now travel inside the email itself instead of needing a public GitHub URL.
+> 🆕 **Updated April 2026:** one-click ZIP download is now the recommended flow for Outlook editors. Photos travel inside the email itself, so no GitHub URL — and no GitHub account — is needed. (Earlier versions of this README warned against ZIP; that warning no longer applies if you're on Outlook desktop.)
 
 > **Not sure if Outlook is your default?** You can skip this section entirely, run the launcher (Step 4 of *"How to make a newsletter"* below), and it will tell you which mail app it detected. Come back here only if it isn't Outlook.
 
@@ -85,7 +85,9 @@ The fastest way:
 
 > ### 👉 [**Click here to download the toolkit (ZIP)**](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/archive/refs/heads/main.zip) 👈
 >
-> *(The download starts immediately — no GitHub login, no menus to navigate.)*
+> The download starts immediately — no GitHub login, no menus to navigate.
+
+> **Link not working, or want to see the GitHub page first?** Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>, click the green **Code** button (top right of the file list), then click **Download ZIP** in the dropdown. You end up with the same file. *(Forks whose default branch is something other than `main` should use this route — the one-click link above hard-codes the `main` branch.)*
 
 Then extract it. Detailed steps, because "extract a ZIP" trips up more first-time users than any other step:
 
@@ -94,8 +96,6 @@ Then extract it. Detailed steps, because "extract a ZIP" trips up more first-tim
 3. **Right-click** the ZIP file and choose **Extract All…** (Windows) / **double-click** to extract it (macOS).
 4. On Windows, change the destination from the default to **Documents**, then click **Extract**. On macOS the extracted folder lands next to the ZIP — drag it into **Documents** afterwards.
 5. You now have a folder called **`Newsletter-graduate-school-medicine-main`** inside Documents. The trailing `-main` is normal — it's not a sign anything went wrong. **That folder is what you use for every newsletter from now on.**
-
-> **Prefer the manual route?** Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>, click the green **Code** button (top right of the file list), then click **Download ZIP** in the dropdown. You end up with the same file as the one-click link above.
 
 > ⚠️ **Don't run the launcher from inside the ZIP preview window.** On Windows, double-clicking *into* the ZIP shows the files but they're still compressed; the launcher can't write photos from there. Always extract first, then open the extracted folder.
 
@@ -208,9 +208,23 @@ Save the file when you're done.
 
 ### Step 3 — Add photos (optional)
 
-> **Privacy note:** by default — when you send via Outlook desktop — photos travel **inside the email itself** as MIME attachments. They never reach a public URL; they go directly from your PC to each recipient's inbox.
+> **How photos travel — and what that means for you.**
 >
-> If you send via Apple Mail / Gmail-in-browser / Thunderbird, the toolkit falls back to uploading photos to **public** GitHub URLs (`raw.githubusercontent.com/...`). In that case they stay there permanently. **Whichever path you're on, treat photos as you would for any institutional email — don't paste in patient images or identifiable faces without consent.**
+> **Default flow (Outlook desktop) — photos are NOT hosted online.** Photos are attached **inside each email itself** as MIME attachments. They go directly from your PC to each recipient's mailbox; they never touch a public URL, GitHub, or any third-party server. **There is no online copy you can link to after sending.**
+>
+> Practical implications of the default flow:
+>
+> - ✅ **Privacy:** photos never reach the public internet. Nothing is indexed, cached, or scraped. If you delete the sent email, the only remaining copies are in each recipient's mailbox.
+> - ✅ **No GitHub account, no public hosting setup.** Editors don't need any external service.
+> - ✅ **Survives forwarding** in most clients — when a recipient forwards the email, the embedded photos travel along (Outlook, Apple Mail, Thunderbird preserve them; some webmail clients re-encode).
+> - ⚠️ **Larger emails.** Each recipient gets a full copy of the photos. A 5-photo issue at ~500 KB each is a ~2.5 MB email **per recipient**. With a 50-recipient BCC, that's ~125 MB of mail-server bandwidth per send. University mail servers handle this fine, but be aware. Mailbox storage on the recipient's side also fills faster.
+> - ⚠️ **No archive URL.** You cannot share a "see the newsletter at this link" address — there is no link. If a recipient asks for the issue six months later, you forward the original email (or send them `dist/issue-N.html` as an attachment).
+> - ⚠️ **Aggressive corporate mail gateways** sometimes strip all attachments at the recipient's end (Mimecast, Proofpoint with conservative policies). The recipient sees the text but not the photos. That's a policy issue at their end, not something the toolkit can work around — see the FAQ at the bottom of this README.
+> - ⚠️ **Email-size limits.** Most institutional mail servers cap a single message at 25 MB (some 10 MB). If you attach 30+ large photos in one issue, the send may fail. The toolkit caps individual photos at 2 MB pre-attachment to keep typical issues comfortably under the limit; for an unusually photo-heavy issue, prefer the URL-hosted path below.
+>
+> **Alternate flow (Apple Mail / Gmail-in-browser / Thunderbird).** The toolkit uploads photos to **public** GitHub URLs (`raw.githubusercontent.com/...`) and the email contains `<img src="...">` references that recipients' clients fetch on display. In that case photos **stay on GitHub permanently** (you can `git rm` them later, but old commits keep historical copies). This is the longer-setup path described above (it requires a GitHub account).
+>
+> **Whichever path you're on, treat photos as you would for any institutional email — don't paste in patient images or identifiable faces without written consent.**
 
 **Just paste them straight into the Word file**, exactly where you want them to appear in the email. The toolkit will detect them automatically.
 

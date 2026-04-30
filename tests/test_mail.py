@@ -658,3 +658,99 @@ def test_compose_outcome_image_mode_is_url_after_outlook_fallback(tmp_path):
     assert used.is_fallback
     assert used.fell_back_from == "outlook"
     assert used.image_mode == "url"
+
+
+# -- Round-15 architect HIGH 1: chosen-backend convergence ---------------
+
+def test_select_backend_is_publicly_exported():
+    """`select_backend` must be public so `build_newsletter.py:all_cmd`
+    can reuse the dispatcher's choice for its early CID-feasibility
+    validation. Round-15 architect HIGH 1 -- prior to this round
+    `_select_backend` was private and `all_cmd` peeked at
+    `handler.is_outlook_desktop` instead, which diverged from the real
+    dispatch when `OutlookBackend.is_available()` returned False."""
+    import scripts.mail as mail_pkg
+
+    assert hasattr(mail_pkg, "select_backend"), \
+        "select_backend must be a public name on scripts.mail"
+    assert "select_backend" in mail_pkg.__all__
+
+
+def test_select_backend_falls_through_when_outlook_unavailable():
+    """The HIGH 1 scenario in concrete form: handler reports Outlook,
+    but `OutlookBackend.is_available()` is False (e.g. partial pywin32
+    install, COM init failure). The dispatcher MUST fall through to
+    clipboard -- if it returned Outlook anyway, `all_cmd`'s new
+    validation would still incorrectly accept CID mode."""
+    from scripts.mail import select_backend
+
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    with patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=False):
+        chosen = select_backend("auto", handler)
+    assert chosen.name == "clipboard_mailto"
+
+
+def test_compose_auto_resolves_to_url_when_outlook_unavailable(tmp_path):
+    """End-to-end of the round-15 HIGH 1 fix: with Outlook as the OS
+    default but `OutlookBackend.is_available()` False, `compose()`
+    must dispatch to clipboard AND set `outcome.image_mode == 'url'`
+    -- because the synthesized backend identity it feeds the helper
+    is `'default'` (not `'outlook'`). Prior to round-15, the helper
+    saw `chosen.name == 'outlook'` only via the dispatcher's pick;
+    this test pins the integration."""
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    captured: dict = {}
+
+    def fake_compose(self, draft):
+        captured["html"] = draft.html
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=False), \
+         patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose",
+               new=fake_compose):
+        used = compose("<html>x</html>", subject="Test", image_mode="auto")
+
+    assert used.backend == "clipboard_mailto"
+    assert used.image_mode == "url", \
+        "auto on a flapping-Outlook box must resolve to URL since " \
+        "the clipboard backend can't attach inline images"
+    assert "cid:" not in captured.get("html", "")
+
+
+def test_resolve_image_mode_explicit_cid_with_default_backend():
+    """Pin the deliberate design: the helper does NOT raise on
+    explicit `cid` + non-Outlook backend. Feasibility is validated
+    upstream (`compose()`'s `if chosen.name != "outlook"` raise +
+    `all_cmd`'s sys.exit(2) early-fail). Centralising the rule in
+    the helper would create two rejection sites with subtly different
+    behaviour on auto-fallback. Round-15 architect LOW 3."""
+    from scripts.mail import resolve_image_mode
+
+    outlook = MailHandler(kind="outlook", name="Microsoft Outlook")
+    apple = MailHandler(kind="apple_mail", name="Apple Mail")
+
+    # Helper passes through both; downstream catches infeasible combos.
+    assert resolve_image_mode("cid", outlook, "default") == "cid"
+    assert resolve_image_mode("cid", apple, "default") == "cid"
+    assert resolve_image_mode("cid", apple, "auto") == "cid"
+
+
+def test_compose_outcome_image_mode_blurb_returns_none_for_none_field():
+    """`_image_mode_blurb` returns None when the field is None,
+    suppressing the user-facing line. This is the silent-failure
+    branch the architect audit flagged: today it's dead code (every
+    `compose()` return path sets the field), but it's a contract
+    surface external callers might trip on. Pin it so a future change
+    that breaks the invariant is caught early. Round-15 architect LOW 3."""
+    from build_newsletter import _image_mode_blurb
+
+    assert _image_mode_blurb(None) is None
+    assert _image_mode_blurb("cid") is not None
+    assert _image_mode_blurb("url") is not None
+    # Defensive: anything else also returns None (not an error path
+    # the toolkit currently produces, but the helper's behaviour
+    # under unexpected input should be benign).
+    assert _image_mode_blurb("base64") is None

@@ -21,7 +21,8 @@ import click
 
 from scripts import build_template as bt
 from scripts.mail import (
-    ComposeOutcome, compose, detect_default_mail_handler, resolve_image_mode,
+    ComposeOutcome, compose, detect_default_mail_handler,
+    resolve_image_mode, select_backend,
 )
 from scripts.publisher import publish_assets
 from scripts.recipients import load_recipients
@@ -405,9 +406,16 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     handler = detect_default_mail_handler()
     # Resolve image mode HERE so we can decide whether to pass
     # asset_dir, and so we surface the SAME plain-language confirmation
-    # that `all` prints. Round-13 architect HIGH 1 + HIGH 2.
-    resolved_image_mode = resolve_image_mode(image_mode, handler, backend)
-    if handler.is_outlook_desktop and backend in ("auto", "outlook"):
+    # that `all` prints. Round-13 architect HIGH 1 + HIGH 2 +
+    # round-15 architect HIGH 1: pass the chosen-backend identity, not
+    # the raw user flag, so the helper agrees with what compose() will
+    # actually dispatch to.
+    chosen = select_backend(backend, handler)
+    resolved_image_mode = resolve_image_mode(
+        image_mode, handler,
+        backend=("outlook" if chosen.name == "outlook" else "default"),
+    )
+    if chosen.name == "outlook":
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
             "time; please wait -- clicking other windows may cancel "
@@ -457,23 +465,39 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
 
-    # Phase 2 / round-13 architect M3: detect handler + resolve image
-    # mode + validate FEASIBILITY before any side effects (the build
-    # step writes to dist/, the publish step pushes to GitHub).
-    # Catches the foot-gun where a non-Outlook fork explicitly passes
-    # `--image-mode=cid`: previously we'd skip publish, then have
-    # `compose()` raise -- leaving the editor with neither published
-    # assets nor a draft. Now we fail fast with a single clear error.
+    # Phase 2 / round-13 architect M3 + round-15 architect HIGH 1:
+    # detect handler + resolve the SAME backend the dispatcher will
+    # pick + resolve image mode + validate FEASIBILITY before any
+    # side effects (the build step writes to dist/, the publish step
+    # pushes to GitHub).
+    #
+    # Round-13 used `handler.is_outlook_desktop` as the proxy for "is
+    # the chosen backend Outlook?" -- which diverged from
+    # `_select_backend()` in two cases the round-15 audit caught:
+    #   (a) Windows box where Outlook is the OS default but
+    #       `OutlookBackend.is_available()` returns False (partial
+    #       pywin32 / COM init failure) -> dispatcher falls back to
+    #       clipboard, but `is_outlook_desktop` is still True ->
+    #       round-13 predicate incorrectly accepts `cid` mode and
+    #       compose() then raises after the build/publish-skip
+    #       side-effects ran.
+    #   (b) `--backend=default --image-mode=cid` on an Outlook box ->
+    #       same half-published failure (round-14 noted this; round-15
+    #       fixes it together with (a) by switching to chosen.name).
     handler = detect_default_mail_handler()
-    resolved_image_mode = resolve_image_mode(image_mode, handler, backend)
-    if resolved_image_mode == "cid" and not handler.is_outlook_desktop \
-            and backend != "outlook":
+    chosen = select_backend(backend, handler)
+    resolved_image_mode = resolve_image_mode(
+        image_mode, handler,
+        backend=("outlook" if chosen.name == "outlook" else "default"),
+    )
+    if resolved_image_mode == "cid" and chosen.name != "outlook":
         click.echo(
             "ERROR: --image-mode=cid is only supported with the "
-            "Outlook desktop backend, but no Outlook handler was "
-            "detected. Use --image-mode=url for the non-Outlook path "
-            "(photos hosted on GitHub), or --image-mode=auto to let "
-            "the toolkit pick.",
+            "Outlook desktop backend. The toolkit selected "
+            f"{chosen.name!r} for this run "
+            f"(handler kind: {handler.kind}). Use --image-mode=url "
+            "for the non-Outlook path (photos hosted on GitHub), or "
+            "--image-mode=auto to let the toolkit pick.",
             err=True,
         )
         sys.exit(2)
@@ -521,7 +545,11 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     # parse -- no need to re-parse the DOCX here.
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
-    if handler.is_outlook_desktop and backend in ("auto", "outlook"):
+    # Round-15: key the "Opening Outlook" hint off the actually-chosen
+    # backend, not handler+raw-flag. Avoids printing the hint when
+    # Outlook is the OS default but `is_available()` returned False
+    # so the dispatcher already fell through to clipboard.
+    if chosen.name == "outlook":
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
             "time; please wait -- clicking other windows may cancel "
