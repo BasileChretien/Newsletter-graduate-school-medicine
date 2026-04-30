@@ -525,3 +525,136 @@ def test_compose_auto_resolves_to_url_for_apple_mail(tmp_path):
     # No CID rewriting on the non-Outlook path.
     assert captured["html"] == original_html
     assert "cid:" not in captured["html"]
+
+
+# -- Round-13 architect HIGH 1 + HIGH 2: shared `resolve_image_mode`
+#    helper + `ComposeOutcome.image_mode` ---------------------------------
+
+def test_resolve_image_mode_passthrough_for_explicit_modes():
+    """Explicit `cid` and `url` are returned as-is, regardless of
+    handler. Only `auto` triggers the resolution rule."""
+    from scripts.mail import resolve_image_mode
+
+    outlook = MailHandler(kind="outlook", name="Microsoft Outlook")
+    apple = MailHandler(kind="apple_mail", name="Apple Mail")
+
+    assert resolve_image_mode("cid", outlook, "auto") == "cid"
+    assert resolve_image_mode("url", outlook, "auto") == "url"
+    # Even on a non-Outlook handler with backend=outlook, explicit
+    # `url` survives -- the helper's job is just resolving `auto`.
+    assert resolve_image_mode("url", apple, "outlook") == "url"
+
+
+def test_resolve_image_mode_auto_outlook_backend_returns_cid():
+    """auto + backend=outlook (regardless of handler) -> cid. Mirrors
+    the rule `_select_backend` uses when the user explicitly forces
+    Outlook."""
+    from scripts.mail import resolve_image_mode
+
+    outlook = MailHandler(kind="outlook", name="Microsoft Outlook")
+    apple = MailHandler(kind="apple_mail", name="Apple Mail")
+
+    assert resolve_image_mode("auto", outlook, "outlook") == "cid"
+    assert resolve_image_mode("auto", apple, "outlook") == "cid"
+
+
+def test_resolve_image_mode_auto_with_outlook_handler_returns_cid():
+    """auto + backend=auto + Outlook handler -> cid. This is the
+    Phase 2 mainline ("editor on a Windows + Outlook box")."""
+    from scripts.mail import resolve_image_mode
+
+    outlook = MailHandler(kind="outlook", name="Microsoft Outlook")
+    assert resolve_image_mode("auto", outlook, "auto") == "cid"
+
+
+def test_resolve_image_mode_auto_with_non_outlook_handler_returns_url():
+    """auto + backend=auto + non-Outlook handler -> url."""
+    from scripts.mail import resolve_image_mode
+
+    for kind in ("apple_mail", "thunderbird", "browser", "other", "unknown"):
+        h = MailHandler(kind=kind, name=kind)
+        assert resolve_image_mode("auto", h, "auto") == "url", \
+            f"expected url for handler kind={kind}"
+
+
+def test_resolve_image_mode_auto_default_backend_returns_url():
+    """auto + backend=default -> url. The user explicitly picked the
+    clipboard backend; CID needs Outlook COM, so URL is the only
+    feasible mode."""
+    from scripts.mail import resolve_image_mode
+
+    outlook = MailHandler(kind="outlook", name="Microsoft Outlook")
+    assert resolve_image_mode("auto", outlook, "default") == "url"
+
+
+def test_resolve_image_mode_rejects_unknown_modes():
+    """Anything other than `auto`, `cid`, `url` is a ValueError."""
+    from scripts.mail import resolve_image_mode
+
+    h = MailHandler(kind="outlook", name="Microsoft Outlook")
+    with pytest.raises(ValueError, match="image_mode must be"):
+        resolve_image_mode("base64", h, "auto")
+    with pytest.raises(ValueError, match="image_mode must be"):
+        resolve_image_mode("", h, "auto")
+
+
+def test_compose_outcome_carries_resolved_image_mode_for_cid(tmp_path):
+    """When auto resolves to cid (Outlook backend), the returned
+    outcome's `image_mode` is `'cid'` -- so callers can print a
+    consistent confirmation regardless of which path was taken.
+    Round-13 architect HIGH 2."""
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    asset_dir = tmp_path / "assets" / "issue-1"
+    asset_dir.mkdir(parents=True)
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose"):
+        used = compose(
+            "<html>x</html>", subject="Test", backend="auto",
+            image_mode="auto", asset_dir=asset_dir,
+        )
+
+    assert used.image_mode == "cid"
+
+
+def test_compose_outcome_carries_resolved_image_mode_for_url():
+    """auto on a non-Outlook handler -> outcome.image_mode == 'url'."""
+    handler = MailHandler(kind="apple_mail", name="Apple Mail")
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=False), \
+         patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose"):
+        used = compose("<html>x</html>", subject="Test", image_mode="auto")
+
+    assert used.image_mode == "url"
+
+
+def test_compose_outcome_image_mode_is_url_after_outlook_fallback(tmp_path):
+    """If Outlook throws and we fall back to the clipboard backend,
+    the outcome's `image_mode` is `'url'` -- the original-URL HTML
+    was handed to the fallback (CID would be unresolvable in the
+    clipboard path). Round-13 architect HIGH 2."""
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    asset_dir = tmp_path / "assets" / "issue-1"
+    asset_dir.mkdir(parents=True)
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose",
+               side_effect=RuntimeError("COM died")), \
+         patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose"):
+        used = compose(
+            "<html>x</html>", subject="Test", backend="auto",
+            image_mode="auto", asset_dir=asset_dir,
+        )
+
+    assert used.is_fallback
+    assert used.fell_back_from == "outlook"
+    assert used.image_mode == "url"

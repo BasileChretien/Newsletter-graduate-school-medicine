@@ -40,7 +40,7 @@ class ComposeOutcome:
 
     Replaces the round-7 stringly-typed return (`"outlook"`,
     `"default:apple_mail"`, `"default:browser:fallback-from-outlook"`)
-    with three explicit fields:
+    with explicit fields:
 
     * `backend`         -- name of the backend that actually composed
                            the draft (`"outlook"`, `"clipboard_mailto"`).
@@ -49,6 +49,13 @@ class ComposeOutcome:
                            `"browser"`, `"other"`, `"unknown"`).
     * `fell_back_from`  -- if the auto-path attempted Outlook and it
                            threw, this holds `"outlook"`. None otherwise.
+    * `image_mode`      -- the concrete image mode that was actually
+                           used (`"cid"` or `"url"`). When the caller
+                           passed `"auto"`, this carries the resolved
+                           value; on auto-fallback from Outlook to the
+                           clipboard backend, the value is `"url"`
+                           (CID requires Outlook). Round-13 architect
+                           HIGH 2.
 
     `__str__` preserves the legacy magic-string wire format so
     existing log lines and any string-comparing call sites keep
@@ -58,6 +65,7 @@ class ComposeOutcome:
     backend: str
     handler_kind: str
     fell_back_from: str | None = None
+    image_mode: str | None = None
 
     @property
     def is_fallback(self) -> bool:
@@ -142,6 +150,44 @@ def _select_backend(name: str, handler: MailHandler) -> MailBackend:
         f"backend must be 'auto', 'outlook' or 'default' -- got {name!r}")
 
 
+def resolve_image_mode(image_mode: str, handler: MailHandler,
+                       backend: str = "auto") -> str:
+    """Resolve `image_mode='auto'` to a concrete `'cid'` or `'url'`.
+
+    Single source of truth for the auto-resolution rule. Both
+    `compose()` (downstream) and the CLI's `all` command (upstream,
+    so it can decide whether to publish photos to GitHub) call this
+    so the two paths can never disagree -- closing round-13 architect
+    HIGH 1 ("resolution-logic divergence").
+
+    The rule:
+      * `auto` + the chosen backend will be Outlook  -> `cid`
+      * `auto` + anything else                       -> `url`
+      * explicit `cid` / `url`                       -> passthrough
+
+    `backend` reflects the user's `--backend` selection. `auto` here
+    means "auto-detect", which lines up with `_select_backend`'s rule
+    of preferring Outlook on Windows when it matches. Explicit
+    `--backend=outlook` on a non-Outlook handler is honoured (the
+    user is forcing the issue), and we still resolve to `cid` so the
+    explicit-route gets the right image mode -- the validation in
+    `compose()` will then check feasibility.
+    """
+    if image_mode in ("cid", "url"):
+        return image_mode
+    if image_mode != "auto":
+        raise ValueError(
+            f"image_mode must be 'url', 'cid', or 'auto' -- got "
+            f"{image_mode!r}"
+        )
+    # auto: outlook gets cid, anyone else url.
+    will_use_outlook = (
+        backend == "outlook"
+        or (backend == "auto" and handler.is_outlook_desktop)
+    )
+    return "cid" if will_use_outlook else "url"
+
+
 def compose(html: str, *, subject: str, backend: str = "auto",
             preview_path: Path | None = None,
             bcc: str | None = None,
@@ -181,33 +227,23 @@ def compose(html: str, *, subject: str, backend: str = "auto",
         with `image_mode` re-resolved to `"url"` and the original
         URL HTML.
     """
-    if image_mode not in ("url", "cid", "auto"):
-        raise ValueError(
-            f"image_mode must be 'url', 'cid', or 'auto' -- got "
-            f"{image_mode!r}")
-
     handler = detect_default_mail_handler()
     log.info("Default mail handler: %s [%s]", handler.name, handler.kind)
 
     chosen = _select_backend(backend, handler)
 
-    # Phase 2: resolve `image_mode='auto'` to the right concrete mode
-    # for the chosen backend BEFORE any further validation. Outlook =>
-    # CID (corporate-filter-robust + no GitHub account required for
-    # the editor); anything else => URL (CID needs COM to attach
-    # files, which clipboard / mailto can't do).
-    if image_mode == "auto":
-        if chosen.name == "outlook":
-            image_mode = "cid"
-            log.info(
-                "image_mode=auto resolved to 'cid' (Outlook backend "
-                "detected; photos attached inline via MIME).")
-        else:
-            image_mode = "url"
-            log.info(
-                "image_mode=auto resolved to 'url' (non-Outlook "
-                "backend %r detected; photos load over HTTP from "
-                "the public asset host).", chosen.name)
+    # Resolve `auto` via the shared helper -- the SAME helper `all_cmd`
+    # calls when it's deciding whether to skip `publish-images`, so the
+    # two paths can never disagree. Round-13 architect HIGH 1.
+    # We feed the helper a synthetic backend identity that matches the
+    # dispatcher's actual choice (`chosen.name`) rather than the user's
+    # raw `backend` string: that way `--backend=auto` on a non-Outlook
+    # box where Outlook would have been preferred but is unavailable
+    # still resolves to URL (matching the real dispatch).
+    image_mode = resolve_image_mode(
+        image_mode, handler,
+        backend=("outlook" if chosen.name == "outlook" else "default"),
+    )
 
     inline_images: tuple[InlineImage, ...] = ()
     # Round-12 architect HIGH 2: keep the un-rewritten URL HTML around
@@ -276,9 +312,17 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             backend=fallback.name,
             handler_kind=handler.kind,
             fell_back_from=chosen.name,
+            # Auto-fallback always lands on URL mode -- the clipboard
+            # backend cannot attach files (CID needs Outlook COM), and
+            # we hand it the original_url_html above.
+            image_mode="url",
         )
 
-    return ComposeOutcome(backend=chosen.name, handler_kind=handler.kind)
+    return ComposeOutcome(
+        backend=chosen.name,
+        handler_kind=handler.kind,
+        image_mode=image_mode,
+    )
 
 
 __all__ = [
@@ -291,6 +335,7 @@ __all__ = [
     "compose_via_default",
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
+    "resolve_image_mode",
 ]
 # `load_recipients` is intentionally NOT re-exported -- it's not a
 # mail-backend concern. New code imports from `scripts.recipients`.

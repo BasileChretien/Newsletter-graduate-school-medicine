@@ -20,7 +20,9 @@ from pathlib import Path
 import click
 
 from scripts import build_template as bt
-from scripts.mail import ComposeOutcome, compose, detect_default_mail_handler
+from scripts.mail import (
+    ComposeOutcome, compose, detect_default_mail_handler, resolve_image_mode,
+)
 from scripts.publisher import publish_assets
 from scripts.recipients import load_recipients
 from scripts.config import (
@@ -114,6 +116,23 @@ def _friendly_used(used: ComposeOutcome) -> str:
                 "The newsletter is on your clipboard -- press Ctrl+V "
                 "in the message body.")
     return f"Email draft opened via: {used}"
+
+
+def _image_mode_blurb(image_mode: str | None) -> str | None:
+    """Plain-English line about how photos will travel.
+
+    Round-13 architect HIGH 2 + UX L2: both `compose` and `all` print
+    the same confirmation, and the wording avoids jargon ("CID",
+    "publish-images") that means nothing to a 50-ish editor at a
+    medical school.
+    """
+    if image_mode == "cid":
+        return ("Photos will be attached inside the email itself "
+                "(no upload to GitHub needed for this send).")
+    if image_mode == "url":
+        return ("Photos will be loaded by recipients from the public "
+                "GitHub host (raw.githubusercontent.com).")
+    return None
 
 
 def _subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
@@ -384,6 +403,10 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
     handler = detect_default_mail_handler()
+    # Resolve image mode HERE so we can decide whether to pass
+    # asset_dir, and so we surface the SAME plain-language confirmation
+    # that `all` prints. Round-13 architect HIGH 1 + HIGH 2.
+    resolved_image_mode = resolve_image_mode(image_mode, handler, backend)
     if handler.is_outlook_desktop and backend in ("auto", "outlook"):
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
@@ -393,11 +416,18 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     used = compose(
         html, subject=subject, backend=backend,
         preview_path=out, bcc=bcc,
-        image_mode=image_mode,
-        asset_dir=issue_dir(ASSETS_DIR, issue) if image_mode == "cid" else None,
+        image_mode=resolved_image_mode,
+        asset_dir=(
+            issue_dir(ASSETS_DIR, issue)
+            if resolved_image_mode == "cid"
+            else None
+        ),
     )
     click.echo(_friendly_used(used))
     click.echo(f"Subject: {subject}")
+    blurb = _image_mode_blurb(used.image_mode)
+    if blurb is not None:
+        click.echo(blurb)
     if recipients:
         click.echo(
             f"BCC pre-filled with {len(recipients)} recipient(s) "
@@ -426,24 +456,34 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     """Run the full pipeline: build -> publish -> compose draft email."""
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
+
+    # Phase 2 / round-13 architect M3: detect handler + resolve image
+    # mode + validate FEASIBILITY before any side effects (the build
+    # step writes to dist/, the publish step pushes to GitHub).
+    # Catches the foot-gun where a non-Outlook fork explicitly passes
+    # `--image-mode=cid`: previously we'd skip publish, then have
+    # `compose()` raise -- leaving the editor with neither published
+    # assets nor a draft. Now we fail fast with a single clear error.
+    handler = detect_default_mail_handler()
+    resolved_image_mode = resolve_image_mode(image_mode, handler, backend)
+    if resolved_image_mode == "cid" and not handler.is_outlook_desktop \
+            and backend != "outlook":
+        click.echo(
+            "ERROR: --image-mode=cid is only supported with the "
+            "Outlook desktop backend, but no Outlook handler was "
+            "detected. Use --image-mode=url for the non-Outlook path "
+            "(photos hosted on GitHub), or --image-mode=auto to let "
+            "the toolkit pick.",
+            err=True,
+        )
+        sys.exit(2)
+
     # Build first to populate assets/.
     result = _build_pipeline(
         Path(input_path), issue, validate_remote=False)
     if result.exit_code != 0:
         sys.exit(result.exit_code)
     subject = result.subject
-
-    # Phase 2: resolve `image_mode='auto'` HERE so we can skip the
-    # `publish-images` step when CID will be used (no point pushing
-    # photos to GitHub if recipients won't fetch them from there).
-    # We detect the handler once and pass it through both decisions.
-    handler = detect_default_mail_handler()
-    resolved_image_mode = image_mode
-    if image_mode == "auto":
-        if handler.is_outlook_desktop and backend in ("auto", "outlook"):
-            resolved_image_mode = "cid"
-        else:
-            resolved_image_mode = "url"
 
     if resolved_image_mode == "url":
         # URL mode: photos must be reachable at `raw.githubusercontent.com`
@@ -459,10 +499,13 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         # itself; no public hosting needed. Skip publish-images
         # entirely. This is what removes the GitHub-account
         # requirement from the editor's onboarding flow.
+        # Round-13 UX L2: jargon-free wording. The user-facing
+        # confirmation (after compose) is in `_image_mode_blurb()`;
+        # this is the operational note explaining what just got
+        # skipped, kept short and plain.
         click.echo(
-            "Image mode: CID -- photos attached inline. Skipping "
-            "publish-images (no public photo hosting required for "
-            "this send)."
+            "Skipping the GitHub upload step -- photos will travel "
+            "inside the email itself."
         )
 
     out = DIST_DIR / f"issue-{issue}.html"
@@ -493,10 +536,13 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         )
         click.echo(_friendly_used(used))
         click.echo(f"Subject: {subject}")
-        if resolved_image_mode == "cid":
-            click.echo(
-                "Photos attached inline (no public URL fetch by recipients)."
-            )
+        # Round-13 architect HIGH 2: same plain-English line in both
+        # `compose` and `all`. `used.image_mode` is the resolved value
+        # from `compose()` (so an Outlook auto-fallback to clipboard
+        # correctly reports "url" here, not the CID we asked for).
+        blurb = _image_mode_blurb(used.image_mode)
+        if blurb is not None:
+            click.echo(blurb)
         if recipients:
             click.echo(
                 f"BCC pre-filled with {len(recipients)} recipient(s) "

@@ -75,22 +75,44 @@ You do **not** need any of the above to use the toolkit as an editor. The setup 
 
 **Most editors send their newsletter from Microsoft Outlook on Windows.** That's the default flow, and it's just two steps.
 
+> 🆕 **Updated April 2026:** the **ZIP download** path below is now the recommended flow for Outlook editors. Earlier versions of this README warned against ZIP — that warning **no longer applies** if you're on Outlook desktop, because photos now travel inside the email itself instead of needing a public GitHub URL.
+
+> **Not sure if Outlook is your default?** You can skip this section entirely, run the launcher (Step 4 of *"How to make a newsletter"* below), and it will tell you which mail app it detected. Come back here only if it isn't Outlook.
+
 ### Step 1 — Download the toolkit
 
-Go to <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>, click the green **Code** button, then **Download ZIP**. Extract the ZIP somewhere you'll remember (e.g. `Documents\Meridian-Newsletter`). **That folder is what you'll use every issue.**
+A small numbered procedure, because "extract a ZIP" trips up more first-time users than any other step:
+
+1. Open <https://github.com/BasileChretien/Newsletter-graduate-school-medicine> in your web browser.
+2. Click the green **Code** button (top right of the file list).
+3. In the menu that drops down, click **Download ZIP**. Your browser saves a file called `Newsletter-graduate-school-medicine-main.zip` to your **Downloads** folder.
+4. Open the **Downloads** folder (Windows: *File Explorer → Downloads*; macOS: *Finder → Downloads*).
+5. **Right-click** the ZIP file and choose **Extract All…** (Windows) / **double-click** to extract it (macOS).
+6. On Windows, change the destination from the default to **Documents**, then click **Extract**. On macOS the extracted folder lands next to the ZIP — drag it into **Documents** afterwards.
+7. You now have a folder called **`Newsletter-graduate-school-medicine-main`** inside Documents. The trailing `-main` is normal — it's not a sign anything went wrong. **That folder is what you use for every newsletter from now on.**
+
+> ⚠️ **Don't run the launcher from inside the ZIP preview window.** On Windows, double-clicking *into* the ZIP shows the files but they're still compressed; the launcher can't write photos from there. Always extract first, then open the extracted folder.
 
 ### Step 2 — Install Python
 
 Python is the program that runs the toolkit.
 
 - **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **check the box "Add Python to PATH"** before you click *Install Now*.
-- **macOS:** Mac usually has Python already. To check, you can simply double-click **`Make Newsletter.command`** (Step 4 below); if Python is missing the launcher will tell you, and you can install from <https://www.python.org/downloads/> just like Windows.
+- **macOS:** Macs ship with Python preinstalled, so you usually have nothing to do here. If the launcher later complains about a missing Python, come back and install from <https://www.python.org/downloads/> the same way as Windows.
 
-**That's it.** No GitHub account, no GitHub Desktop, no waiting for a write-access grant. Photos will travel inside the email itself when you send via Outlook (no public hosting needed). Skip ahead to **"How to make a newsletter"** below.
+**That's it.** No GitHub account, no GitHub Desktop, no waiting for a write-access grant. Photos will travel inside the email itself when you send via Outlook (no public hosting needed).
 
-> **Working on a hospital PC where you can't install software?** Step 2 above needs admin rights to install Python. If your IT department restricts installations on your machine, **show them this README** and ask them to install Python for you. Show them this section in particular — they'll recognise the requirements.
+> **Hospital PC where you can't install software?** Installing Python (Step 2) needs admin rights. If your IT department restricts installations, **send IT this README link** and ask them to install Python 3.12 with the **"Add Python to PATH"** option ticked. Nothing else needs admin.
 
-> **Working on a Windows machine and want updates later?** A ZIP download is a one-time snapshot — to get future toolkit updates, either re-download a fresh ZIP or follow the longer "GitHub Desktop" flow below (which makes updates a one-click "Pull").
+### Updating the toolkit (later)
+
+When a new version ships (e.g. *"v1.2 fixes the broken-image bug"*), upgrading is a 60-second job:
+
+1. Delete (or rename for safety) your old `Newsletter-graduate-school-medicine-main` folder.
+2. Repeat **Step 1** above to download a fresh ZIP.
+3. If you keep your `recipients.txt` and your past `issue-*.docx` files **inside** the toolkit folder, copy them into the new folder before deleting the old one. (Tip: keep them in *Documents* alongside the toolkit folder instead, so upgrades never touch them.)
+
+A ZIP is a one-time snapshot — it does not auto-update. Editors who want one-click updates instead can follow the longer "GitHub Desktop" flow below.
 
 <details>
 <summary><strong>Longer setup — for Apple Mail / Gmail-in-browser / Thunderbird editors</strong> (click to expand)</summary>
@@ -101,7 +123,7 @@ If your default mail client isn't Outlook desktop, the toolkit can still work �
 
 1. Go to <https://github.com/signup>.
 2. Pick a username, type your email, choose a password, and finish the sign-up.
-3. **Send your GitHub username** to the toolkit administrator so they can give you write access to the repository. The administrator usually confirms within **one business day**. **You can't move on to Step 2 until they confirm.**
+3. **Send your GitHub username** to the toolkit administrator so they can give you write access to the repository. Confirmation is usually within one working day; ping the administrator on Teams if it takes longer. **You can't move on to Step 2 until they confirm.**
 
 > **What is GitHub?** It's the public host where the toolkit's photos live (only when you're not on Outlook desktop). Your account gives you permission to upload them. You don't need to learn how GitHub works — the toolkit does everything for you.
 
@@ -281,6 +303,8 @@ Don't worry — your filled-in copy (`issue-3.docx`) is just a copy. The origina
 **❓ Where is the email file saved?**
 In the `dist/` folder. For issue 3, it's `dist/issue-3.html`. You can open it any time by double-clicking it.
 
+> **One small caveat for the Outlook (CID) path:** the saved `dist/issue-N.html` references photos by their `raw.githubusercontent.com` URLs (those URLs only get *populated* by the longer GitHub Desktop flow). When you send via Outlook desktop, the toolkit attaches the same photos to the email itself — the recipient sees them fine — but if you double-click `dist/issue-N.html` later for a quick preview, the images may show as broken. **The Outlook draft is the source of truth in CID mode**; the `dist/` HTML is mainly for archival inspection by the maintainer.
+
 **❓ Where do my drop-folder photos end up?**
 In `assets/issue-3/` (for issue 3). They're also pushed to GitHub so they have a public web address.
 
@@ -297,9 +321,14 @@ You're using the non-Outlook path. The newsletter is on your clipboard — click
 Copy the full red text and send it to the developer. Most errors are clear about what went wrong (e.g. "image filename doesn't match the convention").
 
 **❓ Some recipients say the photos in the email are broken / missing.**
-If you send via **Outlook desktop** (the default path), photos travel inside the email itself — there's no public URL to quarantine. If a recipient still reports broken images on the Outlook path, the most likely cause is their corporate IT stripping all attachments at the mail gateway; that's a policy issue, not something the toolkit can work around.
+**Most editors are on Outlook desktop, so try this first.** On the Outlook path, photos travel **inside the email itself** as MIME attachments — there is no public URL for any filter to quarantine. The most likely cause of a missing image is the recipient's corporate / hospital IT stripping all attachments at the mail gateway. That's a policy issue at their end, not something the toolkit can work around. Ask the affected recipient to check with their IT team; a single forwarded reply from their IT confirming the strip is usually enough to get the policy adjusted.
 
-If you send via **Apple Mail / Gmail-in-browser / Thunderbird**, photos are hosted on GitHub at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain. Workarounds: (1) switch to Outlook desktop on a Windows PC for the send, (2) ask the developer to set up a one-time GitHub Pages mirror (same files, different network), or (3) tell affected recipients to click the broken-image icon to view it manually.
+<details>
+<summary>If you set up the longer "GitHub Desktop" flow (Apple Mail / Gmail-in-browser / Thunderbird path)</summary>
+
+Photos are hosted on GitHub at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain. Workarounds: (1) switch to Outlook desktop on a Windows PC for the send (the recommended Phase-2 default), (2) ask the developer to set up a one-time GitHub Pages mirror (same files, different network), or (3) tell affected recipients to click the broken-image icon to view it manually.
+
+</details>
 
 **❓ How many recipients can I BCC at once before mail is throttled?**
 Most universities (including Nagoya University) cap a single outgoing message at around **50 BCC recipients**. Beyond that the message can be quietly throttled or quarantined as bulk. The toolkit doesn't enforce a limit — it BCCs whatever is in your `recipients.txt` — so it's up to you to split a > 50-person list into batches of ≤ 50. For very large lists, ask IT about a proper mailing-list address.

@@ -145,9 +145,9 @@ if [[ ! -d ".git" ]]; then
         echo "    GitHub への公開は不要です。"
         echo "  - 既定のメールアプリが **Apple Mail / ブラウザ版 Gmail /"
         echo "    Thunderbird** の場合：写真を受信者に届けるためには"
-        echo "    git クローンが必要です。GitHub Desktop で再クローン"
-        echo "    してから、写真を含む号を送信してください（README"
-        echo "    のステップ 3 参照）。"
+        echo "    git クローンが必要です。GitHub Desktop で改めて"
+        echo "    クローンしてから、写真を含む号を送信してください"
+        echo "    （README のステップ 3 参照）。"
         echo
     else
         echo "  Note: this folder is not a git checkout (probably"
