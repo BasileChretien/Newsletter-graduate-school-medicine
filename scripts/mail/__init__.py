@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from scripts.mail.base import DraftEmail, MailBackend, MailHandler
+from scripts.mail.cid import InlineImage, attach_inline_images
 from scripts.mail.clipboard import copy_html_to_clipboard
 from scripts.mail.clipboard_mailto import (
     ClipboardMailtoBackend, compose_via_default,
@@ -180,7 +181,13 @@ def compose(html: str, *, subject: str, backend: str = "auto",
 
     chosen = _select_backend(backend, handler)
 
-    inline_images: tuple = ()
+    inline_images: tuple[InlineImage, ...] = ()
+    # Round-12 architect HIGH 2: keep the un-rewritten URL HTML around
+    # so that if the Outlook backend fails AND we auto-fall-back to
+    # ClipboardMailto, the recipient doesn't paste a `<img src="cid:..."`
+    # body that the clipboard backend has no way to resolve. The
+    # fallback path receives the original URL HTML.
+    original_url_html = html
     if image_mode == "cid":
         if chosen.name != "outlook":
             raise ValueError(
@@ -194,8 +201,6 @@ def compose(html: str, *, subject: str, backend: str = "auto",
                 "image_mode='cid' requires asset_dir to be passed "
                 "(the local directory holding the issue's photos)."
             )
-        # Lazy import so URL-mode users never pay for the CID logic.
-        from scripts.mail.cid import attach_inline_images
         html, inline_images = attach_inline_images(html, asset_dir)
         log.info("CID mode: %d inline image(s) prepared for attachment.",
                  len(inline_images))
@@ -224,8 +229,21 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             "default mail handler. The newsletter is on your clipboard; "
             "paste with Ctrl+V into the message body.", e,
         )
+        # Round-12 architect HIGH 2: rebuild the DraftEmail with the
+        # original URL HTML and NO inline images so the clipboard
+        # backend hands the editor a body that resolves cleanly --
+        # `cid:` references would be broken once Outlook is out of
+        # the picture.
+        fallback_draft = DraftEmail(
+            html=original_url_html, subject=subject,
+            bcc=bcc, cc=cc, to=to,
+            from_addr=from_addr, reply_to=reply_to,
+            attachments=tuple(attachments) if attachments else (),
+            preview_path=preview_path,
+            handler=handler,
+        )
         fallback = _BACKENDS[-1]
-        fallback.compose(draft)
+        fallback.compose(fallback_draft)
         return ComposeOutcome(
             backend=fallback.name,
             handler_kind=handler.kind,

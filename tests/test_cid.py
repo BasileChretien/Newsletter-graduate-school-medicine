@@ -52,13 +52,44 @@ REPO_PREFIX = "https://raw.githubusercontent.com/owner/repo/main"
 # ---------- _make_cid ---------------------------------------------------
 
 def test_make_cid_strips_unsafe_chars():
+    """Pin the EXACT output for a deterministic input. Round-12
+    python-reviewer HIGH 4: the previous test used `or out.startswith(...)`,
+    which would have passed for `meridian-01-my-photo-GARBAGE` too --
+    a tautology. Now the assertion proves the regex behaves correctly."""
     out = _make_cid("My Photo (final).jpg", 1)
-    # Lowercase, no spaces, no parentheses, no leading/trailing dashes.
-    assert out == "meridian-01-my-photo-final-.jpg" or \
-           out == "meridian-01-my-photo--final-.jpg" or \
-           out.startswith("meridian-01-my-photo")
-    assert " " not in out
-    assert "(" not in out and ")" not in out
+    # `My Photo (final).jpg` -> lower -> `my photo (final).jpg`
+    # -> `_CID_SAFE_RE.sub("-", ...)` collapses runs of unsafe chars
+    #    (` `, `(`) to single `-`: `my-photo-final-.jpg`
+    # -> `.strip("-")` doesn't touch internal `-` or the trailing `.jpg`
+    # -> issue_part empty (no issue_tag), index `01`
+    # -> domain suffix `@meridian.local`
+    expected = "meridian-01-my-photo-final-.jpg@meridian.local"
+    assert out == expected, f"Expected {expected!r}, got {out!r}"
+
+
+def test_make_cid_includes_domain_suffix():
+    """Round-12 deliverability M2: every CID must look like an
+    RFC 2822 `msg-id` (`local-part@domain`) so older Outlook builds
+    that don't auto-wrap in `<...>` still produce a valid Content-ID
+    header."""
+    out = _make_cid("photo.jpg", 1)
+    assert "@" in out, f"CID missing domain suffix: {out!r}"
+    assert out.endswith("@meridian.local"), out
+
+
+def test_make_cid_uses_issue_tag_for_cross_issue_disambig():
+    """Round-12 architect HIGH 1: the same basename across two
+    different issues must produce DIFFERENT CIDs so a forwarded
+    thread that contains both issues doesn't dedupe the second
+    image into the first via Content-ID collision."""
+    a = _make_cid("photo1.jpg", 1, issue_tag="issue-5")
+    b = _make_cid("photo1.jpg", 1, issue_tag="issue-6")
+    assert a != b, (
+        f"CIDs identical across issues: {a!r}; cross-issue forwarded "
+        "threads would dedupe one image."
+    )
+    assert "issue-5" in a
+    assert "issue-6" in b
 
 
 def test_make_cid_zero_pads_index():
@@ -68,12 +99,26 @@ def test_make_cid_zero_pads_index():
 
 
 def test_make_cid_handles_unicode_only_basename():
-    """A basename that's all non-ASCII shouldn't produce an empty CID."""
+    """A basename whose ASCII-safe portion is JUST the extension
+    (`.jpg`) -- the Cambridge case where the regex preserves only
+    the dot+ext."""
     out = _make_cid("写真.jpg", 3)
-    # Either the strip leaves nothing -> falls back to image-N, OR
-    # the .jpg suffix survives. Either way: non-empty, prefixed.
-    assert out.startswith("meridian-03-")
-    assert len(out) > len("meridian-03-")
+    # `写真.jpg` -> `写真.jpg` (lower is no-op for kanji) -> regex
+    # replaces the `写真` run with `-`, leaving `-.jpg`. After
+    # `.strip("-")` we get `.jpg`. So safe = `.jpg`, NOT empty.
+    assert out == "meridian-03-.jpg@meridian.local", out
+
+
+def test_make_cid_falls_back_to_image_n_for_empty_safe_basename():
+    """Round-12 python-reviewer MEDIUM 3: the test for the
+    `image-N` fallback path needs a basename whose safe portion
+    really IS empty after the regex + strip. A truly extension-less
+    all-non-ASCII basename hits this."""
+    out = _make_cid("写真", 5)
+    # `写真` -> regex collapses to `-` -> strip yields `` -> fallback
+    # to `image-5`.
+    assert "image-5" in out, out
+    assert out.startswith("meridian-")
 
 
 def test_make_cid_is_deterministic():
@@ -124,6 +169,70 @@ def test_resolve_local_path_data_uri_returns_none(tmp_path: Path):
     assert _resolve_local_path(
         "data:image/jpeg;base64,...", asset_dir, REPO_PREFIX) is None
     assert _resolve_local_path("cid:foo", asset_dir, REPO_PREFIX) is None
+
+
+# ---------- Round-12 security HIGH: path-traversal hardening -------------
+
+def test_resolve_local_path_rejects_dotdot_in_assets_branch(tmp_path: Path):
+    """Round-12 security H1: a crafted DOCX with
+    `<img src="https://raw.githubusercontent.com/.../assets/issue-1/../../../etc/passwd">`
+    must NOT resolve to a path outside `asset_dir.parent`. Without
+    the `_confined` guard, `Path.joinpath` resolves `..` lexically
+    and `is_file()` happily returns True for genuinely-existing
+    files. CID mode would then attach `/etc/passwd` to the email."""
+    asset_dir = _make_asset_layout(tmp_path, image_files=("photo1.jpg",))
+    # The decoy URL points outside the project tree via `..` segments.
+    # The exact target doesn't matter -- we just want it to NOT resolve.
+    url = f"{REPO_PREFIX}/assets/issue-1/../../../../etc/passwd"
+    assert _resolve_local_path(url, asset_dir, REPO_PREFIX + "/") is None
+
+
+def test_resolve_local_path_rejects_dotdot_in_images_branch(tmp_path: Path):
+    """Round-12 security H2: same defence on the `images/` branch,
+    which has root `asset_dir.parent.parent / images` -- one level
+    higher in the tree, even more dangerous if traversal succeeds."""
+    asset_dir = _make_asset_layout(
+        tmp_path, image_files=(), brand_files=("seal.png",))
+    url = f"{REPO_PREFIX}/images/../../../etc/passwd"
+    assert _resolve_local_path(url, asset_dir, REPO_PREFIX + "/") is None
+
+
+def test_resolve_local_path_handles_url_with_query_string(tmp_path: Path):
+    """Round-12 python-reviewer HIGH 3: URLs sometimes carry
+    query strings (cache-busters, session tokens). `urlparse`
+    isolates the path, so the `?token=abc` suffix shouldn't break
+    resolution."""
+    asset_dir = _make_asset_layout(tmp_path, image_files=("photo1.jpg",))
+    url = f"{REPO_PREFIX}/assets/issue-1/photo1.jpg?token=abc123"
+    resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX + "/")
+    assert resolved is not None
+    assert resolved.name == "photo1.jpg"
+
+
+def test_resolve_local_path_handles_url_with_fragment(tmp_path: Path):
+    asset_dir = _make_asset_layout(tmp_path, image_files=("photo1.jpg",))
+    url = f"{REPO_PREFIX}/assets/issue-1/photo1.jpg#section"
+    resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX + "/")
+    assert resolved is not None
+    assert resolved.name == "photo1.jpg"
+
+
+def test_resolve_local_path_rejects_percent_encoded_dotdot(tmp_path: Path):
+    """Round-12 security M1: `%2E%2E` is currently safe by accident
+    (urlparse leaves it encoded, joinpath treats it as a literal
+    directory name, is_file() returns False). Pin this so a future
+    refactor that calls unquote() doesn't silently reopen the hole."""
+    asset_dir = _make_asset_layout(tmp_path, image_files=("photo1.jpg",))
+    url = f"{REPO_PREFIX}/assets/issue-1/%2E%2E/%2E%2E/etc/passwd"
+    assert _resolve_local_path(url, asset_dir, REPO_PREFIX + "/") is None
+
+
+def test_resolve_local_path_rejects_null_byte_in_segment(tmp_path: Path):
+    """Null bytes in URL paths are a classic filesystem-API trick.
+    Some Path implementations on some platforms truncate at `\\x00`."""
+    asset_dir = _make_asset_layout(tmp_path, image_files=("photo1.jpg",))
+    url = f"{REPO_PREFIX}/assets/issue-1/photo1.jpg\x00.png"
+    assert _resolve_local_path(url, asset_dir, REPO_PREFIX + "/") is None
 
 
 # ---------- attach_inline_images (the public API) ------------------------
@@ -229,6 +338,58 @@ def test_attach_inline_images_skips_already_cid_refs(tmp_path: Path):
     # Already-CID images are not double-attached.
     assert inline == ()
     assert "cid:already-a-cid" in rewritten
+
+
+def test_attach_inline_images_skips_files_over_size_cap(tmp_path: Path):
+    """Round-12 deliverability HIGH 2 / MEDIUM 1: a 4 MB hospital
+    photo would bloat every forwarded copy of the message. Files
+    over the cap stay as URLs (graceful per-image degrade)."""
+    asset_dir = _make_asset_layout(tmp_path)
+    big_path = asset_dir / "big.jpg"
+    big_path.write_bytes(b"\xff\xd8\xff" + b"X" * 600_000)
+    small_path = asset_dir / "small.jpg"
+    small_path.write_bytes(b"\xff\xd8\xff" + b"X" * 1_000)
+    html = (
+        f'<html><body>'
+        f'<img src="{REPO_PREFIX}/assets/issue-1/big.jpg">'
+        f'<img src="{REPO_PREFIX}/assets/issue-1/small.jpg">'
+        f'</body></html>'
+    )
+    rewritten, inline = attach_inline_images(
+        html, asset_dir, repo_url_prefix=REPO_PREFIX + "/",
+        max_image_bytes=500_000,
+    )
+    # Only the small image was attached.
+    assert len(inline) == 1
+    assert inline[0].path == small_path
+    # The big image's URL survives as-is (no CID rewrite).
+    assert "big.jpg" in rewritten
+    assert f"{REPO_PREFIX}/assets/issue-1/big.jpg" in rewritten
+
+
+def test_attach_inline_images_uses_asset_dir_name_as_issue_tag(tmp_path: Path):
+    """Round-12 architect HIGH 1: the same `photo1.jpg` in two
+    different issues must produce different CIDs. `asset_dir.name`
+    is the issue-tag carrier."""
+    # issue-5 layout
+    issue5 = tmp_path / "assets" / "issue-5"
+    issue5.mkdir(parents=True)
+    (issue5 / "photo.jpg").write_bytes(b"\xff\xd8\xff5")
+    # issue-6 layout
+    issue6 = tmp_path / "assets" / "issue-6"
+    issue6.mkdir(parents=True)
+    (issue6 / "photo.jpg").write_bytes(b"\xff\xd8\xff6")
+    html5 = f'<img src="{REPO_PREFIX}/assets/issue-5/photo.jpg">'
+    html6 = f'<img src="{REPO_PREFIX}/assets/issue-6/photo.jpg">'
+    _, inline5 = attach_inline_images(
+        html5, issue5, repo_url_prefix=REPO_PREFIX + "/")
+    _, inline6 = attach_inline_images(
+        html6, issue6, repo_url_prefix=REPO_PREFIX + "/")
+    assert inline5[0].cid != inline6[0].cid, (
+        "CIDs collide across issues -- forwarded thread would dedupe."
+    )
+    assert "issue-5" in inline5[0].cid
+    assert "issue-6" in inline6[0].cid
 
 
 def test_attach_inline_images_handles_missing_src(tmp_path: Path):

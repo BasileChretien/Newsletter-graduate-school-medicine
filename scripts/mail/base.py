@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, TYPE_CHECKING
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from scripts.mail.cid import InlineImage
+# `cid.py` imports only stdlib + scripts.html_utils, neither of which
+# imports back into `base.py` -- no cycle, no need for TYPE_CHECKING.
+from scripts.mail.cid import InlineImage
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,13 @@ class DraftEmail:
     # that don't know how to inline-attach (clipboard_mailto) MUST
     # ignore this field; only `OutlookBackend` consumes it. The HTML
     # in `html` is already CID-rewritten when this is non-empty.
-    inline_images: "tuple[InlineImage, ...]" = field(default_factory=tuple)
+    #
+    # NOTE: this is the only single-backend-specific field on
+    # `DraftEmail`. If a SECOND single-backend field gets proposed,
+    # refactor BEFORE adding it -- the right shape is a per-backend
+    # extras dataclass nested under `DraftEmail`, not a growing list
+    # of optional fields. See round-12 architect M5.
+    inline_images: tuple[InlineImage, ...] = field(default_factory=tuple)
     preview_path: Path | None = None
     # Identifies the OS-detected default mail client (when known) so a
     # backend can use it for log messages without a back-channel call.

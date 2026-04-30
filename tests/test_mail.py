@@ -300,6 +300,132 @@ def test_compose_url_mode_does_not_touch_html(tmp_path):
     assert captured["inline"] == ()
 
 
+def test_attach_inline_image_sets_all_mapi_props(tmp_path):
+    """Round-12 architect MEDIUM 3 / deliverability HIGH 1 + MEDIUM 3:
+    the actual MAPI property writes weren't covered before. Mock the
+    Attachments.Add return value and verify the right MAPI tag URIs
+    + values are written for each inline image."""
+    from unittest.mock import MagicMock
+    from scripts.mail.cid import InlineImage
+    from scripts.mail.outlook import _attach_inline_image
+
+    photo = tmp_path / "lab.jpg"
+    photo.write_bytes(b"\xff\xd8\xfftest")
+    inline = InlineImage(
+        path=photo, cid="meridian-issue-1-01-lab.jpg@meridian.local",
+        original_url="https://example/lab.jpg",
+    )
+
+    fake_att = MagicMock()
+    fake_mail = MagicMock()
+    fake_mail.Attachments.Add.return_value = fake_att
+
+    _attach_inline_image(fake_mail, inline)
+
+    fake_mail.Attachments.Add.assert_called_once_with(str(photo))
+    # All five MAPI properties get written.
+    write_calls = fake_att.PropertyAccessor.SetProperty.call_args_list
+    written_props = {call.args[0]: call.args[1] for call in write_calls}
+
+    # Content-ID -- the value the HTML's `cid:...` references.
+    cid_tag = "http://schemas.microsoft.com/mapi/proptag/0x3712001F"
+    assert written_props[cid_tag] == inline.cid
+
+    # ATTACH_FLAGS = 4 (ATT_MHTML_REF) -- "referenced by HTML body".
+    flags_tag = "http://schemas.microsoft.com/mapi/proptag/0x37140003"
+    assert written_props[flags_tag] == 4
+
+    # ATTACHMENT_HIDDEN = True -- complementary hide-from-UI.
+    hidden_tag = "http://schemas.microsoft.com/mapi/proptag/0x7FFE000B"
+    assert written_props[hidden_tag] is True
+
+    # MIME tag -- explicit content-type so Gmail doesn't fall back to
+    # "show as attachment".
+    mime_tag = "http://schemas.microsoft.com/mapi/proptag/0x370E001F"
+    assert written_props[mime_tag] == "image/jpeg"
+
+    # Pathname cleared -- no leak of editor's local file path into
+    # NDR debug headers.
+    pathname_tag = "http://schemas.microsoft.com/mapi/proptag/0x3708001F"
+    assert written_props[pathname_tag] == ""
+
+
+def test_attach_inline_image_handles_attach_failure_gracefully(tmp_path):
+    """If `Attachments.Add` itself fails, the helper logs a warning
+    and returns. It must NOT proceed to call `PropertyAccessor.SetProperty`
+    on a non-attachment, which would cascade into an unrelated error."""
+    from unittest.mock import MagicMock
+    from scripts.mail.cid import InlineImage
+    from scripts.mail.outlook import _attach_inline_image
+
+    photo = tmp_path / "lab.jpg"
+    photo.write_bytes(b"\xff\xd8\xfftest")
+    inline = InlineImage(
+        path=photo, cid="meridian-issue-1-01-lab.jpg@meridian.local",
+        original_url="https://example/lab.jpg",
+    )
+
+    fake_mail = MagicMock()
+    fake_mail.Attachments.Add.side_effect = OSError("disk full")
+
+    # Must not raise.
+    _attach_inline_image(fake_mail, inline)
+    # No SetProperty call should have been made.
+    fake_mail.Attachments.Add.assert_called_once()
+
+
+def test_compose_cid_auto_fallback_hands_clipboard_original_url_html(tmp_path):
+    """Round-12 architect HIGH 2: when CID mode is active and Outlook
+    fails, the auto-fallback to ClipboardMailto must pass the
+    ORIGINAL URL HTML, NOT the CID-rewritten HTML. Otherwise the
+    editor pastes a body full of `<img src="cid:...">` references
+    into a non-Outlook compose window where they don't resolve --
+    recipients see broken images."""
+    # Set up the asset layout so CID rewrite has something to chew on.
+    asset_dir = tmp_path / "assets" / "issue-1"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "photo1.jpg").write_bytes(b"\xff\xd8\xff" + b"X" * 100)
+
+    repo_prefix = "https://raw.githubusercontent.com/owner/repo/main"
+    original_html = (
+        f'<html><body><img src="{repo_prefix}/assets/issue-1/photo1.jpg">'
+        f'</body></html>'
+    )
+
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    captured: dict = {}
+
+    def fake_clipboard_compose(self, draft):
+        captured["html"] = draft.html
+        captured["inline"] = draft.inline_images
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose",
+               side_effect=RuntimeError("Outlook COM exploded")), \
+         patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose",
+               new=fake_clipboard_compose):
+        outcome = compose(
+            original_html, subject="Test", backend="auto",
+            image_mode="cid", asset_dir=asset_dir,
+        )
+
+    assert outcome.is_fallback
+    assert outcome.fell_back_from == "outlook"
+    # The clipboard backend received the ORIGINAL HTML, not the
+    # CID-rewritten version.
+    assert captured["html"] == original_html, (
+        "Auto-fallback must hand the clipboard backend the ORIGINAL "
+        "URL HTML, not the CID-rewritten HTML. The recipient would "
+        "otherwise paste broken `cid:` references."
+    )
+    assert "cid:" not in captured["html"]
+    # No inline_images should travel to the clipboard backend.
+    assert captured["inline"] == ()
+
+
 def test_compose_default_image_mode_is_url(tmp_path):
     """If the caller doesn't pass `image_mode`, behavior must remain
     the round-9 baseline (URL-mode). This pins the default so a

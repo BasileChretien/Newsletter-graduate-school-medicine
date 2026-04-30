@@ -19,7 +19,7 @@ from scripts.mail.plaintext import (
 
 # MAPI tag for the `Content-ID` header on an attachment, as documented
 # at https://learn.microsoft.com/en-us/office/client-developer/outlook/mapi/pidtagattachcontentid-canonical-property.
-# The 0x3712001E suffix encodes the property type (`PT_STRING8`).
+# The 0x3712001F suffix encodes the property type (`PT_UNICODE`).
 _PR_ATTACH_CONTENT_ID = (
     "http://schemas.microsoft.com/mapi/proptag/0x3712001F"
 )
@@ -36,6 +36,44 @@ _ATT_MHTML_REF = 4
 _PR_ATTACHMENT_HIDDEN = (
     "http://schemas.microsoft.com/mapi/proptag/0x7FFE000B"
 )
+# `PR_ATTACH_MIME_TAG` (PT_UNICODE) -- explicit MIME content-type for
+# the attachment part. Some Outlook builds set this from the file
+# extension automatically, but writing it explicitly is the surest
+# way to force `Content-Type: image/jpeg` rather than the generic
+# `application/octet-stream` default. Round-12 deliverability HIGH 1
+# (Gmail web "shows as attachment" risk).
+_PR_ATTACH_MIME_TAG = (
+    "http://schemas.microsoft.com/mapi/proptag/0x370E001F"
+)
+# `PR_ATTACH_PATHNAME` (PT_UNICODE) -- the local-disk path the editor's
+# PC uses. Some Exchange transport rules echo this into NDR debug
+# headers. Clearing it explicitly avoids leaking editor-PC paths
+# (round-12 deliverability MEDIUM 3).
+_PR_ATTACH_PATHNAME = (
+    "http://schemas.microsoft.com/mapi/proptag/0x3708001F"
+)
+
+
+def _ext_to_mime(path: str) -> str:
+    """Map a file extension to the right MIME tag for `PR_ATTACH_MIME_TAG`.
+
+    Conservative -- only the formats the toolkit's image_handler
+    accepts. An unknown extension returns `application/octet-stream`
+    so the attachment still ships, just without inline-disposition
+    nudging.
+    """
+    lower = path.lower()
+    if lower.endswith((".jpg", ".jpeg")):
+        return "image/jpeg"
+    if lower.endswith(".png"):
+        return "image/png"
+    if lower.endswith(".gif"):
+        return "image/gif"
+    if lower.endswith(".webp"):
+        return "image/webp"
+    if lower.endswith(".bmp"):
+        return "image/bmp"
+    return "application/octet-stream"
 
 log = logging.getLogger(__name__)
 
@@ -122,6 +160,23 @@ def _attach_inline_image(mail, inline: InlineImage) -> None:
         )
     except _COM_ERRORS as e:
         log.debug("PR_ATTACHMENT_HIDDEN set failed (%s); cosmetic only.", e)
+    # Round-12 deliverability HIGH 1: explicitly write the MIME type
+    # so Gmail web doesn't fall back to "show as attachment" when
+    # Outlook's auto-detection produces `application/octet-stream`
+    # on certain Click-to-Run builds.
+    try:
+        att.PropertyAccessor.SetProperty(
+            _PR_ATTACH_MIME_TAG, _ext_to_mime(str(inline.path)),
+        )
+    except _COM_ERRORS as e:
+        log.debug("PR_ATTACH_MIME_TAG set failed (%s); cosmetic only.", e)
+    # Round-12 deliverability MEDIUM 3: explicitly clear the on-disk
+    # pathname so transport-rule debug headers can't leak the
+    # editor's local file system layout.
+    try:
+        att.PropertyAccessor.SetProperty(_PR_ATTACH_PATHNAME, "")
+    except _COM_ERRORS as e:
+        log.debug("PR_ATTACH_PATHNAME clear failed (%s); cosmetic only.", e)
 
 
 def compose_outlook(html: str, subject: str, *,
@@ -207,8 +262,9 @@ def compose_outlook(html: str, subject: str, *,
     # Inline images (CID mode): attach each file AND tag it with the
     # matching Content-ID header so the HTML's `<img src="cid:...">`
     # references resolve. Order doesn't matter; Outlook deduplicates
-    # by path internally.
-    for inline in inline_images or ():
+    # by path internally. The signature default is `()`, so iterating
+    # is a no-op when CID mode is off -- no `or ()` guard needed.
+    for inline in inline_images:
         _attach_inline_image(mail, inline)
     mail.Display(False)
 
