@@ -92,3 +92,49 @@ def test_to_raw_url_rejects_outside_repo(tmp_path: Path):
 
 def test_issue_dir():
     assert issue_dir(Path("/a/b"), 5) == Path("/a/b/issue-5")
+
+
+# ---------- extension_to_mime (round-12 N2: lookup moved here from
+#            outlook.py to keep the supported-format list single-sourced
+#            with `_IMAGE_MAGIC`) -----------------------------------------
+
+def test_extension_to_mime_known_extensions():
+    from scripts.image_handler import extension_to_mime
+    assert extension_to_mime("photo.jpg") == "image/jpeg"
+    assert extension_to_mime("photo.JPG") == "image/jpeg"
+    assert extension_to_mime("photo.jpeg") == "image/jpeg"
+    assert extension_to_mime("photo.png") == "image/png"
+    assert extension_to_mime("photo.gif") == "image/gif"
+    assert extension_to_mime("photo.webp") == "image/webp"
+    assert extension_to_mime("photo.bmp") == "image/bmp"
+
+
+def test_extension_to_mime_accepts_path_object():
+    """Caller may pass a `Path` (the Outlook backend does)."""
+    from scripts.image_handler import extension_to_mime
+    assert extension_to_mime(Path("a/b/photo.png")) == "image/png"
+
+
+def test_extension_to_mime_unknown_extension_returns_octet_stream():
+    """Unknown extensions get a generic MIME type so the attachment
+    still ships, just without inline-disposition nudging."""
+    from scripts.image_handler import extension_to_mime
+    assert extension_to_mime("doc.pdf") == "application/octet-stream"
+    assert extension_to_mime("noext") == "application/octet-stream"
+
+
+def test_extension_to_mime_lookup_matches_image_magic_formats():
+    """Pin the invariant: every format in `_IMAGE_MAGIC` should have
+    a matching extension entry in `_EXT_TO_MIME`. If a future change
+    adds AVIF (or anything else) to one but not the other, this
+    test fails immediately."""
+    from scripts.image_handler import _IMAGE_MAGIC, _EXT_TO_MIME
+    magic_mimes = {mime for _sig, mime in _IMAGE_MAGIC}
+    ext_mimes = set(_EXT_TO_MIME.values())
+    missing_from_ext = magic_mimes - ext_mimes
+    assert not missing_from_ext, (
+        f"Formats accepted by `_IMAGE_MAGIC` but missing from "
+        f"`_EXT_TO_MIME`: {missing_from_ext}. The two lists must "
+        "stay in sync -- a format the magic-byte check accepts but "
+        "the MIME-tag lookup doesn't will degrade Gmail rendering."
+    )

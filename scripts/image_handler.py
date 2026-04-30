@@ -58,6 +58,39 @@ def _is_supported_image(path: Path) -> bool:
     return False
 
 
+# Extension -> MIME-type lookup for the formats this module accepts. Used
+# by the Outlook backend to write `PR_ATTACH_MIME_TAG` on inline images
+# so Gmail web doesn't fall back to "show as attachment". Living here
+# (rather than in `outlook.py`) keeps the supported-format knowledge
+# single-sourced -- when WebP / AVIF support is toggled in `_IMAGE_MAGIC`,
+# this lookup updates in lockstep. Round-12 architect MEDIUM N2.
+_EXT_TO_MIME: dict[str, str] = {
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png":  "image/png",
+    ".gif":  "image/gif",
+    ".webp": "image/webp",
+    ".bmp":  "image/bmp",
+}
+
+
+def extension_to_mime(path: str | Path) -> str:
+    """Map a file path's extension to its MIME type.
+
+    Returns one of `image/jpeg`, `image/png`, `image/gif`, `image/webp`,
+    `image/bmp` for the formats `_IMAGE_MAGIC` accepts; falls back to
+    `application/octet-stream` for anything else (the attachment still
+    ships, just without inline-disposition nudging).
+
+    Case-insensitive on the extension. Accepts `str` or `Path`.
+    """
+    if isinstance(path, Path):
+        ext = path.suffix.lower()
+    else:
+        ext = Path(str(path)).suffix.lower()
+    return _EXT_TO_MIME.get(ext, "application/octet-stream")
+
+
 @dataclass(frozen=True)
 class DropImage:
     section: int
@@ -149,4 +182,5 @@ def to_raw_url(asset_path: Path, repo_root: Path, repo: RepoConfig) -> str:
 __all__ = [
     "DROP_NAME_RE", "DropImage",
     "extract_embedded", "ingest_drop_folder", "to_raw_url", "issue_dir",
+    "extension_to_mime",
 ]

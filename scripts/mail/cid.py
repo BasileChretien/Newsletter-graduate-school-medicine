@@ -56,6 +56,17 @@ log = logging.getLogger(__name__)
 # never collides with a recipient's own `cid:` references in a quoted
 # reply.
 _CID_PREFIX = "meridian-"
+# Default per-image attachment size cap. Round-12 architect MEDIUM N1:
+# the bundle-12 default (500 KB) was too aggressive -- typical
+# institutional photos run 200-800 KB, so a non-trivial fraction of
+# issues silently fell back to URL mode for SOME images while
+# attaching others, producing mixed-mode emails (some inline, some
+# external -- inconsistent rendering for recipients on filtered
+# networks). 2 MB is generous enough to cover normal institutional
+# imagery while still rejecting accidental-multimegapixel-paste
+# pathologies. Surfaced as `--cid-max-image-mb` on the CLI for
+# editors who need to tune it.
+DEFAULT_MAX_IMAGE_BYTES = 2_000_000
 # RFC 2822 msg-id shape: `local-part@domain`. Older Outlook builds
 # (2013, some 2016 LTSC) don't auto-wrap PR_ATTACH_CONTENT_ID values
 # in `<...>` when serializing MIME. Suffixing with `@meridian.local`
@@ -232,7 +243,7 @@ def attach_inline_images(
     asset_dir: Path,
     *,
     repo_url_prefix: str = "https://raw.githubusercontent.com/",
-    max_image_bytes: int = 500_000,
+    max_image_bytes: int = DEFAULT_MAX_IMAGE_BYTES,
 ) -> tuple[str, tuple[InlineImage, ...]]:
     """Rewrite `<img>` tags in `html` to use CID references.
 

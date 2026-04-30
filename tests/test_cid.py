@@ -77,6 +77,33 @@ def test_make_cid_includes_domain_suffix():
     assert out.endswith("@meridian.local"), out
 
 
+def test_make_cid_sanitizes_issue_tag_with_spaces_and_special_chars():
+    """Round-12 architect LOW N3: an issue_tag like `My Issue 5!` (or
+    a maliciously-named asset directory) should be sanitized through
+    `_CID_SAFE_RE` before going into the CID. No spaces, no
+    punctuation, no header-injection characters."""
+    out = _make_cid("photo.jpg", 1, issue_tag="My Issue 5!")
+    # The issue tag becomes `my-issue-5-` after lowercase + safe-re sub
+    # + strip; the trailing dash is stripped, so we end up with
+    # `my-issue-5`. The dash before the index uses our zero-pad pattern.
+    assert "my-issue-5" in out
+    assert " " not in out
+    assert "!" not in out
+    assert "<" not in out
+
+
+def test_make_cid_unicode_issue_tag_falls_back_gracefully():
+    """An all-non-ASCII issue tag (e.g. accidentally `第3号`) should
+    not produce a malformed CID. After `_CID_SAFE_RE.sub` the result
+    is empty, which `_make_cid` handles by skipping the issue prefix
+    altogether (rather than crashing or producing `meridian--01-...`)."""
+    out = _make_cid("photo.jpg", 1, issue_tag="第3号")
+    # Should NOT contain a double-dash artifact from an empty issue_part.
+    assert "--" not in out
+    # Should still end in the standard suffix.
+    assert out.endswith("@meridian.local")
+
+
 def test_make_cid_uses_issue_tag_for_cross_issue_disambig():
     """Round-12 architect HIGH 1: the same basename across two
     different issues must produce DIFFERENT CIDs so a forwarded
@@ -365,6 +392,42 @@ def test_attach_inline_images_skips_files_over_size_cap(tmp_path: Path):
     # The big image's URL survives as-is (no CID rewrite).
     assert "big.jpg" in rewritten
     assert f"{REPO_PREFIX}/assets/issue-1/big.jpg" in rewritten
+
+
+def test_attach_inline_images_default_size_cap_is_2mb():
+    """Round-12 architect N1: pin the production default size cap.
+    A future PR that lowers this number would silently start
+    sending mixed-mode emails (some inline, some external) for
+    typical institutional photos. Pin the constant."""
+    from scripts.mail.cid import DEFAULT_MAX_IMAGE_BYTES
+    assert DEFAULT_MAX_IMAGE_BYTES == 2_000_000, (
+        f"DEFAULT_MAX_IMAGE_BYTES is {DEFAULT_MAX_IMAGE_BYTES}; expected "
+        "2_000_000 (2 MB). Lowering this would silently degrade typical "
+        "institutional photos (200-800 KB) to URL mode for SOME images "
+        "while attaching others -- inconsistent rendering for recipients "
+        "on filtered networks."
+    )
+
+
+def test_attach_inline_images_typical_institutional_photo_attaches_inline(
+    tmp_path: Path
+):
+    """At the production default, a 600 KB photo (typical of a
+    Word-pasted institutional image) MUST attach inline. Round-12
+    architect N1 found that the bundle-12 default of 500 KB was
+    pushing this into URL mode."""
+    from scripts.mail.cid import DEFAULT_MAX_IMAGE_BYTES
+    asset_dir = _make_asset_layout(tmp_path)
+    photo_path = asset_dir / "lab.jpg"
+    photo_path.write_bytes(b"\xff\xd8\xff" + b"X" * 600_000)  # 600 KB
+    html = f'<img src="{REPO_PREFIX}/assets/issue-1/lab.jpg">'
+    _, inline = attach_inline_images(
+        html, asset_dir, repo_url_prefix=REPO_PREFIX + "/",
+    )  # default cap
+    assert len(inline) == 1, (
+        f"600 KB photo should attach at default cap "
+        f"({DEFAULT_MAX_IMAGE_BYTES} bytes); got {len(inline)} attachments."
+    )
 
 
 def test_attach_inline_images_uses_asset_dir_name_as_issue_tag(tmp_path: Path):

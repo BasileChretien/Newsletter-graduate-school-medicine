@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import platform
 
+from scripts.image_handler import extension_to_mime
 from scripts.mail.base import DraftEmail, MailHandler
 from scripts.mail.cid import InlineImage
 from scripts.mail.plaintext import (
@@ -54,26 +55,9 @@ _PR_ATTACH_PATHNAME = (
 )
 
 
-def _ext_to_mime(path: str) -> str:
-    """Map a file extension to the right MIME tag for `PR_ATTACH_MIME_TAG`.
-
-    Conservative -- only the formats the toolkit's image_handler
-    accepts. An unknown extension returns `application/octet-stream`
-    so the attachment still ships, just without inline-disposition
-    nudging.
-    """
-    lower = path.lower()
-    if lower.endswith((".jpg", ".jpeg")):
-        return "image/jpeg"
-    if lower.endswith(".png"):
-        return "image/png"
-    if lower.endswith(".gif"):
-        return "image/gif"
-    if lower.endswith(".webp"):
-        return "image/webp"
-    if lower.endswith(".bmp"):
-        return "image/bmp"
-    return "application/octet-stream"
+# NOTE: extension -> MIME-type lookup lives in `scripts.image_handler`
+# (`extension_to_mime`) so the supported-format list stays single-sourced
+# with `_IMAGE_MAGIC` over there. Round-12 architect MEDIUM N2.
 
 log = logging.getLogger(__name__)
 
@@ -166,7 +150,7 @@ def _attach_inline_image(mail, inline: InlineImage) -> None:
     # on certain Click-to-Run builds.
     try:
         att.PropertyAccessor.SetProperty(
-            _PR_ATTACH_MIME_TAG, _ext_to_mime(str(inline.path)),
+            _PR_ATTACH_MIME_TAG, extension_to_mime(inline.path),
         )
     except _COM_ERRORS as e:
         log.debug("PR_ATTACH_MIME_TAG set failed (%s); cosmetic only.", e)

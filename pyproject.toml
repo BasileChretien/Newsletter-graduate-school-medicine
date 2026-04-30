@@ -1,0 +1,33 @@
+# Minimal project metadata.
+#
+# The toolkit is shipped via the `Make Newsletter.bat` / `.command`
+# launcher rather than as a pip-installable package, so this file
+# exists primarily to declare the Python version constraint that
+# the codebase actually uses (`tuple | None` and other PEP 604/585
+# syntax requires Python 3.10+; `Path.is_relative_to` requires 3.9+;
+# both are used unconditionally).
+#
+# Round-12 security MEDIUM: a Python 3.8 environment would crash
+# the CID compose path with `AttributeError: 'PosixPath' object has
+# no attribute 'is_relative_to'`. The constraint below makes pip
+# refuse to install on too-old runtimes.
+
+[project]
+name = "meridian-newsletter"
+description = "MERIDIAN newsletter toolkit -- Word DOCX -> Outlook draft."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dynamic = ["version", "dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/BasileChretien/Newsletter-graduate-school-medicine"
+Repository = "https://github.com/BasileChretien/Newsletter-graduate-school-medicine"
+Changelog = "https://github.com/BasileChretien/Newsletter-graduate-school-medicine/blob/main/CHANGELOG.md"
+Issues = "https://github.com/BasileChretien/Newsletter-graduate-school-medicine/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
