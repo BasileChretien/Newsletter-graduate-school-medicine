@@ -512,53 +512,66 @@ def test_resolve_local_path_rejects_windows_drive_letter(tmp_path: Path):
     )
 
 
-def test_resolve_local_path_rejects_drive_letter_positive_control_posix(
-    tmp_path: Path, caplog,
+def test_resolve_local_path_drive_letter_posix_documents_behaviour(
+    tmp_path: Path,
 ):
-    """Round-16 architect MEDIUM: the previous test passed for the
-    wrong reason on POSIX (`is_file()` returned False because the
-    drive-letter path doesn't exist as a real file). This positive
-    control creates a REAL file at the smuggled drive-letter path
-    inside the asset tree -- proving the path-resolution machinery
-    rejects it for the right reason regardless of file existence.
+    """Round-16 architect MEDIUM follow-up: the original
+    `test_resolve_local_path_rejects_windows_drive_letter` test
+    passes on POSIX because the resolver maps
+    `{prefix}/assets/C:/Windows/win.ini` to
+    `asset_dir.parent / "C:" / "Windows" / "win.ini"` -- which
+    doesn't exist by default, so `is_file()` returns False and
+    `_confined` returns None. The architect audit asked: "does the
+    test pass for the *right* reason?"
 
-    On POSIX: creating `<asset_dir>/C:/Windows/win.ini` is fine
-    (`C:` is just a weird directory name). The guard must still
-    reject because the resolved path falls back to disk realities
-    that don't represent a legitimate inline-image source.
+    Answer (this test): on POSIX, `C:` is just an opaque directory
+    name. If a real file happens to exist at the URL's resolved
+    POSIX path (because, say, a malicious DOCX co-author created
+    such a directory and dropped a JPEG in it), the resolver WILL
+    accept it -- because the file is genuinely inside `asset_dir.parent`,
+    so the path-traversal guard has no reason to reject. This is
+    correct behaviour for POSIX (drive-letter smuggling is a Windows
+    concept; on POSIX it just creates oddly-named directories).
+    The test pins this so a future "over-eager" tightening (e.g.
+    blanket-rejecting `:` in URL segments) would be visible.
 
-    Skipped on Windows: `:` in path components is forbidden; the
-    OS won't let us mkdir `C:` under tmp_path."""
-    import logging
+    Skipped on Windows: the OS forbids `:` in directory names so
+    `mkdir` raises before we can set up the fixture. Windows is
+    covered by the original
+    `test_resolve_local_path_rejects_windows_drive_letter` test --
+    on Windows, `joinpath('C:', ...)` makes an absolute path that
+    escapes `asset_dir.parent` and `is_relative_to` rejects it."""
     import sys
 
     if sys.platform == "win32":
         pytest.skip("`:` in directory names is forbidden on Windows")
 
     asset_dir = _make_asset_layout(tmp_path)
-    smuggled = asset_dir / "C:" / "Windows"
+    # The URL resolves to asset_dir.parent / "C:" / ... not asset_dir /
+    # ... -- the resolver treats `assets/<rel>` as `asset_dir.parent /
+    # <rel>`. Create the smuggled file at the SAME path the resolver
+    # will compute, so we exercise the "file exists, is_file=True"
+    # branch.
+    smuggled = asset_dir.parent / "C:" / "Windows"
     smuggled.mkdir(parents=True, exist_ok=True)
     real_file = smuggled / "win.ini"
     real_file.write_bytes(b"\xff\xd8\xff\xe0fake")
 
-    caplog.set_level(logging.DEBUG, logger="scripts.mail.cid")
-
     url = f"{REPO_PREFIX}/assets/C:/Windows/win.ini"
     resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX)
 
-    # On POSIX with a real file under the asset tree, the path IS
-    # is_file()=True and IS_relative_to(asset_dir)=True. So this URL
-    # actually resolves. That's not a security bug -- it's a real
-    # file the editor put under their own asset_dir. The test
-    # therefore documents POSIX behaviour: drive-letter smuggling
-    # is harmless on POSIX (the path is interpreted as a regular
-    # subdirectory). The dangerous case is Windows, which IS
-    # exercised by the platform-default behaviour of joinpath.
+    # Documents POSIX behaviour: the file IS resolvable because it's
+    # genuinely inside asset_dir.parent. This is not a security bug
+    # -- on POSIX a drive-letter-named directory is just a directory
+    # the editor put there, and the path stays inside the project.
+    # If this assertion fails (resolved is None), the resolver has
+    # become over-eager -- it would also reject legitimate files in
+    # oddly-named subdirectories.
     assert resolved is not None, (
-        "POSIX positive control: a drive-letter-named directory "
-        "under asset_dir is just a regular directory, and a real "
-        "file inside it should resolve normally. If this assertion "
-        "fails, the resolver has become over-eager."
+        f"On POSIX, a real file at {real_file} (genuinely inside "
+        f"asset_dir.parent) should resolve. resolved={resolved!r}. "
+        "Over-eager rejection would block legitimate files in "
+        "subdirectories with `:` in their names."
     )
     assert resolved == real_file.resolve()
 
