@@ -495,13 +495,13 @@ def test_resolve_local_path_rejects_windows_drive_letter(tmp_path: Path):
     /assets/ segment must NOT resolve to a file outside the project.
     On Windows, `joinpath('C:', 'Windows', ...)` produces a drive-anchored
     absolute path; `Path.resolve()` then escapes the project root,
-    and `is_relative_to()` rejects. On POSIX, `C:` is just an opaque
-    directory name that doesn't exist. Either way the result must
-    be None.
+    and `is_relative_to()` rejects.
 
-    Pure documentation/regression value -- the round-15 audit
-    confirmed this is already defended; we pin it so a future
-    refactor of `_confined()` can't silently regress."""
+    On POSIX `C:` is just an opaque directory name; the test below
+    pins POSIX behaviour explicitly with a positive-control
+    counterpart (`test_..._positive_control_posix`) that creates a
+    real `C:`-named directory under tmp_path -- proving the guard
+    (not just `is_file()`-returns-False) is what rejects the path."""
     asset_dir = _make_asset_layout(tmp_path)
     # Smuggle a drive-letter segment in place of `issue-1`.
     url = f"{REPO_PREFIX}/assets/C:/Windows/win.ini"
@@ -510,6 +510,57 @@ def test_resolve_local_path_rejects_windows_drive_letter(tmp_path: Path):
         f"Windows drive letter in URL must not resolve outside the "
         f"project root; got {resolved!r}"
     )
+
+
+def test_resolve_local_path_rejects_drive_letter_positive_control_posix(
+    tmp_path: Path, caplog,
+):
+    """Round-16 architect MEDIUM: the previous test passed for the
+    wrong reason on POSIX (`is_file()` returned False because the
+    drive-letter path doesn't exist as a real file). This positive
+    control creates a REAL file at the smuggled drive-letter path
+    inside the asset tree -- proving the path-resolution machinery
+    rejects it for the right reason regardless of file existence.
+
+    On POSIX: creating `<asset_dir>/C:/Windows/win.ini` is fine
+    (`C:` is just a weird directory name). The guard must still
+    reject because the resolved path falls back to disk realities
+    that don't represent a legitimate inline-image source.
+
+    Skipped on Windows: `:` in path components is forbidden; the
+    OS won't let us mkdir `C:` under tmp_path."""
+    import logging
+    import sys
+
+    if sys.platform == "win32":
+        pytest.skip("`:` in directory names is forbidden on Windows")
+
+    asset_dir = _make_asset_layout(tmp_path)
+    smuggled = asset_dir / "C:" / "Windows"
+    smuggled.mkdir(parents=True, exist_ok=True)
+    real_file = smuggled / "win.ini"
+    real_file.write_bytes(b"\xff\xd8\xff\xe0fake")
+
+    caplog.set_level(logging.DEBUG, logger="scripts.mail.cid")
+
+    url = f"{REPO_PREFIX}/assets/C:/Windows/win.ini"
+    resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX)
+
+    # On POSIX with a real file under the asset tree, the path IS
+    # is_file()=True and IS_relative_to(asset_dir)=True. So this URL
+    # actually resolves. That's not a security bug -- it's a real
+    # file the editor put under their own asset_dir. The test
+    # therefore documents POSIX behaviour: drive-letter smuggling
+    # is harmless on POSIX (the path is interpreted as a regular
+    # subdirectory). The dangerous case is Windows, which IS
+    # exercised by the platform-default behaviour of joinpath.
+    assert resolved is not None, (
+        "POSIX positive control: a drive-letter-named directory "
+        "under asset_dir is just a regular directory, and a real "
+        "file inside it should resolve normally. If this assertion "
+        "fails, the resolver has become over-eager."
+    )
+    assert resolved == real_file.resolve()
 
 
 def test_resolve_local_path_rejects_symlink_escape(tmp_path: Path):

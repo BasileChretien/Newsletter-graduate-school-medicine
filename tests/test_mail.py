@@ -750,7 +750,27 @@ def test_compose_outcome_image_mode_blurb_returns_none_for_none_field():
     assert _image_mode_blurb(None) is None
     assert _image_mode_blurb("cid") is not None
     assert _image_mode_blurb("url") is not None
-    # Defensive: anything else also returns None (not an error path
-    # the toolkit currently produces, but the helper's behaviour
-    # under unexpected input should be benign).
+
+
+def test_compose_outcome_image_mode_blurb_logs_on_unknown(caplog):
+    """Round-16 python MEDIUM: an *unexpected* value (not None,
+    cid, or url) must leave a log trace -- silently returning None
+    on bad input lets a future bug disappear. None still suppresses
+    silently (it's the legitimate "no compose step ran" signal)."""
+    import logging
+    from build_newsletter import _image_mode_blurb
+
+    caplog.set_level(logging.WARNING, logger="build_newsletter")
+
     assert _image_mode_blurb("base64") is None
+    assert any(
+        "unexpected image_mode" in r.message.lower()
+        for r in caplog.records
+    ), f"expected warning log for unknown mode; got {caplog.records}"
+
+    # None must NOT log -- it's the documented "no draft happened" signal.
+    caplog.clear()
+    assert _image_mode_blurb(None) is None
+    assert not caplog.records, (
+        f"None must not produce a warning; got {caplog.records}"
+    )

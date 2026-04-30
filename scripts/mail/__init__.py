@@ -10,6 +10,8 @@ to `_BACKENDS` -- the dispatcher needs no edits.
 Public API:
     detect_default_mail_handler() -> MailHandler
     load_recipients(path) -> list[str]
+    select_backend(name, handler) -> MailBackend
+    resolve_image_mode(image_mode, handler, backend) -> str
     compose(html, *, subject, backend="auto", preview_path=None,
             bcc=None, to=None) -> ComposeOutcome
 """
@@ -20,6 +22,7 @@ import logging
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from scripts.mail.base import DraftEmail, MailBackend, MailHandler
 from scripts.mail.cid import InlineImage, attach_inline_images
@@ -134,7 +137,10 @@ _BACKENDS: list[MailBackend] = [
 ]
 
 
-def select_backend(name: str, handler: MailHandler) -> MailBackend:
+BackendName = Literal["auto", "outlook", "default"]
+
+
+def select_backend(name: BackendName, handler: MailHandler) -> MailBackend:
     """Pick a backend by explicit name or auto-detect.
 
     Public since round-15: `build_newsletter.py:all_cmd` needs to know
@@ -145,6 +151,9 @@ def select_backend(name: str, handler: MailHandler) -> MailBackend:
     which diverged from the dispatcher's real choice when
     `OutlookBackend.is_available()` returned False on a Windows box
     with a partial pywin32 install (round-15 architect HIGH 1).
+
+    Pure (no I/O, no state mutation), so callers can call it cheaply
+    to peek at the dispatcher's decision without committing to a send.
     """
     if name == "auto":
         for backend in _BACKENDS:
@@ -158,10 +167,6 @@ def select_backend(name: str, handler: MailHandler) -> MailBackend:
         return next(b for b in _BACKENDS if b.name == "clipboard_mailto")
     raise ValueError(
         f"backend must be 'auto', 'outlook' or 'default' -- got {name!r}")
-
-
-# Backwards-compat alias for any caller still importing the private name.
-_select_backend = select_backend
 
 
 def resolve_image_mode(image_mode: str, handler: MailHandler,
@@ -180,7 +185,7 @@ def resolve_image_mode(image_mode: str, handler: MailHandler,
       * explicit `cid` / `url`                       -> passthrough
 
     `backend` reflects the user's `--backend` selection. `auto` here
-    means "auto-detect", which lines up with `_select_backend`'s rule
+    means "auto-detect", which lines up with `select_backend`'s rule
     of preferring Outlook on Windows when it matches. Explicit
     `--backend=outlook` on a non-Outlook handler is honoured (the
     user is forcing the issue), and we still resolve to `cid` so the
@@ -244,7 +249,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     handler = detect_default_mail_handler()
     log.info("Default mail handler: %s [%s]", handler.name, handler.kind)
 
-    chosen = _select_backend(backend, handler)
+    chosen = select_backend(backend, handler)
 
     # Resolve `auto` via the shared helper -- the SAME helper `all_cmd`
     # calls when it's deciding whether to skip `publish-images`, so the

@@ -126,6 +126,13 @@ def _image_mode_blurb(image_mode: str | None) -> str | None:
     the same confirmation, and the wording avoids jargon ("CID",
     "publish-images") that means nothing to a 50-ish editor at a
     medical school.
+
+    Returns None when `image_mode` is None (legitimate -- no compose
+    step ran) so the caller suppresses the line. Round-16 python
+    MEDIUM: log a warning on an *unexpected* (non-None, non-cid,
+    non-url) value -- the helper still returns None to keep the
+    output clean, but a future caller passing an invalid mode will
+    leave a trace instead of silently disappearing.
     """
     if image_mode == "cid":
         return ("Photos will be attached inside the email itself "
@@ -133,6 +140,13 @@ def _image_mode_blurb(image_mode: str | None) -> str | None:
     if image_mode == "url":
         return ("Photos will be loaded by recipients from the public "
                 "GitHub host (raw.githubusercontent.com).")
+    if image_mode is not None:
+        log.warning(
+            "Unexpected image_mode %r passed to _image_mode_blurb -- "
+            "no user-facing photo-handling line will be printed. "
+            "Expected: 'cid', 'url', or None.",
+            image_mode,
+        )
     return None
 
 
@@ -462,18 +476,19 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
 def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
             image_mode: str):
     """Run the full pipeline: build -> publish -> compose draft email."""
-    asset_dir = issue_dir(ASSETS_DIR, issue)
-    asset_dir.mkdir(parents=True, exist_ok=True)
-
-    # Phase 2 / round-13 architect M3 + round-15 architect HIGH 1:
+    # Phase 2 / round-13 architect M3 + round-15 architect HIGH 1 +
+    # round-16 python MEDIUM (filesystem leak):
     # detect handler + resolve the SAME backend the dispatcher will
     # pick + resolve image mode + validate FEASIBILITY before any
     # side effects (the build step writes to dist/, the publish step
-    # pushes to GitHub).
+    # pushes to GitHub, AND `assets/issue-N/` mkdir leaves a directory
+    # behind even when validation rejects the run -- round-16 moved
+    # the mkdir AFTER validation so a failed early-exit leaves no
+    # filesystem state on the editor's machine).
     #
     # Round-13 used `handler.is_outlook_desktop` as the proxy for "is
     # the chosen backend Outlook?" -- which diverged from
-    # `_select_backend()` in two cases the round-15 audit caught:
+    # `select_backend()` in two cases the round-15 audit caught:
     #   (a) Windows box where Outlook is the OS default but
     #       `OutlookBackend.is_available()` returns False (partial
     #       pywin32 / COM init failure) -> dispatcher falls back to
@@ -491,16 +506,28 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         backend=("outlook" if chosen.name == "outlook" else "default"),
     )
     if resolved_image_mode == "cid" and chosen.name != "outlook":
+        # Round-16 python LOW: surface the user-facing CLI label
+        # ("default" / "outlook"), not the internal backend ID
+        # ("clipboard_mailto") which is opaque to a non-developer.
+        friendly_backend = (
+            "default" if chosen.name == "clipboard_mailto" else chosen.name
+        )
         click.echo(
             "ERROR: --image-mode=cid is only supported with the "
             "Outlook desktop backend. The toolkit selected "
-            f"{chosen.name!r} for this run "
-            f"(handler kind: {handler.kind}). Use --image-mode=url "
-            "for the non-Outlook path (photos hosted on GitHub), or "
-            "--image-mode=auto to let the toolkit pick.",
+            f"--backend={friendly_backend} for this run "
+            f"(detected mail app: {handler.name}). Use "
+            "--image-mode=url for the non-Outlook path (photos "
+            "hosted on GitHub), or --image-mode=auto to let the "
+            "toolkit pick.",
             err=True,
         )
         sys.exit(2)
+
+    # Validation passed -- now create the asset dir and run the
+    # build. Anything that creates state on disk lives below this line.
+    asset_dir = issue_dir(ASSETS_DIR, issue)
+    asset_dir.mkdir(parents=True, exist_ok=True)
 
     # Build first to populate assets/.
     result = _build_pipeline(

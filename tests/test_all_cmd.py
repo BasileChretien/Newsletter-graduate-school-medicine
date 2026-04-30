@@ -120,6 +120,77 @@ def test_all_cmd_rejects_cid_on_non_outlook_box(tmp_path):
     build_pipeline.assert_not_called()
 
 
+def test_all_cmd_does_not_leak_asset_dir_on_early_validation_fail(
+    tmp_path, monkeypatch,
+):
+    """Round-16 python MEDIUM (filesystem leak): when early CID
+    validation rejects the run, `assets/issue-N/` must NOT be created
+    on the editor's machine -- otherwise repeated misconfigured
+    invocations leave a trail of empty issue directories.
+
+    Round-15 created the dir via `asset_dir.mkdir()` BEFORE validation;
+    round-16 moved the mkdir to AFTER validation. This test redirects
+    `ASSETS_DIR` to a tmp_path so it's a clean filesystem and asserts
+    nothing was created."""
+    fresh_assets = tmp_path / "assets"
+    monkeypatch.setattr(bn, "ASSETS_DIR", fresh_assets)
+
+    handler = _apple_handler()
+    docx = tmp_path / "issue-7.docx"
+    docx.write_bytes(b"placeholder")
+
+    with patch("build_newsletter.detect_default_mail_handler",
+               return_value=handler), \
+         patch("build_newsletter._build_pipeline") as bp:
+        runner = CliRunner()
+        result = runner.invoke(
+            bn.cli,
+            ["all", "--input", str(docx), "--issue", "7",
+             "--image-mode", "cid"],
+        )
+
+    assert result.exit_code == 2
+    bp.assert_not_called()
+    # Critical filesystem-leak invariant:
+    assert not fresh_assets.exists() or not (fresh_assets / "issue-7").exists(), (
+        "Early validation must NOT create assets/issue-N/ -- the "
+        "directory leaks on the editor's machine on every "
+        "misconfigured invocation."
+    )
+
+
+def test_all_cmd_error_message_uses_friendly_backend_name(tmp_path):
+    """Round-16 python LOW: the error message must show the
+    user-facing CLI flag (`--backend=default`) and the human-readable
+    handler name (`Apple Mail`), not the internal backend ID
+    (`'clipboard_mailto'`) which is opaque to a non-developer."""
+    handler = _apple_handler()
+    docx = tmp_path / "issue-1.docx"
+    docx.write_bytes(b"placeholder")
+
+    with patch("build_newsletter.detect_default_mail_handler",
+               return_value=handler), \
+         patch("build_newsletter._build_pipeline"):
+        runner = CliRunner()
+        result = runner.invoke(
+            bn.cli,
+            ["all", "--input", str(docx), "--issue", "1",
+             "--image-mode", "cid"],
+        )
+
+    assert result.exit_code == 2
+    # User sees the CLI flag they'd actually type, not the internal name.
+    assert "clipboard_mailto" not in result.output, (
+        f"internal backend ID leaked into user-facing error: "
+        f"{result.output!r}"
+    )
+    assert "--backend=default" in result.output, (
+        f"user-facing flag missing: {result.output!r}"
+    )
+    # And the handler name in plain English, not a kind enum.
+    assert "Apple Mail" in result.output
+
+
 def test_all_cmd_accepts_cid_with_explicit_outlook_backend(tmp_path):
     """A user explicitly forcing `--backend=outlook` IS allowed to
     request `--image-mode=cid`, even if the OS default isn't Outlook
