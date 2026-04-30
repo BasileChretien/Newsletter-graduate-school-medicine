@@ -67,31 +67,51 @@ Primarily the editor at the Graduate School of Medicine producing the quarterly 
 
 Python 3.12, `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **201 tests** across 21 files covering parser, image handler, validator, plaintext converter, mail backends, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** (architect, Python, security, code, visual, UX, email-deliverability) — every change has at least one regression test pinned. The current production tag is `v1.0.1-bundle29`.
 
-You do **not** need any of the above to use the toolkit as an editor. The four setup steps below are everything.
+You do **not** need any of the above to use the toolkit as an editor. The setup steps below are everything.
 
 ---
 
-## Setup — do this once (about 15 minutes)
+## Setup — do this once (about 5 minutes for Outlook users)
 
-Do all four steps in order. Don't skip any.
+**Most editors send their newsletter from Microsoft Outlook on Windows.** That's the default flow, and it's just two steps.
 
-### Step 1 — Create a free GitHub account
+### Step 1 — Download the toolkit
+
+Go to <https://github.com/BasileChretien/Newsletter-graduate-school-medicine>, click the green **Code** button, then **Download ZIP**. Extract the ZIP somewhere you'll remember (e.g. `Documents\Meridian-Newsletter`). **That folder is what you'll use every issue.**
+
+### Step 2 — Install Python
+
+Python is the program that runs the toolkit.
+
+- **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **check the box "Add Python to PATH"** before you click *Install Now*.
+- **macOS:** Mac usually has Python already. To check, you can simply double-click **`Make Newsletter.command`** (Step 4 below); if Python is missing the launcher will tell you, and you can install from <https://www.python.org/downloads/> just like Windows.
+
+**That's it.** No GitHub account, no GitHub Desktop, no waiting for a write-access grant. Photos will travel inside the email itself when you send via Outlook (no public hosting needed). Skip ahead to **"How to make a newsletter"** below.
+
+> **Working on a hospital PC where you can't install software?** Step 2 above needs admin rights to install Python. If your IT department restricts installations on your machine, **show them this README** and ask them to install Python for you. Show them this section in particular — they'll recognise the requirements.
+
+> **Working on a Windows machine and want updates later?** A ZIP download is a one-time snapshot — to get future toolkit updates, either re-download a fresh ZIP or follow the longer "GitHub Desktop" flow below (which makes updates a one-click "Pull").
+
+<details>
+<summary><strong>Longer setup — for Apple Mail / Gmail-in-browser / Thunderbird editors</strong> (click to expand)</summary>
+
+If your default mail client isn't Outlook desktop, the toolkit can still work — but it has to host the photos at a public URL because clipboards can't carry attached files. That requires a GitHub account and the longer setup flow below.
+
+#### Step 1 — Create a free GitHub account
 
 1. Go to <https://github.com/signup>.
 2. Pick a username, type your email, choose a password, and finish the sign-up.
-3. **Send your GitHub username** to the toolkit administrator so they can give you write access to the repository (this is what lets you upload photos). The administrator usually confirms within **one business day**. **You can't move on to Step 2 until they confirm.**
+3. **Send your GitHub username** to the toolkit administrator so they can give you write access to the repository. The administrator usually confirms within **one business day**. **You can't move on to Step 2 until they confirm.**
 
-> **What is GitHub?** It's just where the toolkit lives. Your account gives you permission to upload your newsletter's photos. You don't need to learn how GitHub works — the toolkit does everything for you.
+> **What is GitHub?** It's the public host where the toolkit's photos live (only when you're not on Outlook desktop). Your account gives you permission to upload them. You don't need to learn how GitHub works — the toolkit does everything for you.
 
-> **Working on a hospital PC where you can't install software?** Steps 2 and 4 below need admin rights to install GitHub Desktop and Python. If your IT department restricts installations on your machine, **show them this README** and ask them to install both for you. Show them this section in particular — they will recognise the requirements.
-
-### Step 2 — Install GitHub Desktop
+#### Step 2 — Install GitHub Desktop
 
 1. Go to <https://desktop.github.com> and click **Download for Windows** (or **macOS**).
 2. Run the installer. Default settings are fine.
 3. When GitHub Desktop opens, click **Sign in to GitHub.com**. Your web browser will open and ask you to authorize GitHub Desktop. Click **Authorize**. The browser will hand control back to GitHub Desktop automatically — return to that window.
 
-### Step 3 — Download (clone) the toolkit
+#### Step 3 — Download (clone) the toolkit
 
 1. In GitHub Desktop, click the menu **File → Clone repository…**
 2. Click the **URL** tab, then paste this address:
@@ -101,16 +121,13 @@ Do all four steps in order. Don't skip any.
 3. Under **Local path**, click **Choose…** and pick **Documents** (or any folder you'll remember).
 4. Click **Clone**. After a few seconds you'll have a folder called `Newsletter-graduate-school-medicine` on your PC. **That's the folder you'll use for every newsletter.**
 
-> **Heads up for next time you visit the project page on github.com:** that page has a green **Code** button with a **Download ZIP** option. **Don't use it** — a ZIP copy can build the email but photos won't upload to the web, so recipients will see broken-image icons. Always come back through **GitHub Desktop** (this Step 3) instead. The launcher also detects a ZIP-extracted folder and stops with a clear error, but if you can avoid it, you'll save yourself a few minutes of "wait, why doesn't it work?".
+#### Step 4 — Install Python
 
-### Step 4 — Install Python
+Same as the short flow above (Windows: PATH checkbox; macOS: try the launcher first).
 
-Python is the program that runs the toolkit.
+That's the longer setup. **You will never have to do these steps again.**
 
-- **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **check the box "Add Python to PATH"** before you click *Install Now*.
-- **macOS:** open **Terminal** (Applications → Utilities → Terminal), type `python3 --version`, press Enter. If you see something like `3.12.x`, you're done. Otherwise install from <https://www.python.org/downloads/> the same way as Windows.
-
-That's the whole setup. **You will never have to do these four steps again.**
+</details>
 
 ---
 
@@ -163,7 +180,9 @@ Save the file when you're done.
 
 ### Step 3 — Add photos (optional)
 
-> ⚠️ **Privacy note:** every photo you put in the newsletter is uploaded to **public** GitHub URLs (`raw.githubusercontent.com/...`) so that recipients' email clients can load it. They stay there permanently. **Do not paste in patient photos, identifiable faces without consent, or anything you wouldn't put on a public web page.**
+> **Privacy note:** by default — when you send via Outlook desktop — photos travel **inside the email itself** as MIME attachments. They never reach a public URL; they go directly from your PC to each recipient's inbox.
+>
+> If you send via Apple Mail / Gmail-in-browser / Thunderbird, the toolkit falls back to uploading photos to **public** GitHub URLs (`raw.githubusercontent.com/...`). In that case they stay there permanently. **Whichever path you're on, treat photos as you would for any institutional email — don't paste in patient images or identifiable faces without consent.**
 
 **Just paste them straight into the Word file**, exactly where you want them to appear in the email. The toolkit will detect them automatically.
 
@@ -278,7 +297,9 @@ You're using the non-Outlook path. The newsletter is on your clipboard — click
 Copy the full red text and send it to the developer. Most errors are clear about what went wrong (e.g. "image filename doesn't match the convention").
 
 **❓ Some recipients say the photos in the email are broken / missing.**
-Photos are hosted on GitHub (a developer service) at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain and strip the images, even though the rest of the email arrives fine. If a recipient at Nagoya University reports this, ask the developer (the person who set up the toolkit for you, listed in the repo's "About" page on GitHub) to set up a one-time GitHub Pages mirror — same files, but served from `<user>.github.io/<repo>/assets/...`, which sits on a different network and is rarely flagged. Until then, an affected recipient can still click each broken-image icon to view it.
+If you send via **Outlook desktop** (the default path), photos travel inside the email itself — there's no public URL to quarantine. If a recipient still reports broken images on the Outlook path, the most likely cause is their corporate IT stripping all attachments at the mail gateway; that's a policy issue, not something the toolkit can work around.
+
+If you send via **Apple Mail / Gmail-in-browser / Thunderbird**, photos are hosted on GitHub at `raw.githubusercontent.com`. A handful of corporate / hospital mail filters quarantine that domain. Workarounds: (1) switch to Outlook desktop on a Windows PC for the send, (2) ask the developer to set up a one-time GitHub Pages mirror (same files, different network), or (3) tell affected recipients to click the broken-image icon to view it manually.
 
 **❓ How many recipients can I BCC at once before mail is throttled?**
 Most universities (including Nagoya University) cap a single outgoing message at around **50 BCC recipients**. Beyond that the message can be quietly throttled or quarantined as bulk. The toolkit doesn't enforce a limit — it BCCs whatever is in your `recipients.txt` — so it's up to you to split a > 50-person list into batches of ≤ 50. For very large lists, ask IT about a proper mailing-list address.

@@ -57,34 +57,35 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 2a. Setup self-check ----------------------------------------------------
-REM A quick "is this folder set up correctly?" check before we build.
-REM If the editor downloaded the ZIP instead of cloning via GitHub
-REM Desktop, the build will succeed but photos won't upload to the web,
-REM and recipients will see broken-image icons. Surface the problem
-REM here so they know what to fix.
+REM 2a. Setup self-check (Phase 2: downgraded from hard-fail to note) -------
+REM Pre-Phase-2, the toolkit always pushed photos to GitHub before the
+REM email was sent ("publish-images" step). That required the folder to
+REM be a git checkout, so the launcher hard-failed on ZIP-extracted
+REM copies.
+REM
+REM Phase 2 default is CID image mode for Outlook (the most common case
+REM for the originating editor): photos travel inside the email itself
+REM as MIME attachments. No GitHub publishing needed -> no git checkout
+REM required. The .bat launcher can't reliably detect Outlook before
+REM Python is invoked, so we just print a NOTE on ZIP-extracted folders
+REM and let the build proceed; if the editor turns out to be on a
+REM non-Outlook backend (which forces URL mode), the publish-images
+REM step will fail later with a clearer error.
 if not exist ".git" (
-    echo  ERROR: this folder is not a git checkout.
+    echo  Note: this folder is not a git checkout (probably extracted
+    echo  from ZIP).
     echo.
-    echo  You probably extracted a ZIP. The build would succeed, but
-    echo  photos in your newsletter would NOT upload to the web -- and
-    echo  recipients would see broken-image icons. Aborting now so you
-    echo  fix the setup before drafting an email.
+    echo  - If your default email app is **Outlook desktop** (the most
+    echo    common case): you're fine to continue. Photos will travel
+    echo    inside the email itself; no GitHub publishing is needed.
+    echo  - If your default email app is **Apple Mail / Gmail in a
+    echo    browser / Thunderbird**: you'll need a git checkout for
+    echo    photos to reach recipients. Re-clone via GitHub Desktop
+    echo    (README Step 3) before sending an issue with photos.
     echo.
-    echo  Please follow the README Steps 2 and 3:
-    echo    1. Install GitHub Desktop from https://desktop.github.com
-    echo    2. In GitHub Desktop, click File -^> Clone repository
-    echo       and clone this project fresh into a NEW folder
-    echo       (e.g. ^"Documents\Meridian-Newsletter^").
-    echo    3. Re-run the launcher from inside that NEW folder.
-    echo    4. Once the new clone works (you see ^"Done. Your email
-    echo       draft should now be open^"), you can delete this old
-    echo       folder. The broken folder is the one with NO hidden
-    echo       ^".git^" subfolder -- the working clone has one.
-    echo       If unsure, leave both. Keeping both is safe.
+    echo  You can also force URL mode explicitly with --image-mode=url
+    echo  (advanced; CLI users only).
     echo.
-    pause
-    exit /b 1
 )
 
 REM 2b. Dependency check (install on first run) ------------------------------

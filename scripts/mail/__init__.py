@@ -150,36 +150,64 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             from_addr: str | None = None,
             reply_to: str | None = None,
             attachments=(),
-            image_mode: str = "url",
+            image_mode: str = "auto",
             asset_dir: Path | None = None,
             ) -> ComposeOutcome:
     """Open an email draft. Returns a `ComposeOutcome`.
 
     Image-handling modes (`image_mode`):
 
-    * `"url"` (default) -- HTML's `<img src="https://...">` references
-      are sent as-is; recipients' clients fetch images at display time.
-    * `"cid"` -- HTML images that resolve to local files under
-      `asset_dir` are CID-rewritten and attached to the message via
-      MIME `multipart/related`. Requires the Outlook backend; raises
-      `ValueError` if `cid` is paired with any other backend so the
-      editor doesn't silently fall back to a degraded send.
+    * `"auto"` (default, **Phase 2**) -- pick the best mode for the
+      detected backend. Outlook desktop -> `"cid"` (most robust against
+      corporate filters that quarantine `raw.githubusercontent.com`,
+      and removes the requirement for the editor to have a GitHub
+      account). Anything else -> `"url"` (CID requires Outlook COM
+      to attach files; clipboard / mailto can't do that).
+    * `"cid"` -- explicit CID. HTML images that resolve to local
+      files under `asset_dir` are CID-rewritten and attached to the
+      message via MIME `multipart/related`. Requires the Outlook
+      backend; raises `ValueError` otherwise.
+    * `"url"` -- explicit URL. HTML's `<img src="https://...">`
+      references are sent as-is; recipients' clients fetch images at
+      display time. The pre-Phase-1 default; useful for forks at
+      institutions where Outlook isn't the dominant client.
 
     Failure modes:
       - `backend="outlook"` explicit + Outlook throws  -> re-raise.
         Caller MUST surface this to the editor so they don't think the
         BCC list silently went out via clipboard.
       - `backend="auto"` + Outlook throws -> warn loudly (so the editor
-        notices the change), then fall back to the clipboard backend.
+        notices the change), then fall back to the clipboard backend
+        with `image_mode` re-resolved to `"url"` and the original
+        URL HTML.
     """
-    if image_mode not in ("url", "cid"):
+    if image_mode not in ("url", "cid", "auto"):
         raise ValueError(
-            f"image_mode must be 'url' or 'cid' -- got {image_mode!r}")
+            f"image_mode must be 'url', 'cid', or 'auto' -- got "
+            f"{image_mode!r}")
 
     handler = detect_default_mail_handler()
     log.info("Default mail handler: %s [%s]", handler.name, handler.kind)
 
     chosen = _select_backend(backend, handler)
+
+    # Phase 2: resolve `image_mode='auto'` to the right concrete mode
+    # for the chosen backend BEFORE any further validation. Outlook =>
+    # CID (corporate-filter-robust + no GitHub account required for
+    # the editor); anything else => URL (CID needs COM to attach
+    # files, which clipboard / mailto can't do).
+    if image_mode == "auto":
+        if chosen.name == "outlook":
+            image_mode = "cid"
+            log.info(
+                "image_mode=auto resolved to 'cid' (Outlook backend "
+                "detected; photos attached inline via MIME).")
+        else:
+            image_mode = "url"
+            log.info(
+                "image_mode=auto resolved to 'url' (non-Outlook "
+                "backend %r detected; photos load over HTTP from "
+                "the public asset host).", chosen.name)
 
     inline_images: tuple[InlineImage, ...] = ()
     # Round-12 architect HIGH 2: keep the un-rewritten URL HTML around

@@ -29,6 +29,10 @@ def test_detect_default_mail_handler_returns_handler():
 
 
 def test_compose_routes_outlook_when_default_is_outlook():
+    """Backend-dispatch test (separate concern from image-mode).
+    Phase 2 default `image_mode='auto'` would resolve to `'cid'` here
+    and demand `asset_dir`; pinning `image_mode='url'` keeps the test
+    focused on backend dispatch."""
     handler = MailHandler(kind="outlook", name="Microsoft Outlook")
     with patch("scripts.mail.detect_default_mail_handler",
                return_value=handler), \
@@ -36,7 +40,7 @@ def test_compose_routes_outlook_when_default_is_outlook():
                return_value=True), \
          patch("scripts.mail.outlook.OutlookBackend.compose") as out_compose, \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
-        used = compose("<html>x</html>", subject="Test")
+        used = compose("<html>x</html>", subject="Test", image_mode="url")
     # Round-9 Architect HIGH-1: assert on the typed dataclass fields
     # rather than the deprecated `str(used) == "outlook"` shim, so the
     # eventual removal of `__str__` doesn't churn this test.
@@ -73,7 +77,10 @@ def test_compose_falls_back_when_outlook_backend_throws():
          patch("scripts.mail.outlook.OutlookBackend.compose",
                side_effect=RuntimeError("boom")), \
          patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose") as fb_compose:
-        used = compose("<html>x</html>", subject="Test", backend="auto")
+        used = compose(
+            "<html>x</html>", subject="Test", backend="auto",
+            image_mode="url",
+        )
     assert used.backend == "clipboard_mailto"
     assert used.is_fallback
     assert used.fell_back_from == "outlook"
@@ -89,7 +96,10 @@ def test_compose_explicit_outlook_backend_raises_on_failure():
          patch("scripts.mail.outlook.OutlookBackend.compose",
                side_effect=RuntimeError("forced")):
         with pytest.raises(RuntimeError, match="forced"):
-            compose("<html>x</html>", subject="Test", backend="outlook")
+            compose(
+                "<html>x</html>", subject="Test", backend="outlook",
+                image_mode="url",
+            )
 
 
 def test_compose_invalid_backend_raises():
@@ -426,12 +436,20 @@ def test_compose_cid_auto_fallback_hands_clipboard_original_url_html(tmp_path):
     assert captured["inline"] == ()
 
 
-def test_compose_default_image_mode_is_url(tmp_path):
-    """If the caller doesn't pass `image_mode`, behavior must remain
-    the round-9 baseline (URL-mode). This pins the default so a
-    future flip to CID-default doesn't silently break existing callers."""
+def test_compose_default_image_mode_is_auto(tmp_path):
+    """Phase 2: the default is now `image_mode='auto'`, which resolves
+    to `'cid'` for the Outlook backend and `'url'` for everything
+    else. The previous test pinned the URL default; that pin is now
+    obsolete -- replaced by `test_compose_auto_resolves_to_cid_for_outlook`
+    + `test_compose_auto_resolves_to_url_for_apple_mail` below."""
+    # Set up the asset layout so CID rewrite has somewhere to read.
+    asset_dir = tmp_path / "assets" / "issue-1"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "photo.jpg").write_bytes(b"\xff\xd8\xff" + b"X" * 100)
+    repo_prefix = "https://raw.githubusercontent.com/owner/repo/main"
+    html = f'<html><body><img src="{repo_prefix}/assets/issue-1/photo.jpg"></body></html>'
+
     handler = MailHandler(kind="outlook", name="Microsoft Outlook")
-    original_html = '<html><body><img src="https://example.com/x.jpg"></body></html>'
     captured: dict = {}
 
     def fake_compose(self, draft):
@@ -444,13 +462,66 @@ def test_compose_default_image_mode_is_url(tmp_path):
                return_value=True), \
          patch("scripts.mail.outlook.OutlookBackend.compose",
                new=fake_compose):
-        compose(original_html, subject="Test", backend="outlook")
+        compose(
+            html, subject="Test", backend="outlook",
+            asset_dir=asset_dir,  # required because auto -> cid here
+        )
         # No image_mode argument passed.
 
-    assert captured["html"] == original_html, (
-        "Default image_mode must be URL (no rewriting). If you're "
-        "intentionally flipping the default to CID, this test needs "
-        "an updated assertion AND a corresponding README + setup-flow "
-        "review."
+    # auto -> cid (Outlook detected) -> HTML CID-rewritten + photo attached.
+    assert "cid:meridian-" in captured["html"], (
+        "Phase 2 default must resolve auto -> cid for Outlook backend; "
+        "the HTML should be CID-rewritten."
     )
-    assert captured["inline"] == ()
+    assert len(captured["inline"]) == 1
+
+
+def test_compose_auto_resolves_to_cid_for_outlook(tmp_path):
+    """Phase 2 dispatcher rule: auto + Outlook -> cid."""
+    asset_dir = tmp_path / "assets" / "issue-1"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "photo.jpg").write_bytes(b"\xff\xd8\xff" + b"X" * 100)
+    repo_prefix = "https://raw.githubusercontent.com/owner/repo/main"
+    html = f'<img src="{repo_prefix}/assets/issue-1/photo.jpg">'
+
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    captured: dict = {}
+
+    def fake_compose(self, draft):
+        captured["html"] = draft.html
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose",
+               new=fake_compose):
+        compose(
+            html, subject="Test", backend="auto",
+            image_mode="auto", asset_dir=asset_dir,
+        )
+
+    assert "cid:" in captured["html"]
+
+
+def test_compose_auto_resolves_to_url_for_apple_mail(tmp_path):
+    """Phase 2 dispatcher rule: auto + non-Outlook -> url. The HTML
+    is NOT rewritten (CID would have nowhere to attach the photo)."""
+    handler = MailHandler(kind="apple_mail", name="Apple Mail")
+    original_html = '<img src="https://raw.githubusercontent.com/x/y/main/assets/issue-1/x.jpg">'
+    captured: dict = {}
+
+    def fake_compose(self, draft):
+        captured["html"] = draft.html
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=False), \
+         patch("scripts.mail.clipboard_mailto.ClipboardMailtoBackend.compose",
+               new=fake_compose):
+        compose(original_html, subject="Test", image_mode="auto")
+
+    # No CID rewriting on the non-Outlook path.
+    assert captured["html"] == original_html
+    assert "cid:" not in captured["html"]

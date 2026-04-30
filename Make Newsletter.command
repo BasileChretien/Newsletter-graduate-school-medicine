@@ -126,61 +126,44 @@ else
     exit 1
 fi
 
-# 2a. Setup self-check -------------------------------------------------------
-# A quick "is this folder set up correctly?" check before we build.
-# If the editor downloaded the ZIP instead of cloning via GitHub Desktop,
-# the build would succeed but photos wouldn't upload to the web -- and
-# recipients would see broken-image icons. HARD-FAIL here so the editor
-# fixes the setup before drafting an email (mirrors Make Newsletter.bat).
+# 2a. Setup self-check (Phase 2: downgraded from hard-fail to note) ---------
+# Pre-Phase-2 the toolkit always pushed photos to GitHub before sending,
+# which required a git checkout. Phase 2 default is CID image mode for
+# Outlook (the most common case): photos travel inside the email as
+# MIME attachments, no public hosting needed. So a ZIP-extracted folder
+# is fine for Outlook editors. We can't reliably detect Outlook before
+# Python is invoked, so we just print a NOTE and let the build continue.
 if [[ ! -d ".git" ]]; then
     if [[ $JP -eq 1 ]]; then
-        echo "  お知らせ：このフォルダは GitHub Desktop でクローンされて"
-        echo "  いないようです（ZIP ファイルから展開された可能性があります）。"
+        echo "  お知らせ：このフォルダは GitHub Desktop でクローン"
+        echo "  されたものではないようです（ZIP から展開された可能性"
+        echo "  があります）。"
         echo
-        echo "  この状態のままビルドはできますが、ニュースレター内の写真が"
-        echo "  Web にアップロードされないため、受信者の画面では画像のリンク"
-        echo "  切れアイコンが表示されてしまいます。メールの下書きを作成する"
-        echo "  前に設定を整えていただくため、ここで処理を中止します。"
+        echo "  - 既定のメールアプリが **Outlook デスクトップ** の場合"
+        echo "    （多くの編集者がこれに該当します）：このまま続行して"
+        echo "    問題ありません。写真はメール本文に直接添付されるので"
+        echo "    GitHub への公開は不要です。"
+        echo "  - 既定のメールアプリが **Apple Mail / ブラウザ版 Gmail /"
+        echo "    Thunderbird** の場合：写真を受信者に届けるためには"
+        echo "    git クローンが必要です。GitHub Desktop で再クローン"
+        echo "    してから、写真を含む号を送信してください（README"
+        echo "    のステップ 3 参照）。"
         echo
-        echo "  以下の手順でやり直してください："
-        echo "    1. https://desktop.github.com から GitHub Desktop を"
-        echo "       インストールします。"
-        echo "    2. GitHub Desktop の File → Clone repository から、本プロ"
-        echo "       ジェクトを **新しいフォルダ** にクローンしてください"
-        echo "       （例：~/Documents/Meridian-Newsletter）。"
-        echo "    3. その新しいフォルダの中で、ランチャーを再実行してください。"
-        echo "    4. 新しいクローンで「完了しました。メールの下書きが開いて"
-        echo "       います」と表示されることを確認してから、必要に応じて古い"
-        echo "       方のフォルダを削除してください。問題のあるフォルダは"
-        echo "       隠しフォルダ「.git」を **持たない** 側です（正常なクローン"
-        echo "       には「.git」が含まれます）。判別が難しい場合は、両方を"
-        echo "       残しておいても問題ありません。"
-        echo
-        echo "  ご不明な点がございましたら、画面を撮影して保守担当者まで"
-        echo "  お送りください。"
     else
-        echo "  ERROR: this folder is not a git checkout."
+        echo "  Note: this folder is not a git checkout (probably"
+        echo "  extracted from ZIP)."
         echo
-        echo "  You probably extracted a ZIP. The build would succeed, but"
-        echo "  photos in your newsletter would NOT upload to the web -- and"
-        echo "  recipients would see broken-image icons. Aborting now so you"
-        echo "  fix the setup before drafting an email."
+        echo "  - If your default email app is **Outlook desktop** (the"
+        echo "    most common case for newsletter editors): you're fine"
+        echo "    to continue. Photos travel inside the email itself;"
+        echo "    no GitHub publishing is needed."
+        echo "  - If your default email app is **Apple Mail / Gmail in"
+        echo "    a browser / Thunderbird**: you'll need a git checkout"
+        echo "    for photos to reach recipients. Re-clone via GitHub"
+        echo "    Desktop (README Step 3) before sending an issue with"
+        echo "    photos."
         echo
-        echo "  Please follow the README Steps 2 and 3:"
-        echo "    1. Install GitHub Desktop from https://desktop.github.com"
-        echo "    2. In GitHub Desktop, click File -> Clone repository"
-        echo "       and clone this project fresh into a NEW folder"
-        echo "       (e.g. ~/Documents/Meridian-Newsletter)."
-        echo "    3. Re-run the launcher from inside that NEW folder."
-        echo "    4. Once the new clone works (you see \"Done. Your email"
-        echo "       draft should now be open\"), you can delete this old"
-        echo "       folder. The broken folder is the one with NO hidden"
-        echo "       \".git\" subfolder -- the working clone has one."
-        echo "       If unsure, leave both. Keeping both is safe."
     fi
-    echo
-    read -r -p "$PRESS_ENTER" _
-    exit 1
 fi
 
 # 2b. Dependency check -------------------------------------------------------

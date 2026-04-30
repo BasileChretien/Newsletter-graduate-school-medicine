@@ -365,12 +365,12 @@ def detect_mail_cmd():
 @click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
               default="auto",
               help="Override mail-client detection.")
-@click.option("--image-mode", type=click.Choice(["url", "cid"]),
-              default="url",
-              help=("`url`: photos load from raw.githubusercontent.com "
-                    "(default; works in any backend). "
-                    "`cid`: photos are attached as MIME inline parts "
-                    "(more robust against corporate filters; Outlook only)."))
+@click.option("--image-mode", type=click.Choice(["auto", "url", "cid"]),
+              default="auto",
+              help=("`auto` (default): CID for Outlook desktop, URL for "
+                    "everything else. `url`: force URL hosting via "
+                    "raw.githubusercontent.com. `cid`: force MIME inline "
+                    "attachments (Outlook only)."))
 def compose_cmd(issue: int, input_path: str | None, backend: str,
                 image_mode: str):
     """Open the rendered email as a draft in your default email client."""
@@ -413,30 +413,57 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
 @click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
               default="auto",
               help="Override mail-client detection for the compose step.")
-@click.option("--image-mode", type=click.Choice(["url", "cid"]),
-              default="url",
-              help=("`url` (default): photos load from "
-                    "raw.githubusercontent.com after `publish-images` "
-                    "pushes them. `cid`: photos are attached as MIME "
-                    "inline parts; the publish-images step is then "
-                    "redundant for delivery (Outlook only)."))
+@click.option("--image-mode", type=click.Choice(["auto", "url", "cid"]),
+              default="auto",
+              help=("`auto` (default): pick the best mode for your mail "
+                    "client. Outlook desktop -> CID (photos attached "
+                    "inline via MIME, no GitHub publishing needed). "
+                    "Anything else -> URL (photos hosted on GitHub). "
+                    "`cid`: force CID (Outlook only). `url`: force URL "
+                    "(uploads photos via publish-images first)."))
 def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
             image_mode: str):
     """Run the full pipeline: build -> publish -> compose draft email."""
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
-    # Build first to populate assets/, then publish, then re-validate remotely.
+    # Build first to populate assets/.
     result = _build_pipeline(
         Path(input_path), issue, validate_remote=False)
     if result.exit_code != 0:
         sys.exit(result.exit_code)
     subject = result.subject
-    try:
-        sha = publish_assets(issue, push=True)
-        if sha:
-            click.echo(f"Pushed assets — commit {sha[:8]}")
-    except Exception as e:
-        click.echo(f"Publish skipped: {e}", err=True)
+
+    # Phase 2: resolve `image_mode='auto'` HERE so we can skip the
+    # `publish-images` step when CID will be used (no point pushing
+    # photos to GitHub if recipients won't fetch them from there).
+    # We detect the handler once and pass it through both decisions.
+    handler = detect_default_mail_handler()
+    resolved_image_mode = image_mode
+    if image_mode == "auto":
+        if handler.is_outlook_desktop and backend in ("auto", "outlook"):
+            resolved_image_mode = "cid"
+        else:
+            resolved_image_mode = "url"
+
+    if resolved_image_mode == "url":
+        # URL mode: photos must be reachable at `raw.githubusercontent.com`
+        # before recipients open the email, so push them now.
+        try:
+            sha = publish_assets(issue, push=True)
+            if sha:
+                click.echo(f"Pushed assets — commit {sha[:8]}")
+        except Exception as e:
+            click.echo(f"Publish skipped: {e}", err=True)
+    else:
+        # CID mode: photos travel as MIME parts inside the email
+        # itself; no public hosting needed. Skip publish-images
+        # entirely. This is what removes the GitHub-account
+        # requirement from the editor's onboarding flow.
+        click.echo(
+            "Image mode: CID -- photos attached inline. Skipping "
+            "publish-images (no public photo hosting required for "
+            "this send)."
+        )
 
     out = DIST_DIR / f"issue-{issue}.html"
     if not out.exists():
@@ -451,7 +478,6 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     # parse -- no need to re-parse the DOCX here.
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
-    handler = detect_default_mail_handler()
     if handler.is_outlook_desktop and backend in ("auto", "outlook"):
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
@@ -462,15 +488,14 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         used = compose(
             html, subject=subject, backend=backend,
             preview_path=out, bcc=bcc,
-            image_mode=image_mode,
-            asset_dir=asset_dir if image_mode == "cid" else None,
+            image_mode=resolved_image_mode,
+            asset_dir=asset_dir if resolved_image_mode == "cid" else None,
         )
         click.echo(_friendly_used(used))
         click.echo(f"Subject: {subject}")
-        if image_mode == "cid":
+        if resolved_image_mode == "cid":
             click.echo(
-                "Image mode: CID -- photos attached inline (no public URL "
-                "fetch by recipients)."
+                "Photos attached inline (no public URL fetch by recipients)."
             )
         if recipients:
             click.echo(
