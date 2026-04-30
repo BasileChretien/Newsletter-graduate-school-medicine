@@ -28,7 +28,8 @@ from scripts.publisher import publish_assets
 from scripts.recipients import load_recipients
 from scripts.config import (
     ASSETS_DIR, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
-    ORIGINAL_TEMPLATE, PROJECT_ROOT, TITLE, get_default_repo,
+    ORIGINAL_TEMPLATE, PROJECT_ROOT, TITLE,
+    default_safe_output_dir, get_default_repo, is_writable_location,
 )
 from scripts.docx_parser import ImageRef, Masthead, parse
 from scripts.image_handler import (
@@ -119,6 +120,53 @@ def _friendly_used(used: ComposeOutcome) -> str:
     return f"Email draft opened via: {used}"
 
 
+def _resolve_output_dir(user_choice: str | None) -> Path | None:
+    """Resolve where to write `dist/` and `assets/` for this run.
+
+    If the user passed `--output-dir`, that wins (and we probe-write
+    it; an unwritable explicit choice is a hard error so they know
+    immediately rather than silently falling back).
+
+    If the user did NOT pass `--output-dir`, we check whether the
+    toolkit folder accepts writes. If yes (the conventional case),
+    return None so `_build_pipeline` keeps using `DIST_DIR` /
+    `ASSETS_DIR` next to the script.
+
+    If the toolkit folder is read-only (macOS Downloads sandbox is
+    the production-bug case), redirect to
+    `~/Documents/Meridian-Newsletter/` and tell the editor.
+    Round-17 production-bug fix.
+    """
+    if user_choice is not None:
+        chosen = Path(user_choice).expanduser().resolve()
+        if not is_writable_location(chosen):
+            click.echo(click.style(
+                f"ERROR: --output-dir {chosen} is not writable. "
+                "Pick a different location, or omit the flag to let "
+                "the toolkit auto-pick a safe one.", fg="red"))
+            sys.exit(2)
+        click.echo(f"Output directory: {chosen}")
+        return chosen
+
+    if is_writable_location(PROJECT_ROOT):
+        return None  # use DIST_DIR / ASSETS_DIR as before
+
+    # Auto-fallback for the macOS Downloads-sandbox / read-only-mount
+    # case. Tell the editor so they know where to look for the file.
+    safe = default_safe_output_dir()
+    click.echo(click.style(
+        "Note: the toolkit folder is read-only (this can happen on "
+        "macOS when the ZIP is run from `Downloads`, or when the "
+        "folder lives on a read-only drive). Outputs will be saved "
+        f"under: {safe}", fg="yellow"))
+    click.echo(
+        "Tip: to silence this notice, move the toolkit folder to a "
+        "writable location (e.g. ~/Documents) and re-run, or pass "
+        "--output-dir explicitly."
+    )
+    return safe
+
+
 def _image_mode_blurb(image_mode: str | None) -> str | None:
     """Plain-English line about how photos will travel.
 
@@ -194,16 +242,53 @@ def _delete_stale_html(out_html: Path) -> None:
 
 
 def _build_pipeline(input_path: Path, issue: int, *,
-                    validate_remote: bool) -> BuildResult:
-    """Run the build pipeline. Returns a `BuildResult`."""
-    out_html = DIST_DIR / f"issue-{issue}.html"
+                    validate_remote: bool,
+                    output_dir: Path | None = None) -> BuildResult:
+    """Run the build pipeline. Returns a `BuildResult`.
+
+    `output_dir`, if given, replaces `DIST_DIR` for the rendered HTML
+    AND `ASSETS_DIR` for image extraction. Useful when the toolkit
+    folder is read-only (macOS Downloads sandbox -- round-17
+    production bug) or the editor wants outputs elsewhere.
+    """
+    if output_dir is not None:
+        dist_dir = output_dir / "dist"
+        # Note: assets/ MUST stay next to the toolkit when URL mode is
+        # active (publish-images pushes to the toolkit's git repo).
+        # In CID mode the assets dir is purely local-cache, so it's
+        # safe to redirect. The CID-vs-URL decision happens later in
+        # all_cmd; here we redirect both consistently and let the
+        # publish step error out cleanly if URL mode is chosen on a
+        # redirected layout.
+        assets_dir = output_dir / "assets"
+    else:
+        dist_dir = DIST_DIR
+        assets_dir = ASSETS_DIR
+    out_html = dist_dir / f"issue-{issue}.html"
 
     # 1) Parse DOCX
     newsletter = parse(input_path)
     log.info("Parsed %d sections", len(newsletter.sections))
 
+    # Round-17 production bug: if the parser produced ZERO sections
+    # (both strict + lenient fallback found no body content), the
+    # resulting email would be empty. Fail loudly so the editor sees
+    # the problem in the launcher console BEFORE Outlook opens a
+    # blank draft. The lenient fallback now handles arbitrary DOCX
+    # files, so this branch fires only on truly empty / malformed
+    # documents.
+    if not newsletter.sections:
+        click.echo(click.style(
+            "ERROR: no content was extracted from your Word file. "
+            "This usually means the file is empty, password-protected, "
+            "or has a format the toolkit can't read. Open the .docx "
+            "in Microsoft Word, confirm there's actual text/tables in "
+            "the body (not just header/footer), save, and try again.",
+            fg="red"))
+        return BuildResult(1, "", out_html)
+
     # 2) Extract embedded images + ingest drop folder
-    asset_dir = issue_dir(ASSETS_DIR, issue)
+    asset_dir = issue_dir(assets_dir, issue)
     embedded = extract_embedded(input_path, asset_dir)
     drops = ingest_drop_folder(DROP_DIR, asset_dir)
     log.info("Embedded images: %d, drop-folder images: %d",
@@ -285,7 +370,7 @@ def _build_pipeline(input_path: Path, issue: int, *,
     # rather than at the top of the pipeline so a hard-block doesn't
     # leave behind an empty `dist/` (cosmetic, but matches the
     # "no stale state on failure" intent).
-    DIST_DIR.mkdir(parents=True, exist_ok=True)
+    dist_dir.mkdir(parents=True, exist_ok=True)
     out_html.write_text(final_html, encoding="utf-8")
     click.echo(f"Wrote: {out_html}")
 
@@ -313,11 +398,21 @@ def _build_pipeline(input_path: Path, issue: int, *,
 @click.option("--issue", required=True, type=int)
 @click.option("--no-remote-check", is_flag=True,
               help="Skip HEAD requests to remote image URLs.")
-def build_cmd(input_path: str, issue: int, no_remote_check: bool):
+@click.option("--output-dir", "output_dir", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help=("Where to write the rendered HTML and extracted "
+                    "images. Default: next to the toolkit. Use this "
+                    "if the toolkit folder is read-only (macOS "
+                    "Downloads sandbox) or you want outputs elsewhere "
+                    "(e.g. ~/Documents/Meridian-Newsletter)."))
+def build_cmd(input_path: str, issue: int, no_remote_check: bool,
+              output_dir: str | None):
     """Convert a filled DOCX into a polished HTML email."""
+    out_dir = _resolve_output_dir(output_dir)
     result = _build_pipeline(
         Path(input_path), issue,
         validate_remote=not no_remote_check,
+        output_dir=out_dir,
     )
     sys.exit(result.exit_code)
 
@@ -336,16 +431,24 @@ def publish_images_cmd(issue: int, no_push: bool):
 
 @cli.command("preview")
 @click.option("--issue", required=True, type=int)
-def preview_cmd(issue: int):
+@click.option("--output-dir", "output_dir", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="Where the HTML was written (must match `build`'s "
+                   "--output-dir). Default: next to the toolkit.")
+def preview_cmd(issue: int, output_dir: str | None):
     """Open the rendered HTML in the default browser."""
-    out = DIST_DIR / f"issue-{issue}.html"
+    dist_dir = (
+        Path(output_dir) / "dist" if output_dir else DIST_DIR
+    )
+    out = dist_dir / f"issue-{issue}.html"
     if not out.exists():
         click.echo(f"Not found: {out}", err=True)
         sys.exit(1)
     webbrowser.open(out.as_uri())
 
 
-def _subject_from_path(issue: int, input_path: Path | None = None) -> str:
+def _subject_from_path(issue: int, input_path: Path | None = None,
+                       *, assets_dir: Path | None = None) -> str:
     """Build the email subject line from a DOCX path or manifest cache.
 
     Resolution order:
@@ -357,8 +460,12 @@ def _subject_from_path(issue: int, input_path: Path | None = None) -> str:
          a `compose --issue N` invocation against an issue that was
          built on another machine).
       3. Generic fallback `MERIDIAN — Issue N`.
+
+    `assets_dir` overrides the default `ASSETS_DIR` for the manifest
+    lookup -- needed when `--output-dir` redirected the build's
+    asset_dir to e.g. `~/Documents/Meridian-Newsletter/assets/`.
     """
-    asset_dir = issue_dir(ASSETS_DIR, issue)
+    asset_dir = issue_dir(assets_dir or ASSETS_DIR, issue)
     manifest = load_manifest(asset_dir)
     if manifest is not None and manifest.subject:
         # Re-sanitize: an older manifest may have been written before
@@ -405,16 +512,27 @@ def detect_mail_cmd():
                     "everything else. `url`: force URL hosting via "
                     "raw.githubusercontent.com. `cid`: force MIME inline "
                     "attachments (Outlook only)."))
+@click.option("--output-dir", "output_dir", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help="Where `build` wrote the HTML (must match `build`'s "
+                   "--output-dir). Default: next to the toolkit.")
 def compose_cmd(issue: int, input_path: str | None, backend: str,
-                image_mode: str):
+                image_mode: str, output_dir: str | None):
     """Open the rendered email as a draft in your default email client."""
-    out = DIST_DIR / f"issue-{issue}.html"
+    if output_dir is not None:
+        dist_dir = Path(output_dir) / "dist"
+        assets_dir = Path(output_dir) / "assets"
+    else:
+        dist_dir = DIST_DIR
+        assets_dir = ASSETS_DIR
+    out = dist_dir / f"issue-{issue}.html"
     if not out.exists():
         click.echo(f"Not found: {out}. Run `build` first.", err=True)
         sys.exit(1)
     html = out.read_text(encoding="utf-8")
     subject = _subject_from_path(
-        issue, Path(input_path) if input_path else None)
+        issue, Path(input_path) if input_path else None,
+        assets_dir=assets_dir)
     recipients = load_recipients(RECIPIENTS_PATH)
     bcc = "; ".join(recipients) or None
     handler = detect_default_mail_handler()
@@ -440,7 +558,7 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
         preview_path=out, bcc=bcc,
         image_mode=resolved_image_mode,
         asset_dir=(
-            issue_dir(ASSETS_DIR, issue)
+            issue_dir(assets_dir, issue)
             if resolved_image_mode == "cid"
             else None
         ),
@@ -473,9 +591,21 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
                     "Anything else -> URL (photos hosted on GitHub). "
                     "`cid`: force CID (Outlook only). `url`: force URL "
                     "(uploads photos via publish-images first)."))
+@click.option("--output-dir", "output_dir", default=None,
+              type=click.Path(file_okay=False, resolve_path=True),
+              help=("Where to write the rendered HTML and extracted "
+                    "images. Default: next to the toolkit, with an "
+                    "auto-fallback to ~/Documents/Meridian-Newsletter "
+                    "if the toolkit folder is read-only (macOS "
+                    "Downloads sandbox). Pass an explicit path to "
+                    "override."))
 def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
-            image_mode: str):
+            image_mode: str, output_dir: str | None):
     """Run the full pipeline: build -> publish -> compose draft email."""
+    # Round-17: resolve the output dir up-front. Either explicit
+    # (--output-dir), or auto-fallback to ~/Documents/Meridian-Newsletter
+    # if the toolkit folder is read-only (macOS Downloads sandbox).
+    out_dir_override = _resolve_output_dir(output_dir)
     # Phase 2 / round-13 architect M3 + round-15 architect HIGH 1 +
     # round-16 python MEDIUM (filesystem leak):
     # detect handler + resolve the SAME backend the dispatcher will
@@ -526,12 +656,17 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
 
     # Validation passed -- now create the asset dir and run the
     # build. Anything that creates state on disk lives below this line.
-    asset_dir = issue_dir(ASSETS_DIR, issue)
+    effective_assets = (
+        out_dir_override / "assets" if out_dir_override else ASSETS_DIR
+    )
+    asset_dir = issue_dir(effective_assets, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
 
     # Build first to populate assets/.
     result = _build_pipeline(
-        Path(input_path), issue, validate_remote=False)
+        Path(input_path), issue, validate_remote=False,
+        output_dir=out_dir_override,
+    )
     if result.exit_code != 0:
         sys.exit(result.exit_code)
     subject = result.subject
@@ -539,12 +674,21 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     if resolved_image_mode == "url":
         # URL mode: photos must be reachable at `raw.githubusercontent.com`
         # before recipients open the email, so push them now.
-        try:
-            sha = publish_assets(issue, push=True)
-            if sha:
-                click.echo(f"Pushed assets — commit {sha[:8]}")
-        except Exception as e:
-            click.echo(f"Publish skipped: {e}", err=True)
+        if out_dir_override is not None:
+            click.echo(click.style(
+                "Note: --output-dir was set, so the published "
+                "photos live OUTSIDE the toolkit's git checkout. "
+                "URL mode requires them inside the git tree to "
+                "push to GitHub. Skipping publish-images. Either "
+                "use --image-mode=cid (Outlook), or run without "
+                "--output-dir.", fg="yellow"))
+        else:
+            try:
+                sha = publish_assets(issue, push=True)
+                if sha:
+                    click.echo(f"Pushed assets — commit {sha[:8]}")
+            except Exception as e:
+                click.echo(f"Publish skipped: {e}", err=True)
     else:
         # CID mode: photos travel as MIME parts inside the email
         # itself; no public hosting needed. Skip publish-images
@@ -559,7 +703,10 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
             "inside the email itself."
         )
 
-    out = DIST_DIR / f"issue-{issue}.html"
+    effective_dist = (
+        out_dir_override / "dist" if out_dir_override else DIST_DIR
+    )
+    out = effective_dist / f"issue-{issue}.html"
     if not out.exists():
         return
 

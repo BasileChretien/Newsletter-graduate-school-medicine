@@ -156,11 +156,41 @@ if not exist "!DOCX!" (
     exit /b 1
 )
 
-REM 4. Run the pipeline ------------------------------------------------------
+REM 4. Output-folder selection -----------------------------------------------
+REM Round-17: probe-write the toolkit folder; if it's read-only (rare on
+REM Windows, but possible on locked-down corporate PCs / network shares /
+REM read-only mounts) prompt the editor for an alternative location.
+set "OUTPUT_DIR_FLAG="
+echo test > ".meridian_writable_probe" 2>nul
+if errorlevel 1 (
+    echo.
+    echo  Note: this folder isn't writable (this can happen on
+    echo  corporate PCs or network shares). Output will be saved
+    echo  elsewhere.
+    set "DEFAULT_OUTPUT_DIR=%USERPROFILE%\Documents\Meridian-Newsletter"
+    set /p "CUSTOM_OUTPUT_DIR=Output folder (press Enter for !DEFAULT_OUTPUT_DIR!): "
+    if "!CUSTOM_OUTPUT_DIR!"=="" (
+        set "OUTPUT_DIR=!DEFAULT_OUTPUT_DIR!"
+    ) else (
+        set "OUTPUT_DIR=!CUSTOM_OUTPUT_DIR!"
+    )
+    if not exist "!OUTPUT_DIR!" mkdir "!OUTPUT_DIR!"
+    echo  Output folder: !OUTPUT_DIR!
+    set "OUTPUT_DIR_FLAG=--output-dir "!OUTPUT_DIR!""
+    echo.
+) else (
+    del ".meridian_writable_probe" >nul 2>&1
+)
+
+REM 5. Run the pipeline ------------------------------------------------------
 echo.
 echo Building issue !ISSUE! from !DOCX! ...
 echo.
-python build_newsletter.py all --input "!DOCX!" --issue !ISSUE!
+if defined OUTPUT_DIR_FLAG (
+    python build_newsletter.py all --input "!DOCX!" --issue !ISSUE! !OUTPUT_DIR_FLAG!
+) else (
+    python build_newsletter.py all --input "!DOCX!" --issue !ISSUE!
+)
 set "RC=!errorlevel!"
 
 echo.

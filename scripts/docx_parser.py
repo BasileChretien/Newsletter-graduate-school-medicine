@@ -380,10 +380,45 @@ def _iter_body_blocks(doc: DocxDocument) -> Iterable[tuple[str, object]]:
 
 
 def parse(docx_path: Path) -> Newsletter:
-    """Parse a filled DOCX into a Newsletter."""
+    """Parse a filled DOCX into a Newsletter.
+
+    Two parse passes:
+      1. **Strict pass** -- look for numbered section headings
+         (`1. Title`, `Section 5: Title`, `第3章 Title`, ...) and
+         organise paragraphs/tables/images under them. This is the
+         canonical layout the bundled MERIDIAN template uses.
+      2. **Lenient fallback** -- if pass 1 finds zero sections, the
+         user is sending an arbitrary DOCX (not the MERIDIAN
+         template). Re-walk the body, treating EVERYTHING as one
+         synthetic Section(number=1, title="Newsletter"). Word's
+         Heading-1 paragraphs become section dividers; everything
+         else is body content. Without this fallback the parser
+         silently dropped non-template DOCX content and the editor
+         got a blank email -- the production-bug report from the
+         field trial that prompted this rewrite.
+    """
     doc = Document(str(docx_path))
     masthead = _extract_masthead(doc)
 
+    sections = _parse_strict(doc)
+    if not sections:
+        log.warning(
+            "No numbered section headings detected in %s. Falling back "
+            "to lenient parse: the entire document body is rendered as "
+            "one section. To get the structured multi-section layout, "
+            "use the MERIDIAN template (or add headings like "
+            "'1. Title', 'Section 1: Title', or '第1章 Title' to your "
+            "document).",
+            docx_path,
+        )
+        sections = _parse_lenient(doc)
+
+    log.debug("Parsed %d section(s)", len(sections))
+    return Newsletter(masthead=masthead, sections=tuple(sections))
+
+
+def _parse_strict(doc: DocxDocument) -> list[Section]:
+    """Original strict parser: requires numbered section headings."""
     sections: list[Section] = []
     current_num: int | None = None
     current_title: str = ""
@@ -451,12 +486,112 @@ def parse(docx_path: Path) -> Newsletter:
 
     flush_bullets()
     flush_section()
+    return sections
 
-    # Section count is intentionally flexible -- log at DEBUG so editors
-    # who add/remove sections don't see noisy warnings on every build.
-    log.debug("Parsed %d section(s)", len(sections))
 
-    return Newsletter(masthead=masthead, sections=tuple(sections))
+def _parse_lenient(doc: DocxDocument) -> list[Section]:
+    """Fallback parser for DOCX files that don't use numbered section
+    headings (i.e. arbitrary user-supplied DOCX, not the MERIDIAN
+    template). Treats the whole body as ONE Section -- numbered 1
+    so the renderer doesn't display a "Section 0" placeholder.
+
+    Word `Heading 1` paragraphs become inline H2 markers (visual
+    section breaks within the single section); `Heading 2` becomes
+    H3 sub-headings. Body text, bullet lists, tables, and images
+    are emitted as-is.
+
+    Round-17 production-bug fix: the user's first real-world test
+    used their own DOCX (no MERIDIAN headings) and got an empty
+    email -- because the strict parser silently dropped every
+    paragraph until it saw a numbered heading, which never came.
+    """
+    blocks: list[Block] = []
+    pending_bullets: list[str] = []
+    table_index = 0
+
+    def flush_bullets():
+        if pending_bullets:
+            blocks.append(BulletList(items=tuple(pending_bullets)))
+            pending_bullets.clear()
+
+    for kind, item in _iter_body_blocks(doc):
+        if kind == "paragraph":
+            p: Paragraph = item
+            text = p.text.strip()
+            if not text:
+                # Empty paragraphs aren't worth carrying through, but
+                # might still hold an inline image. Let
+                # `paragraph_to_html` decide.
+                html = paragraph_to_html(p)
+                if html:
+                    flush_bullets()
+                    blocks.append(BodyParagraph(html=html))
+                continue
+
+            # Word-style heading detection -- promote to visual
+            # divider. Heading 1 -> H2 (we already use H1 for the
+            # masthead-substitute); Heading 2 -> H3.
+            style_name = ""
+            if p.style is not None and p.style.name:
+                style_name = p.style.name.lower()
+            if "heading 1" in style_name:
+                flush_bullets()
+                blocks.append(Heading(level=2, text=text))
+                continue
+            if "heading 2" in style_name or "heading 3" in style_name:
+                flush_bullets()
+                blocks.append(Heading(level=3, text=text))
+                continue
+
+            if _is_list_paragraph(p):
+                html = paragraph_to_html(p)
+                if html:
+                    pending_bullets.append(html)
+                continue
+            flush_bullets()
+
+            html = paragraph_to_html(p)
+            if html:
+                blocks.append(BodyParagraph(html=html))
+
+        else:  # table
+            t: Table = item
+            table_index += 1
+            if table_index == 1:
+                # Skip ONLY if it looks like a masthead (3 rows, no
+                # data-table feel). For arbitrary DOCX the first
+                # table is usually real content -- keep it.
+                if _looks_like_masthead(t):
+                    continue
+            flush_bullets()
+            blocks.append(_table_to_block(t))
+
+    flush_bullets()
+
+    # Emit a single synthetic section so the renderer has something
+    # non-empty to traverse. Title is "Newsletter" rather than empty
+    # so the rendered HTML doesn't have a bare section break.
+    if not blocks:
+        return []
+    return [Section(number=1, title="Newsletter", blocks=tuple(blocks))]
+
+
+def _looks_like_masthead(t: Table) -> bool:
+    """Heuristic: does this table look like the MERIDIAN masthead
+    (3 rows, mostly empty, used for layout)?
+
+    Used by the lenient fallback parser to decide whether to skip
+    the first table (canonical template) or render it as content
+    (arbitrary user DOCX with a real data table on page 1).
+    """
+    if len(t.rows) != 3:
+        return False
+    # Masthead has at most a handful of short text cells; a real
+    # data table typically has more rows or longer cell content.
+    total_chars = sum(
+        len(cell.text) for row in t.rows for cell in row.cells
+    )
+    return total_chars < 400
 
 
 __all__ = [

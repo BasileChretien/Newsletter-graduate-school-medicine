@@ -45,6 +45,9 @@ if [[ $JP -eq 1 ]]; then
     MSG_DONE_NOTE="【重要】メールはまだ送信されていません。宛先をご入力のうえ、内容を確認してから、ご自身で「送信」をクリックしてください。 ※ 毎号同じ宛先に送る場合は、recipients.example.txt を recipients.txt にコピーして編集しておくと、次号以降 BCC が自動入力されます。"
     MSG_DONE_FAIL="問題が発生しました。上のメッセージをご確認ください。"
     PRESS_ENTER="Enter キーを押して閉じてください…"
+    PROMPT_OUTPUT_DIR="出力先フォルダ（既定 = ~/Documents/Meridian-Newsletter）："
+    MSG_READONLY_NOTE="お知らせ：本フォルダは書き込み権限がないようです（Downloads から起動された場合などに発生します）。HTML と画像の保存先を別フォルダに切り替えます。"
+    MSG_OUTPUT_USED="出力先："
 else
     BANNER="  MERIDIAN  -  Newsletter Builder"
     PROMPT_ISSUE="Issue number (e.g. 3): "
@@ -68,6 +71,9 @@ else
     MSG_DONE_NOTE="IMPORTANT: nothing has been sent yet. Add recipients in the To: field, review, then click Send yourself. Tip: copy recipients.example.txt to recipients.txt to skip typing the list next issue."
     MSG_DONE_FAIL="Something went wrong. See the messages above."
     PRESS_ENTER="Press Enter to close..."
+    PROMPT_OUTPUT_DIR="Output folder (press Enter for ~/Documents/Meridian-Newsletter): "
+    MSG_READONLY_NOTE="Note: this folder isn't writable (this happens when the launcher is run from Downloads). Output will be saved in a different folder."
+    MSG_OUTPUT_USED="Output folder:"
 fi
 
 echo
@@ -219,11 +225,42 @@ if [[ ! -f "$DOCX" ]]; then
     exit 1
 fi
 
-# 4. Run ---------------------------------------------------------------------
+# 4. Output-folder selection -------------------------------------------------
+# Round-17 production-bug fix: writability self-check.
+#
+# On macOS the ZIP is often extracted into Downloads, where modern macOS
+# applies a sandbox that prevents the toolkit from writing dist/ and
+# assets/ next to the script. The Python pipeline auto-detects this at
+# runtime, but we ALSO probe-write here so we can offer the editor a
+# choice of output folder BEFORE the build starts -- and so we have a
+# clean place to surface the situation in the launcher's own prompts.
+OUTPUT_DIR_FLAG=""
+if ! ( touch ".meridian_writable_probe" 2>/dev/null && rm -f ".meridian_writable_probe" ); then
+    echo "  $MSG_READONLY_NOTE"
+    DEFAULT_OUTPUT_DIR="$HOME/Documents/Meridian-Newsletter"
+    read -r -p "$PROMPT_OUTPUT_DIR" CUSTOM_OUTPUT_DIR
+    OUTPUT_DIR="${CUSTOM_OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
+    # Tilde-expand if the user typed `~/...`
+    OUTPUT_DIR="${OUTPUT_DIR/#~/$HOME}"
+    mkdir -p "$OUTPUT_DIR" 2>/dev/null || {
+        echo "  ERROR: cannot create $OUTPUT_DIR"
+        read -r -p "$PRESS_ENTER" _
+        exit 1
+    }
+    echo "  $MSG_OUTPUT_USED $OUTPUT_DIR"
+    OUTPUT_DIR_FLAG=(--output-dir "$OUTPUT_DIR")
+    echo
+fi
+
+# 5. Run ---------------------------------------------------------------------
 echo
 echo "$MSG_BUILD"
 echo
-"$PY" build_newsletter.py all --input "$DOCX" --issue "$ISSUE"
+if [[ -n "$OUTPUT_DIR_FLAG" ]]; then
+    "$PY" build_newsletter.py all --input "$DOCX" --issue "$ISSUE" "${OUTPUT_DIR_FLAG[@]}"
+else
+    "$PY" build_newsletter.py all --input "$DOCX" --issue "$ISSUE"
+fi
 RC=$?
 
 echo

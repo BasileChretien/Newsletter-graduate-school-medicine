@@ -168,3 +168,85 @@ def __getattr__(name: str):
     if name == "DEFAULT_REPO":
         return get_default_repo()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# Round-17: writable-location detection.
+#
+# Production-bug report: a macOS editor extracted the ZIP from
+# `Downloads`, which on newer macOS has additional sandbox /
+# quarantine restrictions that prevent the toolkit from writing to
+# `dist/` and `assets/` next to the script. The launcher silently
+# failed AND opened an empty mail draft (the latter caused by a
+# parser bug, fixed separately).
+#
+# `is_writable_location()` returns True if the toolkit folder accepts
+# writes. `default_safe_output_dir()` returns the user's Documents
+# folder when the toolkit folder isn't writable -- editors get a
+# working setup without having to know about quarantine/sandbox
+# rules.
+
+def is_writable_location(path: Path) -> bool:
+    """Probe-write a short-lived file in `path` to confirm the toolkit
+    can persist outputs there.
+
+    Returns False on PermissionError, OSError (read-only filesystem,
+    sandbox denied, etc.), or any other write failure. The probe
+    file is removed before returning. `path` itself is created if
+    missing -- which is itself a write check.
+    """
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".meridian_writable_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except (PermissionError, OSError):
+        return False
+
+
+def default_safe_output_dir() -> Path:
+    """Return a writable directory for `dist/` and `assets/` outputs.
+
+    Resolution order:
+      1. `MERIDIAN_OUTPUT_DIR` env var if set.
+      2. `PROJECT_ROOT` if it accepts writes (the conventional
+         location -- output ends up next to the toolkit).
+      3. `~/Documents/Meridian-Newsletter/` -- the macOS sandbox-
+         safe fallback. Created on demand.
+      4. `~/Meridian-Newsletter/` -- last resort if Documents is
+         also unavailable (locked-down corporate Macs sometimes
+         redirect ~/Documents to iCloud Drive in a non-writable way).
+
+    Always returns a Path that has been verified writable.
+    """
+    env_override = os.environ.get("MERIDIAN_OUTPUT_DIR")
+    if env_override:
+        candidate = Path(env_override).expanduser().resolve()
+        if is_writable_location(candidate):
+            return candidate
+        log.warning(
+            "MERIDIAN_OUTPUT_DIR=%r is not writable; falling back.",
+            env_override,
+        )
+
+    if is_writable_location(PROJECT_ROOT):
+        return PROJECT_ROOT
+
+    home = Path.home()
+    documents = home / "Documents" / "Meridian-Newsletter"
+    if is_writable_location(documents):
+        log.warning(
+            "Toolkit folder %s is not writable (likely a macOS "
+            "Downloads sandbox or a read-only mount). Outputs will "
+            "be written under %s instead.",
+            PROJECT_ROOT, documents,
+        )
+        return documents
+
+    last_resort = home / "Meridian-Newsletter"
+    log.warning(
+        "Neither toolkit folder nor ~/Documents accepts writes; "
+        "using %s as a last resort.", last_resort,
+    )
+    last_resort.mkdir(parents=True, exist_ok=True)
+    return last_resort

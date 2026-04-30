@@ -296,7 +296,18 @@ Word file / Wordファイル [issue-3.docx]:        ← Enter キーを押すだ
 ご安心ください。ご自身が作成する `issue-3.docx` は複製であり、元の `Meridian_Newsletter_Template.docx` には変更が加わりません。**複製に不具合が生じた場合は、当該ファイルを削除してテンプレートをもう一度開いてください。** 失われるデータはありません。
 
 **Q. メールファイルの保存先はどこですか。**
-`dist/` フォルダの中です。第 3 号の場合は `dist/issue-3.html` に保存されます。いつでもダブルクリックして開けます。
+既定では、ツール本体と同じフォルダ内の `dist/` に保存されます。第 3 号の場合は `dist/issue-3.html` に保存されます。いつでもダブルクリックして開けます。
+
+**保存先を変更したい場合**（例：`~/Documents/Newsletters/` など）は `--output-dir` を指定してください：
+
+```
+python build_newsletter.py all --input issue-3.docx --issue 3 --output-dir ~/Documents/Newsletters
+```
+
+ランチャー（`Make Newsletter.bat` / `.command`）はツールフォルダが書き込み不可の状態を自動検出し（macOS で Downloads から起動した場合などに発生します）、保存先の入力をお願いします。既定では `~/Documents/Meridian-Newsletter/` が使用されます。環境変数 `MERIDIAN_OUTPUT_DIR` を設定しておけば、毎回同じ保存先が自動適用されます。
+
+**Q. メールが空白で開いてしまう / 本文に何も表示されない。**
+**配布の MERIDIAN テンプレート**を使用された場合、本来この事象は発生しません。発生した場合は保守担当者にご連絡ください。**ご自身の Word ファイル**を使用された場合は、見出しが本ツールが認識する形式（`1. タイトル`、`Section 1: タイトル`、または `第1章 タイトル`）に一致していないことが最も多い原因です。v1.1.2 以降では、テンプレート以外の文書も「本文全体を 1 つの節として扱う」フォールバック動作で処理されますので、メールには本文が反映されます。ランチャーの画面に *"No numbered section headings detected ... Falling back to lenient parse"* という旨のメッセージが表示されているかご確認ください。Word ファイルが本当に空（またはパスワード保護されている）場合は、`ERROR: no content was extracted from your Word file` と表示されて Outlook を起動せずに停止します。
 
 **Q. ドロップフォルダの写真はどこに保存されますか。**
 第 N 号の場合は `assets/issue-N/` に保存されます。同時に GitHub にもアップロードされ、公開 URL から参照可能になります。

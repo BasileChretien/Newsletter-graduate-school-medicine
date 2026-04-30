@@ -321,9 +321,20 @@ Select the section heading (or sub-heading) and everything below it that belongs
 Don't worry — your filled-in copy (`issue-3.docx`) is just a copy. The original `Meridian_Newsletter_Template.docx` is never modified. **If you mangle your copy, just delete it and open the template again** — nothing is lost.
 
 **❓ Where is the email file saved?**
-In the `dist/` folder. For issue 3, it's `dist/issue-3.html`. You can open it any time by double-clicking it.
+By default, in the `dist/` folder **next to the toolkit**. For issue 3, it's `dist/issue-3.html`. You can open it any time by double-clicking it.
+
+**Want to save somewhere else** (e.g. `~/Documents/Newsletters/`)? Pass `--output-dir`:
+
+```
+python build_newsletter.py all --input issue-3.docx --issue 3 --output-dir ~/Documents/Newsletters
+```
+
+The launcher (`Make Newsletter.bat` / `.command`) auto-detects when the toolkit folder is read-only (this happens on macOS when the launcher is run from `Downloads`) and prompts you for an output location — defaulting to `~/Documents/Meridian-Newsletter/`. You can also set `MERIDIAN_OUTPUT_DIR` as an environment variable to apply the same redirect for every run.
 
 > **One small caveat for the Outlook (CID) path:** the saved `dist/issue-N.html` references photos by their `raw.githubusercontent.com` URLs (those URLs only get *populated* by the longer GitHub Desktop flow). When you send via Outlook desktop, the toolkit attaches the same photos to the email itself — the recipient sees them fine — but if you double-click `dist/issue-N.html` later for a quick preview, the images may show as broken. **The Outlook draft is the source of truth in CID mode**; the `dist/` HTML is mainly for archival inspection by the maintainer.
+
+**❓ My email opened blank / nothing showed up in the body.**
+If you used **the bundled MERIDIAN template**, this shouldn't happen — please report it. If you used **your own Word file**, the most likely cause is that your headings don't match the patterns the toolkit recognises (`1. Title`, `Section 1: Title`, or `第1章 Title`). Since v1.1.2 the toolkit handles non-template documents by treating the whole body as one section — check the launcher's console output for a line starting *"No numbered section headings detected ... Falling back to lenient parse"*. If your DOCX is truly empty (or password-protected), the launcher prints `ERROR: no content was extracted from your Word file` and stops without opening Outlook.
 
 **❓ Where do my drop-folder photos end up?**
 In `assets/issue-3/` (for issue 3). They're also pushed to GitHub so they have a public web address.
