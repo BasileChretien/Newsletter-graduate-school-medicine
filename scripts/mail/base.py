@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scripts.mail.cid import InlineImage
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,11 @@ class DraftEmail:
     from_addr: str | None = None     # optional From: -- shared mailbox / department address
     reply_to: str | None = None
     attachments: tuple[Path, ...] = field(default_factory=tuple)
+    # Inline-image attachment specs for the CID image-mode. Backends
+    # that don't know how to inline-attach (clipboard_mailto) MUST
+    # ignore this field; only `OutlookBackend` consumes it. The HTML
+    # in `html` is already CID-rewritten when this is non-empty.
+    inline_images: "tuple[InlineImage, ...]" = field(default_factory=tuple)
     preview_path: Path | None = None
     # Identifies the OS-detected default mail client (when known) so a
     # backend can use it for log messages without a back-channel call.

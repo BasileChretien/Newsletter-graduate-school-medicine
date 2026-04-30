@@ -11,8 +11,30 @@ import logging
 import platform
 
 from scripts.mail.base import DraftEmail, MailHandler
+from scripts.mail.cid import InlineImage
 from scripts.mail.plaintext import (
     html_to_plaintext, html_to_plaintext_strict_fallback,
+)
+
+
+# MAPI tag for the `Content-ID` header on an attachment, as documented
+# at https://learn.microsoft.com/en-us/office/client-developer/outlook/mapi/pidtagattachcontentid-canonical-property.
+# The 0x3712001E suffix encodes the property type (`PT_STRING8`).
+_PR_ATTACH_CONTENT_ID = (
+    "http://schemas.microsoft.com/mapi/proptag/0x3712001F"
+)
+# Hide CID-attached images from the "Attachments:" UI -- they are
+# logically *inside* the message body, not separate attachments.
+# 0x37140003 is `PR_ATTACH_FLAGS` (PT_LONG); the value 4 means
+# `ATT_MHTML_REF` (the attachment is referenced by an HTML body).
+_PR_ATTACH_FLAGS = (
+    "http://schemas.microsoft.com/mapi/proptag/0x37140003"
+)
+_ATT_MHTML_REF = 4
+# `PR_ATTACHMENT_HIDDEN` (PT_BOOLEAN) -- complementary to ATT_MHTML_REF
+# on some Outlook builds; harmless when redundant.
+_PR_ATTACHMENT_HIDDEN = (
+    "http://schemas.microsoft.com/mapi/proptag/0x7FFE000B"
 )
 
 log = logging.getLogger(__name__)
@@ -45,6 +67,63 @@ def is_available() -> bool:
         return False
 
 
+def _attach_inline_image(mail, inline: InlineImage) -> None:
+    """Add `inline.path` to the Outlook draft as a CID-referenced part.
+
+    Three MAPI property writes per attachment:
+
+    * `PR_ATTACH_CONTENT_ID` -- sets the `Content-ID:` MIME header so
+      the HTML's `<img src="cid:foo">` resolves to this attachment.
+    * `PR_ATTACH_FLAGS = ATT_MHTML_REF` -- marks the attachment as
+      "referenced by HTML", which on most Outlook builds keeps it out
+      of the visible "Attachments:" row.
+    * `PR_ATTACHMENT_HIDDEN = True` -- belt-and-braces equivalent on
+      builds where MHTML_REF alone doesn't hide the row.
+
+    All three calls go through the COM exception tuple so a build of
+    pywin32 that exposes a different error class doesn't crash the
+    compose path (the editor would still get the email; just with
+    the inline images visible as named attachments).
+    """
+    try:
+        att = mail.Attachments.Add(str(inline.path))
+    except _COM_ERRORS as e:
+        log.warning(
+            "Outlook Attachments.Add(%s) failed for inline image (%s); "
+            "the email will reference cid:%s but no attachment will "
+            "carry it -- recipients will see a broken image.",
+            inline.path, e, inline.cid,
+        )
+        return
+    try:
+        att.PropertyAccessor.SetProperty(
+            _PR_ATTACH_CONTENT_ID, inline.cid,
+        )
+    except _COM_ERRORS as e:
+        log.warning(
+            "Outlook PropertyAccessor.SetProperty(Content-ID=%r) "
+            "failed (%s); inline image will appear as a normal "
+            "attachment instead of an inline reference.",
+            inline.cid, e,
+        )
+        return
+    # Hide-from-attachments UI bits are best-effort. If they fail we
+    # still have a working CID-referenced image; the recipient just
+    # also sees it in the attachments row, which is cosmetic.
+    try:
+        att.PropertyAccessor.SetProperty(
+            _PR_ATTACH_FLAGS, _ATT_MHTML_REF,
+        )
+    except _COM_ERRORS as e:
+        log.debug("PR_ATTACH_FLAGS set failed (%s); cosmetic only.", e)
+    try:
+        att.PropertyAccessor.SetProperty(
+            _PR_ATTACHMENT_HIDDEN, True,
+        )
+    except _COM_ERRORS as e:
+        log.debug("PR_ATTACHMENT_HIDDEN set failed (%s); cosmetic only.", e)
+
+
 def compose_outlook(html: str, subject: str, *,
                     bcc: str | None = None,
                     cc: str | None = None,
@@ -52,6 +131,7 @@ def compose_outlook(html: str, subject: str, *,
                     from_addr: str | None = None,
                     reply_to: str | None = None,
                     attachments=(),
+                    inline_images: tuple[InlineImage, ...] = (),
                     ) -> None:
     """Create an Outlook mail draft with HTML body + optional headers.
 
@@ -60,6 +140,13 @@ def compose_outlook(html: str, subject: str, *,
     render it, plaintext for clients that don't (and as a hint to
     spam filters that this isn't HTML-only mail). Mimecast /
     Proofpoint / MS Defender all score HTML-only mail higher.
+
+    When `inline_images` is non-empty, the `html` is expected to
+    already contain `<img src="cid:...">` references (the rewriting
+    happens in `scripts.mail.cid.attach_inline_images` before the
+    backend is called). We attach each `InlineImage`'s file via the
+    COM Attachments.Add() API and tag it with the matching
+    `Content-ID:` header so the HTML references resolve.
     """
     import win32com.client
     outlook = win32com.client.Dispatch("Outlook.Application")
@@ -117,6 +204,12 @@ def compose_outlook(html: str, subject: str, *,
             mail.Attachments.Add(str(path))
         except _COM_ERRORS as e:
             log.debug("Outlook Attachments.Add(%r) failed: %s", path, e)
+    # Inline images (CID mode): attach each file AND tag it with the
+    # matching Content-ID header so the HTML's `<img src="cid:...">`
+    # references resolve. Order doesn't matter; Outlook deduplicates
+    # by path internally.
+    for inline in inline_images or ():
+        _attach_inline_image(mail, inline)
     mail.Display(False)
 
 
@@ -137,6 +230,7 @@ class OutlookBackend:
             bcc=draft.bcc, cc=draft.cc, to=draft.to,
             from_addr=draft.from_addr, reply_to=draft.reply_to,
             attachments=draft.attachments,
+            inline_images=draft.inline_images,
         )
 
 

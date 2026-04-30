@@ -365,7 +365,14 @@ def detect_mail_cmd():
 @click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
               default="auto",
               help="Override mail-client detection.")
-def compose_cmd(issue: int, input_path: str | None, backend: str):
+@click.option("--image-mode", type=click.Choice(["url", "cid"]),
+              default="url",
+              help=("`url`: photos load from raw.githubusercontent.com "
+                    "(default; works in any backend). "
+                    "`cid`: photos are attached as MIME inline parts "
+                    "(more robust against corporate filters; Outlook only)."))
+def compose_cmd(issue: int, input_path: str | None, backend: str,
+                image_mode: str):
     """Open the rendered email as a draft in your default email client."""
     out = DIST_DIR / f"issue-{issue}.html"
     if not out.exists():
@@ -383,8 +390,12 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
             "time; please wait -- clicking other windows may cancel "
             "the draft)..."
         )
-    used = compose(html, subject=subject, backend=backend,
-                   preview_path=out, bcc=bcc)
+    used = compose(
+        html, subject=subject, backend=backend,
+        preview_path=out, bcc=bcc,
+        image_mode=image_mode,
+        asset_dir=issue_dir(ASSETS_DIR, issue) if image_mode == "cid" else None,
+    )
     click.echo(_friendly_used(used))
     click.echo(f"Subject: {subject}")
     if recipients:
@@ -402,7 +413,15 @@ def compose_cmd(issue: int, input_path: str | None, backend: str):
 @click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
               default="auto",
               help="Override mail-client detection for the compose step.")
-def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
+@click.option("--image-mode", type=click.Choice(["url", "cid"]),
+              default="url",
+              help=("`url` (default): photos load from "
+                    "raw.githubusercontent.com after `publish-images` "
+                    "pushes them. `cid`: photos are attached as MIME "
+                    "inline parts; the publish-images step is then "
+                    "redundant for delivery (Outlook only)."))
+def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
+            image_mode: str):
     """Run the full pipeline: build -> publish -> compose draft email."""
     asset_dir = issue_dir(ASSETS_DIR, issue)
     asset_dir.mkdir(parents=True, exist_ok=True)
@@ -440,10 +459,19 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str):
             "the draft)..."
         )
     try:
-        used = compose(html, subject=subject, backend=backend,
-                       preview_path=out, bcc=bcc)
+        used = compose(
+            html, subject=subject, backend=backend,
+            preview_path=out, bcc=bcc,
+            image_mode=image_mode,
+            asset_dir=asset_dir if image_mode == "cid" else None,
+        )
         click.echo(_friendly_used(used))
         click.echo(f"Subject: {subject}")
+        if image_mode == "cid":
+            click.echo(
+                "Image mode: CID -- photos attached inline (no public URL "
+                "fetch by recipients)."
+            )
         if recipients:
             click.echo(
                 f"BCC pre-filled with {len(recipients)} recipient(s) "

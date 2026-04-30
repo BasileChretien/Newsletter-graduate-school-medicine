@@ -184,3 +184,147 @@ def test_compose_outcome_field_pattern_match_replaces_str_check():
     )
     assert fallback.is_fallback
     assert fallback.fell_back_from == "outlook"
+
+
+# ---------- Phase 1 (CID image mode) -------------------------------------
+
+def test_compose_rejects_invalid_image_mode():
+    """`image_mode` is a tightly-scoped string; a typo must fail loudly,
+    not silently fall back to the default."""
+    with pytest.raises(ValueError, match="image_mode must be"):
+        compose("<html>x</html>", subject="Test", image_mode="bogus")
+
+
+def test_compose_cid_mode_requires_outlook_backend():
+    """CID requires the Outlook COM API to attach inline images via
+    Content-ID. The clipboard / mailto backend can't do this. Forcing
+    `image_mode='cid'` with a non-Outlook backend must raise rather
+    than silently send a degraded URL-mode email -- otherwise the
+    editor thinks they're getting attachment-protected delivery and
+    is actually getting normal external URLs."""
+    handler = MailHandler(kind="apple_mail", name="Apple Mail")
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler):
+        with pytest.raises(ValueError, match="cid.*Outlook"):
+            compose(
+                "<html>x</html>", subject="Test",
+                backend="default",  # explicit non-Outlook
+                image_mode="cid",
+                asset_dir=None,
+            )
+
+
+def test_compose_cid_mode_requires_asset_dir(tmp_path):
+    """CID mode needs to know where the per-issue photos live on
+    disk; passing `image_mode='cid'` without `asset_dir` is a caller
+    bug, not something to paper over with a default."""
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True):
+        with pytest.raises(ValueError, match="asset_dir"):
+            compose(
+                "<html>x</html>", subject="Test",
+                backend="outlook", image_mode="cid",
+                asset_dir=None,
+            )
+
+
+def test_compose_cid_mode_attaches_inline_images_to_outlook(tmp_path):
+    """End-to-end image-mode dispatch: a CID-mode compose call should
+    rewrite the HTML AND populate `DraftEmail.inline_images` BEFORE
+    the Outlook backend's `compose` is invoked."""
+    # Set up the asset layout the cid module expects.
+    asset_dir = tmp_path / "assets" / "issue-1"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "photo1.jpg").write_bytes(b"\xff\xd8\xffJPEG")
+
+    repo_prefix = "https://raw.githubusercontent.com/owner/repo/main"
+    html = f'<html><body><img src="{repo_prefix}/assets/issue-1/photo1.jpg"></body></html>'
+
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    captured: dict = {}
+
+    def fake_compose(self, draft):
+        captured["html"] = draft.html
+        captured["inline"] = draft.inline_images
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose",
+               new=fake_compose):
+        compose(
+            html, subject="Test", backend="outlook",
+            image_mode="cid", asset_dir=asset_dir,
+        )
+
+    # The HTML the backend received MUST have been CID-rewritten.
+    assert "cid:meridian-" in captured["html"], (
+        f"Expected CID-rewritten HTML; got: {captured['html'][:200]}"
+    )
+    assert repo_prefix not in captured["html"], (
+        "Original raw.githubusercontent URL leaked into the CID-mode "
+        "HTML; the rewriter didn't replace it."
+    )
+    # Exactly one inline-image spec was passed to the backend.
+    assert len(captured["inline"]) == 1
+    assert captured["inline"][0].path == asset_dir / "photo1.jpg"
+
+
+def test_compose_url_mode_does_not_touch_html(tmp_path):
+    """URL mode is a no-op for image rewriting: the HTML reaches the
+    backend exactly as the caller passed it."""
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    original_html = '<html><body><img src="https://example.com/x.jpg"></body></html>'
+    captured: dict = {}
+
+    def fake_compose(self, draft):
+        captured["html"] = draft.html
+        captured["inline"] = draft.inline_images
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose",
+               new=fake_compose):
+        compose(
+            original_html, subject="Test", backend="outlook",
+            image_mode="url",  # explicit default
+        )
+
+    assert captured["html"] == original_html
+    assert captured["inline"] == ()
+
+
+def test_compose_default_image_mode_is_url(tmp_path):
+    """If the caller doesn't pass `image_mode`, behavior must remain
+    the round-9 baseline (URL-mode). This pins the default so a
+    future flip to CID-default doesn't silently break existing callers."""
+    handler = MailHandler(kind="outlook", name="Microsoft Outlook")
+    original_html = '<html><body><img src="https://example.com/x.jpg"></body></html>'
+    captured: dict = {}
+
+    def fake_compose(self, draft):
+        captured["html"] = draft.html
+        captured["inline"] = draft.inline_images
+
+    with patch("scripts.mail.detect_default_mail_handler",
+               return_value=handler), \
+         patch("scripts.mail.outlook.OutlookBackend.is_available",
+               return_value=True), \
+         patch("scripts.mail.outlook.OutlookBackend.compose",
+               new=fake_compose):
+        compose(original_html, subject="Test", backend="outlook")
+        # No image_mode argument passed.
+
+    assert captured["html"] == original_html, (
+        "Default image_mode must be URL (no rewriting). If you're "
+        "intentionally flipping the default to CID, this test needs "
+        "an updated assertion AND a corresponding README + setup-flow "
+        "review."
+    )
+    assert captured["inline"] == ()

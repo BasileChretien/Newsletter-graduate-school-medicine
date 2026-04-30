@@ -149,8 +149,20 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             from_addr: str | None = None,
             reply_to: str | None = None,
             attachments=(),
+            image_mode: str = "url",
+            asset_dir: Path | None = None,
             ) -> ComposeOutcome:
     """Open an email draft. Returns a `ComposeOutcome`.
+
+    Image-handling modes (`image_mode`):
+
+    * `"url"` (default) -- HTML's `<img src="https://...">` references
+      are sent as-is; recipients' clients fetch images at display time.
+    * `"cid"` -- HTML images that resolve to local files under
+      `asset_dir` are CID-rewritten and attached to the message via
+      MIME `multipart/related`. Requires the Outlook backend; raises
+      `ValueError` if `cid` is paired with any other backend so the
+      editor doesn't silently fall back to a degraded send.
 
     Failure modes:
       - `backend="outlook"` explicit + Outlook throws  -> re-raise.
@@ -159,15 +171,41 @@ def compose(html: str, *, subject: str, backend: str = "auto",
       - `backend="auto"` + Outlook throws -> warn loudly (so the editor
         notices the change), then fall back to the clipboard backend.
     """
+    if image_mode not in ("url", "cid"):
+        raise ValueError(
+            f"image_mode must be 'url' or 'cid' -- got {image_mode!r}")
+
     handler = detect_default_mail_handler()
     log.info("Default mail handler: %s [%s]", handler.name, handler.kind)
 
     chosen = _select_backend(backend, handler)
+
+    inline_images: tuple = ()
+    if image_mode == "cid":
+        if chosen.name != "outlook":
+            raise ValueError(
+                "image_mode='cid' is only supported with the Outlook "
+                f"desktop backend, but {chosen.name!r} was selected. "
+                "Use --backend=outlook (or --image-mode=url for the "
+                "non-Outlook path)."
+            )
+        if asset_dir is None:
+            raise ValueError(
+                "image_mode='cid' requires asset_dir to be passed "
+                "(the local directory holding the issue's photos)."
+            )
+        # Lazy import so URL-mode users never pay for the CID logic.
+        from scripts.mail.cid import attach_inline_images
+        html, inline_images = attach_inline_images(html, asset_dir)
+        log.info("CID mode: %d inline image(s) prepared for attachment.",
+                 len(inline_images))
+
     draft = DraftEmail(
         html=html, subject=subject,
         bcc=bcc, cc=cc, to=to,
         from_addr=from_addr, reply_to=reply_to,
         attachments=tuple(attachments) if attachments else (),
+        inline_images=inline_images,
         preview_path=preview_path,
         handler=handler,
     )
