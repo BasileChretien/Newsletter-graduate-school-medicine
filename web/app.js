@@ -171,8 +171,10 @@ function applyLanguage() {
   if (bootKey) {
     bootText.textContent = t(bootKey) + (bootDetail ? `\n\n${bootDetail}` : "");
   }
-  if (fatalKey) showFatal(t(fatalKey), fatalDetail);
-  else if (lastResult) renderResult(lastResult);
+  // Re-localising is not a navigation event: keep the viewport and the
+  // focus ring exactly where the editor left them.
+  if (fatalKey) showFatal(t(fatalKey), fatalDetail, { focus: false });
+  else if (lastResult) renderResult(lastResult, { focus: false });
 }
 
 // ---------------------------------------------------------------- boot
@@ -478,7 +480,13 @@ function blobUrl(path, type) {
   return url;
 }
 
-function showFatal(message, detail = "") {
+/* `focus: false` is used by the language toggle. Both render paths end
+ * by scrolling to the results heading and moving focus there, which is
+ * right when a build finishes -- and wrong when `applyLanguage()`
+ * re-runs them purely to re-localise existing text. Without the opt-out,
+ * a keyboard or screen-reader user who clicked EN/JA was yanked down the
+ * page for a reason they never asked for. */
+function showFatal(message, detail = "", { focus = true } = {}) {
   lastResult = null;
   revokeObjectUrls();
   $("results").hidden = false;
@@ -501,7 +509,7 @@ function showFatal(message, detail = "") {
   }
   $("downloads").hidden = true;
   clearPreview();
-  focusResults();
+  if (focus) focusResults();
 }
 
 function clearPreview() {
@@ -523,7 +531,7 @@ function focusResults() {
   h.focus();
 }
 
-function renderResult(res) {
+function renderResult(res, { focus = true } = {}) {
   // Revoke here rather than at the start of a build: this function also
   // re-runs when the editor switches language, and each pass mints new
   // blob URLs for the same files. Revoking at build time leaked one set
@@ -587,7 +595,7 @@ function renderResult(res) {
   } else {
     clearPreview();
   }
-  focusResults();
+  if (focus) focusResults();
 }
 
 function message(kind, text) {
