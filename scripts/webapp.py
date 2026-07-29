@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from scripts.config import IMAGES_DIR, TITLE, get_default_repo
-from scripts.docx_parser import ImageRef, Masthead, parse
+from scripts.docx_parser import ImageRef, parse
 from scripts.html_utils import parse_html
 from scripts.image_handler import (
     extension_to_mime, extract_embedded, ingest_drop_folder, issue_dir,
@@ -51,7 +51,7 @@ from scripts.mail.cid import DEFAULT_MAX_IMAGE_BYTES, attach_inline_images
 from scripts.mail.eml import build_eml
 from scripts.recipients import sanitize_addresses
 from scripts.renderer import attach_image_urls, render
-from scripts.text_utils import sanitize_subject
+from scripts.subject import subject_from_masthead
 from scripts.validator import report, validate
 
 log = logging.getLogger(__name__)
@@ -113,32 +113,6 @@ _EMPTY_DOCX_ERROR = (
 )
 
 
-def subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
-    """Build the email subject from a parsed masthead.
-
-    Single source of truth shared with `build_newsletter.py` so the CLI
-    and the web build can't drift into producing different subjects for
-    the same issue. Runs the issue line through `sanitize_subject` so
-    Word-pasted invisibles (ZWSP, NBSP, BOM, RLO) never reach the wire.
-
-    Total by construction: a non-string `issue_line` from schema drift
-    falls back to the generic subject rather than raising, because a
-    TypeError here used to short-circuit the validate-before-write
-    guard upstream.
-    """
-    try:
-        issue_line = (masthead.issue_line or "") if masthead else ""
-        issue_line = sanitize_subject(issue_line)
-    except (AttributeError, TypeError) as e:
-        log.warning(
-            "Could not derive subject from masthead (%s); "
-            "falling back to generic subject.", e)
-        issue_line = ""
-    if issue_line:
-        return f"{TITLE} — {issue_line}"
-    return f"{TITLE} — Issue {issue}"
-
-
 def _data_uri(path: Path) -> str:
     """`data:` URI for a local image, for the in-browser preview.
 
@@ -161,7 +135,8 @@ def _clean_addresses(value: str | None) -> tuple[str | None, list[str]]:
     """
     if not value:
         return None, []
-    accepted, rejected = sanitize_addresses(re.split(r"[\n,;]+", value))
+    accepted, rejected, _truncated = sanitize_addresses(
+        re.split(r"[\n,;]+", value))
     return ("; ".join(accepted) or None), rejected
 
 
@@ -248,6 +223,13 @@ def build_from_bytes(
         references; they must be pushed before recipients open the
         mail. Offered for parity with the CLI, not recommended here.
 
+    When `workdir` is omitted the temp directory this creates is also
+    removed before returning. Everything a caller needs -- the HTML,
+    the preview with its photos already inlined as data URIs, the
+    `.eml` bytes -- is in the returned dataclass, so nothing on disk
+    outlives the call. A caller that *wants* the extracted files passes
+    an explicit `workdir` and owns its lifetime.
+
     Raises `ValueError` only for a caller mistake (an unknown
     `image_mode`). Everything an *editor* can get wrong -- an empty
     document, an unfilled masthead -- comes back as a result with
@@ -268,16 +250,50 @@ def build_from_bytes(
             f"issue must be a whole number -- got {type(issue).__name__}")
     try:
         issue = int(issue)
-    except (TypeError, ValueError):
-        raise ValueError(f"issue must be a whole number -- got {issue!r}")
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"issue must be a whole number -- got {issue!r}") from e
     if issue < 0:
         raise ValueError(f"issue must not be negative -- got {issue}")
     if issue > _MAX_ISSUE:
         raise ValueError(
             f"issue must be at most {_MAX_ISSUE} -- got {issue}")
 
-    root = Path(workdir) if workdir is not None else Path(
-        tempfile.mkdtemp(prefix="meridian-web-"))
+    if workdir is not None:
+        return _build_in(
+            Path(workdir), docx_bytes, issue=issue, image_mode=image_mode,
+            bcc=bcc, to=to, drop_dir=drop_dir,
+            max_image_bytes=max_image_bytes)
+
+    scratch = Path(tempfile.mkdtemp(prefix="meridian-web-"))
+    try:
+        return _build_in(
+            scratch, docx_bytes, issue=issue, image_mode=image_mode,
+            bcc=bcc, to=to, drop_dir=drop_dir,
+            max_image_bytes=max_image_bytes)
+    finally:
+        # `ignore_errors`: a failed cleanup of a temp directory must not
+        # turn a successful build into an exception.
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _build_in(
+    root: Path,
+    docx_bytes: bytes,
+    *,
+    issue: int,
+    image_mode: str,
+    bcc: str | None,
+    to: str | None,
+    drop_dir: Path | None,
+    max_image_bytes: int,
+) -> WebBuildResult:
+    """The pipeline itself, rooted at an already-chosen directory.
+
+    Split out so `build_from_bytes` can own the lifetime of a temp
+    workdir it created without wrapping a hundred lines in a `try`.
+    Arguments are pre-validated by the caller.
+    """
     root.mkdir(parents=True, exist_ok=True)
     docx_path = root / f"issue-{issue}.docx"
     docx_path.write_bytes(docx_bytes)

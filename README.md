@@ -400,7 +400,15 @@ If you can't run the launcher — a locked-down work machine, or you're
 covering one issue as a stand-in — there's a browser version that needs
 no install at all:
 
-1. Open the newsletter builder page.
+> **Maintainers: this needs publishing before it works.** The page ships
+> in `web/` but is not hosted yet, so there is no link to hand an editor
+> until someone enables GitHub Pages. It takes about two minutes —
+> see [`web/README.md`](web/README.md) — after which the address will be
+> `https://<your-github-user>.github.io/<your-repo>/`. **Replace step 1
+> below with that link** (and the same line in
+> [README.ja.md](README.ja.md)) once it is live.
+
+1. Open the newsletter builder page (link above, once published).
 2. Drop your `issue-N.docx` on it.
 3. Download the `.eml` and double-click it. Outlook opens a ready-to-send
    draft with the subject, the BCC list and the photos already in place.

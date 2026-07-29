@@ -257,15 +257,17 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     Image-handling modes (`image_mode`):
 
     * `"auto"` (default, **Phase 2**) -- pick the best mode for the
-      detected backend. Outlook desktop -> `"cid"` (most robust against
-      corporate filters that quarantine `raw.githubusercontent.com`,
+      chosen backend. A backend that can embed photos as MIME parts
+      (`supports_inline_images`: Outlook desktop, or an explicit
+      `--backend=eml`) -> `"cid"`, which is the most robust against
+      corporate filters that quarantine `raw.githubusercontent.com`
       and removes the requirement for the editor to have a GitHub
-      account). Anything else -> `"url"` (CID requires Outlook COM
-      to attach files; clipboard / mailto can't do that).
+      account. Anything else -> `"url"` (the clipboard / mailto path
+      has nowhere to put an attachment).
     * `"cid"` -- explicit CID. HTML images that resolve to local
       files under `asset_dir` are CID-rewritten and attached to the
-      message via MIME `multipart/related`. Requires the Outlook
-      backend; raises `ValueError` otherwise.
+      message via MIME `multipart/related`. Requires a backend whose
+      `supports_inline_images` is True; raises `ValueError` otherwise.
     * `"url"` -- explicit URL. HTML's `<img src="https://...">`
       references are sent as-is; recipients' clients fetch images at
       display time. The pre-Phase-1 default; useful for forks at

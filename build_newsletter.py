@@ -38,9 +38,9 @@ from scripts.image_handler import (
 from scripts.inliner import inline
 from scripts.manifest import load_manifest, write_manifest
 from scripts.renderer import attach_image_urls, render
+from scripts.subject import subject_from_masthead
 from scripts.text_utils import sanitize_subject
 from scripts.validator import report, validate
-from scripts.webapp import subject_from_masthead
 
 RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
 

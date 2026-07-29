@@ -19,7 +19,7 @@ sync — `web/app.js` contains no newsletter logic at all. It boots
 Pyodide, unpacks `meridian-bundle.zip` into the virtual filesystem, and
 calls `scripts.webapp.build_from_bytes`.
 
-```
+```text
 web/index.html            markup
 web/style.css             app chrome (NU blue / gold, light + dark)
 web/app.js                boot, file handling, results — no pipeline logic

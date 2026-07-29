@@ -129,7 +129,10 @@ function applyLanguage() {
     else el.textContent = value;
   }
   for (const btn of document.querySelectorAll(".lang-switch button")) {
-    btn.classList.toggle("is-active", btn.dataset.lang === lang);
+    const active = btn.dataset.lang === lang;
+    btn.classList.toggle("is-active", active);
+    // The visual state is a colour swap, which a screen reader cannot see.
+    btn.setAttribute("aria-pressed", String(active));
   }
   if (lastResult) renderResult(lastResult);
 }

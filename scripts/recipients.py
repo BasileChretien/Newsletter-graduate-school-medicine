@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from scripts.text_utils import normalize_compatibility, strip_invisibles
 
@@ -27,8 +27,10 @@ _MAX_RECIPIENTS = 1000
 # all defend against the same Word-paste hazards in lockstep.
 
 
-def sanitize_addresses(values: Iterable[str]) -> tuple[list[str], list[str]]:
-    """Normalize and validate address strings. Returns (accepted, rejected).
+def sanitize_addresses(
+    values: Iterable[str],
+) -> tuple[list[str], list[str], bool]:
+    """Normalize and validate addresses. -> (accepted, rejected, truncated).
 
     Extracted from `load_recipients` so that EVERY path which can put an
     address into an outgoing draft gets the same guard -- not just the
@@ -53,6 +55,7 @@ def sanitize_addresses(values: Iterable[str]) -> tuple[list[str], list[str]]:
     seen: set[str] = set()
     accepted: list[str] = []
     rejected: list[str] = []
+    truncated = False
     for raw in values:
         # NFKC FIRST so fullwidth ASCII variants get folded before the
         # regex sees them. Round-10 security MEDIUM: a crafted
@@ -73,11 +76,17 @@ def sanitize_addresses(values: Iterable[str]) -> tuple[list[str], list[str]]:
             continue
         if line in seen:
             continue
+        # Check the cap BEFORE accepting, and report truncation as a
+        # fact rather than inferring it from the length afterwards: a
+        # list of exactly `_MAX_RECIPIENTS` valid addresses is complete,
+        # not truncated, and telling the editor their full list was cut
+        # short would send them hunting for a problem that isn't there.
+        if len(accepted) >= _MAX_RECIPIENTS:
+            truncated = True
+            break
         seen.add(line)
         accepted.append(line)
-        if len(accepted) >= _MAX_RECIPIENTS:
-            break
-    return accepted, rejected
+    return accepted, rejected, truncated
 
 
 def load_recipients(recipients_path: Path) -> list[str]:
@@ -89,13 +98,13 @@ def load_recipients(recipients_path: Path) -> list[str]:
     """
     if not recipients_path.exists():
         return []
-    accepted, rejected = sanitize_addresses(
+    accepted, rejected, truncated = sanitize_addresses(
         recipients_path.read_text(encoding="utf-8").splitlines())
     for line in rejected:
         log.warning(
             "Skipped one address from recipients.txt that didn't "
             "look right: %r (the rest are fine).", line)
-    if len(accepted) >= _MAX_RECIPIENTS:
+    if truncated:
         log.warning(
             "recipients.txt has more than %d entries -- truncated.",
             _MAX_RECIPIENTS)

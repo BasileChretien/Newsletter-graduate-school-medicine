@@ -14,6 +14,7 @@ broken-image icons and nobody notices until after the send.
 from __future__ import annotations
 
 import email
+import email.policy  # not implied by `import email`; see _round_trip below
 import re
 from email.message import EmailMessage
 from pathlib import Path
@@ -548,10 +549,18 @@ def test_compose_accepts_cid_mode_with_the_eml_backend(tmp_path, monkeypatch):
     """Before this bundle, `compose()` hard-coded
     `chosen.name != "outlook"` and would have rejected CID mode for
     any new backend, however capable."""
+    import scripts.mail as mail_pkg
     from scripts.mail import compose
     import scripts.mail.eml as eml_mod
 
     monkeypatch.setattr(eml_mod, "open_with_default_app", lambda p: True)
+    # Pin the handler instead of probing the real OS: `compose()` calls
+    # `detect_default_mail_handler()`, which reads the Windows registry
+    # or shells out on macOS/Linux. That makes the assertion depend on
+    # whatever mail client the CI image happens to have.
+    monkeypatch.setattr(
+        mail_pkg, "detect_default_mail_handler",
+        lambda: MailHandler(kind="apple_mail", name="Mail"))
 
     asset_dir = _asset_dir(tmp_path, files={"photo1.jpg": JPEG_BYTES})
     preview = tmp_path / "dist" / "issue-1.html"
@@ -575,8 +584,13 @@ def test_compose_accepts_cid_mode_with_the_eml_backend(tmp_path, monkeypatch):
     assert any(p.get_content_type() == "image/jpeg" for p in parsed.walk())
 
 
-def test_compose_still_rejects_cid_for_the_clipboard_backend():
+def test_compose_still_rejects_cid_for_the_clipboard_backend(monkeypatch):
+    import scripts.mail as mail_pkg
     from scripts.mail import compose
+
+    monkeypatch.setattr(
+        mail_pkg, "detect_default_mail_handler",
+        lambda: MailHandler(kind="apple_mail", name="Mail"))
 
     with pytest.raises(ValueError, match="cid"):
         compose("<html></html>", subject="x", backend="default",

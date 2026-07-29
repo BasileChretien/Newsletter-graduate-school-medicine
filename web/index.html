@@ -16,8 +16,8 @@
       <p class="tagline" data-i18n="tagline">Newsletter of the Graduate School of Medicine – Nagoya University</p>
     </div>
     <div class="lang-switch" role="group" aria-label="Language / 言語">
-      <button type="button" data-lang="en" class="is-active">EN</button>
-      <button type="button" data-lang="ja">日本語</button>
+      <button type="button" data-lang="en" class="is-active" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ja" aria-pressed="false">日本語</button>
     </div>
   </div>
 </header>
@@ -112,7 +112,15 @@
   <p data-i18n="footer">Runs offline after first load. Nothing is sent anywhere.</p>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js"></script>
+<!-- Subresource Integrity on the loader: this page reads unpublished
+     institutional documents, so a compromised or swapped CDN file would
+     be reading them too. The hash pins the exact bytes of pyodide.js
+     v0.29.4. Note the runtime assets it then fetches (wasm, wheels) are
+     not covered by SRI -- this narrows the attack surface, it does not
+     eliminate it. Regenerate the hash if the version changes. -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js"
+        integrity="sha384-wkkA2EvfjhI/Ka1xso+9XYjVf5am63bStLbKX4X5gkFcHcfY5QLUMsFf7AsnoXCU"
+        crossorigin="anonymous"></script>
 <script src="app.js" type="module"></script>
 </body>
 </html>
