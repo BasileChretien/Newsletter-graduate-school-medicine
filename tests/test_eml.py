@@ -259,6 +259,48 @@ def test_inline_images_carry_real_mime_types_and_inline_disposition(tmp_path):
             assert part.get("Content-Disposition", "").startswith("inline")
 
 
+def test_long_content_ids_are_not_rfc2047_encoded(tmp_path):
+    """Regression: Python treats `Content-ID` as unstructured text, so
+    once the header exceeds the fold width it gets encoded-word wrapped
+    (`=?utf-8?q?=3Cmeridian-...?=`). The HTML's `cid:` reference then
+    matches nothing and the photo renders broken -- silently, and only
+    for long filenames. The production masthead logo
+    (`Nagoya_University_Graduate_school_medicine_logo.jpg`) is exactly
+    long enough to trigger it."""
+    long_name = "Nagoya_University_Graduate_school_medicine_logo.jpg"
+    asset_dir = _asset_dir(tmp_path, files={long_name: JPEG_BYTES})
+    cid = f"meridian-issue-3-01-{long_name.lower()}@meridian.local"
+    assert len(cid) > 78, "precondition: CID long enough to force folding"
+
+    inline = (InlineImage(path=asset_dir / long_name, cid=cid,
+                          original_url="https://example.invalid/logo.jpg"),)
+    html = f'<html><body><img src="cid:{cid}"></body></html>'
+
+    parsed = email.message_from_bytes(
+        build_eml(_draft(html, inline_images=inline)).as_bytes())
+
+    assert cid in _content_ids(parsed)
+    assert _cids_referenced(html) <= _content_ids(parsed)
+
+
+def test_no_line_exceeds_the_rfc5322_hard_limit(tmp_path):
+    """Keeping a long Content-ID unfolded must not push any line past
+    the 998-octet limit that makes a message illegal on the wire."""
+    long_name = "a" * 90 + ".jpg"
+    asset_dir = _asset_dir(tmp_path, files={long_name: JPEG_BYTES})
+    inline = (InlineImage(path=asset_dir / long_name,
+                          cid=f"meridian-issue-3-01-{long_name}@meridian.local",
+                          original_url="https://example.invalid/x.jpg"),)
+    raw = build_eml(_draft(
+        "<html><body>x</body></html>",
+        inline_images=inline,
+        bcc="; ".join(f"person{i:02d}@example.ac.jp" for i in range(50)),
+    )).as_bytes()
+
+    longest = max(len(line) for line in raw.split(b"\r\n"))
+    assert longest <= 998, f"longest line is {longest} octets"
+
+
 def test_image_bytes_round_trip_unchanged(tmp_path):
     """Base64 encode/decode must return the exact file. A corrupted
     photo would render as a broken image for all 50 recipients."""

@@ -394,6 +394,30 @@ That's intentional. The print stylesheet swaps the dark cream-and-gold masthead 
 
 ---
 
+## Can't install anything? Build it in your browser
+
+If you can't run the launcher — a locked-down work machine, or you're
+covering one issue as a stand-in — there's a browser version that needs
+no install at all:
+
+1. Open the newsletter builder page.
+2. Drop your `issue-N.docx` on it.
+3. Download the `.eml` and double-click it. Outlook opens a ready-to-send
+   draft with the subject, the BCC list and the photos already in place.
+   Add the To: address and press Send.
+
+**Your Word file is never uploaded.** The page has no server behind it —
+your document is read and converted inside your own browser tab, and the
+BCC addresses you type go only into the draft file you download.
+
+Two caveats: the first load takes about ten seconds (it fetches the
+engine, then caches it), and Apple Mail opens `.eml` files read-only,
+so on a Mac the desktop launcher is still the better route.
+
+Deploying it for your own institution: see [`web/README.md`](web/README.md).
+
+---
+
 ## What's in this folder?
 
 You can ignore most of these — they just need to be there.
@@ -407,6 +431,7 @@ You can ignore most of these — they just need to be there.
 | `assets/` | Where uploaded photos are kept. |
 | `images/` | Permanent images (school logo, Dean photo). |
 | `NagoyaU_MedSchool_Newsletter_Template-2.docx` | Original template, kept as reference. |
+| `web/` | The no-install browser version. See [`web/README.md`](web/README.md). |
 | `build_newsletter.py`, `scripts/`, `templates/`, `tests/`, `requirements.txt` | The toolkit's machinery. **Don't touch.** |
 
 ---
@@ -427,7 +452,8 @@ Technical details for whoever maintains the toolkit:
   - `scripts/validator.py` — parallel HEAD checks (max 8 workers), placeholder regex, size + reminder warnings.
   - `scripts/publisher.py` — `git add/commit/push` of `assets/issue-N/`; 60-second subprocess timeout.
   - `scripts/manifest.py` — per-issue audit trail (DOCX SHA-256, dean info, file inventory); preserves audit data on same-hash re-builds.
-  - `scripts/mail/` — backend package with `MailBackend` Protocol; `OutlookBackend` (Windows COM), `ClipboardMailtoBackend` (universal). Add backends by appending to `_BACKENDS` in `__init__.py`.
+  - `scripts/mail/` — backend package with `MailBackend` Protocol; `OutlookBackend` (Windows COM), `EmlBackend` (writes an RFC 5322 `.eml` draft; explicit `--backend=eml` only), `ClipboardMailtoBackend` (universal fallback). Add backends by appending to `_BACKENDS` in `__init__.py`; declare `supports_inline_images` so the CID feasibility check stays correct.
+  - `scripts/webapp.py` — the pipeline as one pure function (`build_from_bytes`), with no click / OS / mail-client coupling. Used by the browser build and reusable from a server or notebook.
   - `scripts/recipients.py` — `recipients.txt` reader with RFC-5322 + injection guard.
   - `scripts/i18n.py` — `tomllib` locale loader (`en` + `ja`).
   - `scripts/oxml_helpers.py` — raw OXML for shading, borders, fields, fixed table layout.

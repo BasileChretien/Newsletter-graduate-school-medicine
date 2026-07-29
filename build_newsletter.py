@@ -40,6 +40,7 @@ from scripts.manifest import load_manifest, write_manifest
 from scripts.renderer import attach_image_urls, render
 from scripts.text_utils import sanitize_subject
 from scripts.validator import report, validate
+from scripts.webapp import subject_from_masthead
 
 RECIPIENTS_PATH = PROJECT_ROOT / "recipients.txt"
 
@@ -206,27 +207,15 @@ def _image_mode_blurb(image_mode: str | None) -> str | None:
 def _subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
     """Build the email subject from an already-parsed masthead.
 
-    Runs the issue line through `sanitize_subject` so Word-pasted
-    invisibles (ZWSP, NBSP, BOM, RLO, ...) never reach the wire --
-    otherwise the inbox preview displays one string while logs/audit
-    trail show another.
-
-    Defends against a non-string `issue_line` (schema drift / bug)
-    by falling back to the generic subject -- a TypeError here used
-    to short-circuit the validate-before-write guard, so we keep
-    subject derivation total.
+    Thin delegate to `scripts.webapp.subject_from_masthead`, which is
+    the single source of truth shared with the browser build. Two
+    implementations of "what is this issue's subject line?" would
+    eventually disagree, and the subject is what recipients see in
+    their inbox preview *and* what the manifest records for the audit
+    trail -- a mismatch between those two is exactly the class of bug
+    `sanitize_subject` was added to prevent.
     """
-    try:
-        issue_line = (masthead.issue_line or "") if masthead else ""
-        issue_line = sanitize_subject(issue_line)
-    except (AttributeError, TypeError) as e:
-        log.warning(
-            "Could not derive subject from masthead (%s); "
-            "falling back to generic subject.", e)
-        issue_line = ""
-    if issue_line:
-        return f"{TITLE} — {issue_line}"
-    return f"{TITLE} — Issue {issue}"
+    return subject_from_masthead(issue, masthead)
 
 
 def _delete_stale_html(out_html: Path) -> None:

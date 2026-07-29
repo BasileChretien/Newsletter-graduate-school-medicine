@@ -57,6 +57,7 @@ import platform
 import re
 import shutil
 import subprocess
+from email.headerregistry import HeaderRegistry, MessageIDHeader
 from email.message import EmailMessage
 from email.policy import SMTP
 from pathlib import Path
@@ -81,7 +82,23 @@ _X_UNSENT_VALUE = "1"
 # and does RFC 2047 header encoding for non-ASCII subjects -- both
 # required for a file that third-party mail clients will parse. The
 # default policy uses bare LF, which some strict parsers reject.
-_POLICY = SMTP
+#
+# `Content-ID` needs one correction on top of that. Python does not
+# register it as a structured header, so it is treated as unstructured
+# text: once `Content-ID: <...>` exceeds the fold width, the value is
+# RFC 2047 encoded into `=?utf-8?q?=3Cmeridian-...?=`. The `cid:`
+# reference in the HTML then matches nothing and the image renders
+# broken -- silently, and only for photos whose filenames are long.
+# The production logo (`Nagoya_University_Graduate_school_medicine_
+# logo.jpg`) is exactly long enough to trigger it.
+#
+# Mapping the header to `MessageIDHeader` -- which is what a
+# `Content-ID` grammatically is (RFC 2045 §7: `msg-id`) -- keeps the
+# value verbatim on one line. The registry is a private instance so
+# this never mutates the module-level default other code shares.
+_HEADER_REGISTRY = HeaderRegistry()
+_HEADER_REGISTRY.map_to_type("content-id", MessageIDHeader)
+_POLICY = SMTP.clone(header_factory=_HEADER_REGISTRY)
 
 
 _ADDRESS_SEPARATOR_RE = re.compile(r"[;,]")

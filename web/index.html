@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MERIDIAN — Newsletter Builder</title>
+<meta name="description" content="Turn a MERIDIAN Word file into a ready-to-send email draft. Runs entirely in your browser.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div>
+      <h1>MERIDIAN</h1>
+      <p class="tagline" data-i18n="tagline">Newsletter of the Graduate School of Medicine – Nagoya University</p>
+    </div>
+    <div class="lang-switch" role="group" aria-label="Language / 言語">
+      <button type="button" data-lang="en" class="is-active">EN</button>
+      <button type="button" data-lang="ja">日本語</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <p class="privacy" data-i18n="privacy">
+    Your Word file is processed entirely inside this browser tab. Nothing is
+    uploaded — there is no server to upload it to.
+  </p>
+
+  <div id="boot" class="boot" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="boot-text" data-i18n="bootStarting">Starting the newsletter engine…</span>
+  </div>
+
+  <form id="builder" hidden>
+
+    <section class="step">
+      <h2><span class="step-num">1</span> <span data-i18n="step1">Choose your Word file</span></h2>
+      <div id="dropzone" class="dropzone" tabindex="0" role="button"
+           aria-describedby="file-hint">
+        <input type="file" id="file" accept=".docx" hidden>
+        <p id="drop-label" data-i18n="dropHere">Drop <code>issue-N.docx</code> here, or click to choose</p>
+        <p id="file-hint" class="hint" data-i18n="fileHint">Only .docx files. The file stays on this device.</p>
+      </div>
+      <p id="file-chosen" class="chosen" hidden></p>
+    </section>
+
+    <section class="step">
+      <h2><span class="step-num">2</span> <span data-i18n="step2">Settings</span></h2>
+
+      <div class="field">
+        <label for="issue" data-i18n="issueLabel">Issue number</label>
+        <input type="number" id="issue" min="0" max="999" value="1" required>
+        <p class="hint" data-i18n="issueHint">Used to name the files and to group this issue's photos.</p>
+      </div>
+
+      <div class="field">
+        <label for="mode" data-i18n="modeLabel">Photos</label>
+        <select id="mode">
+          <option value="cid" data-i18n="modeCid">Embed inside the email (recommended)</option>
+          <option value="url" data-i18n="modeUrl">Load from GitHub when opened</option>
+        </select>
+        <p class="hint" data-i18n="modeHint">Embedding means recipients see the photos even on networks that block outside images, and nothing needs publishing first.</p>
+      </div>
+
+      <div class="field">
+        <label for="bcc" data-i18n="bccLabel">BCC recipients <span class="optional" data-i18n="optional">(optional)</span></label>
+        <textarea id="bcc" rows="3" spellcheck="false"
+                  placeholder="one address per line"></textarea>
+        <p class="hint" data-i18n="bccHint">Pre-fills the BCC field of the draft. These addresses stay on this device and are written only into the draft file you download.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <button type="submit" id="build" class="primary" disabled>
+        <span data-i18n="buildBtn">Build the newsletter</span>
+      </button>
+      <span id="working" class="working" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span data-i18n="working">Building…</span>
+      </span>
+    </section>
+
+  </form>
+
+  <section id="results" class="results" hidden aria-live="polite">
+    <h2 data-i18n="resultsTitle">Result</h2>
+    <div id="verdict"></div>
+    <dl id="summary" class="summary"></dl>
+    <div id="messages"></div>
+
+    <div id="downloads" class="downloads" hidden>
+      <a id="dl-eml" class="primary" download>
+        <span data-i18n="dlEml">Download the email draft (.eml)</span>
+      </a>
+      <a id="dl-html" class="secondary" download>
+        <span data-i18n="dlHtml">Download the HTML</span>
+      </a>
+      <p class="hint" data-i18n="emlHint">Double-click the .eml file: Outlook opens it as a ready-to-send draft, with the subject, the BCC list and the photos already in place. Add the To: address and press Send.</p>
+    </div>
+
+    <h3 data-i18n="previewTitle">Preview</h3>
+    <p class="hint" data-i18n="previewHint">This is what recipients will see.</p>
+    <iframe id="preview" title="Newsletter preview" sandbox></iframe>
+  </section>
+
+</main>
+
+<footer>
+  <p data-i18n="footer">Runs offline after first load. Nothing is sent anywhere.</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js"></script>
+<script src="app.js" type="module"></script>
+</body>
+</html>
