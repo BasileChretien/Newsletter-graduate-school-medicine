@@ -65,11 +65,19 @@ class MailBackend(Protocol):
     Concrete backends live in `scripts/mail/<name>.py` and are added to
     `scripts.mail._BACKENDS` in priority order. The Protocol is
     structurally typed -- implementations don't `class Foo(MailBackend)`
-    explicitly; they just expose `name`, `is_available`, `matches`, and
-    `compose` with matching signatures.
+    explicitly; they just expose `name`, `supports_inline_images`,
+    `is_available`, `matches`, and `compose` with matching signatures.
     """
 
     name: str
+    # Whether this backend can embed `DraftEmail.inline_images` as real
+    # MIME parts (CID image-mode). Declared as a capability rather than
+    # inferred from `name` at each call site: rounds 13-15 all spent
+    # fixes on the same bug shape -- one code path deciding "is this
+    # Outlook?" slightly differently from another, with the mismatch
+    # surfacing only after the build and the GitHub push had already
+    # run. A backend that answers this question about itself can't drift.
+    supports_inline_images: bool
 
     def is_available(self) -> bool: ...
 

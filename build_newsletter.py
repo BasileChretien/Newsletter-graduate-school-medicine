@@ -21,7 +21,7 @@ import click
 
 from scripts import build_template as bt
 from scripts.mail import (
-    ComposeOutcome, compose, detect_default_mail_handler,
+    ComposeOutcome, compose, detect_default_mail_handler, image_mode_key,
     resolve_image_mode, select_backend,
 )
 from scripts.publisher import publish_assets
@@ -105,6 +105,11 @@ def _friendly_used(used: ComposeOutcome) -> str:
                 "email app. Click in the body and press Ctrl+V (Mac: Cmd+V).")
     if used.backend == "outlook":
         return "Email draft opened in Outlook desktop."
+    if used.backend == "eml":
+        return ("Draft file written next to the preview (issue-N.eml) "
+                "and handed to your default email app. If it didn't "
+                "open by itself, double-click that .eml file -- it is "
+                "a ready-to-send draft with the photos already inside.")
     if used.handler_kind == "apple_mail":
         return "Email draft opened in Apple Mail."
     if used.handler_kind == "thunderbird":
@@ -503,15 +508,20 @@ def detect_mail_cmd():
 @click.option("--input", "input_path", default=None,
               type=click.Path(exists=True),
               help="DOCX used to derive a richer subject line.")
-@click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
+@click.option("--backend",
+              type=click.Choice(["auto", "outlook", "default", "eml"]),
               default="auto",
-              help="Override mail-client detection.")
+              help="Override mail-client detection. `eml` writes a "
+                   "ready-to-send draft file next to the preview "
+                   "(dist/issue-N.eml) with the photos embedded, and "
+                   "opens it -- no clipboard, no paste.")
 @click.option("--image-mode", type=click.Choice(["auto", "url", "cid"]),
               default="auto",
-              help=("`auto` (default): CID for Outlook desktop, URL for "
-                    "everything else. `url`: force URL hosting via "
-                    "raw.githubusercontent.com. `cid`: force MIME inline "
-                    "attachments (Outlook only)."))
+              help=("`auto` (default): CID for Outlook desktop and for "
+                    "`--backend=eml`, URL for everything else. `url`: "
+                    "force URL hosting via raw.githubusercontent.com. "
+                    "`cid`: force MIME inline attachments (needs "
+                    "`--backend=outlook` or `--backend=eml`)."))
 @click.option("--output-dir", "output_dir", default=None,
               type=click.Path(file_okay=False, resolve_path=True),
               help="Where `build` wrote the HTML (must match `build`'s "
@@ -544,8 +554,7 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     # actually dispatch to.
     chosen = select_backend(backend, handler)
     resolved_image_mode = resolve_image_mode(
-        image_mode, handler,
-        backend=("outlook" if chosen.name == "outlook" else "default"),
+        image_mode, handler, backend=image_mode_key(chosen),
     )
     if chosen.name == "outlook":
         click.echo(
@@ -580,17 +589,22 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
 @click.option("--issue", required=True, type=int)
 @click.option("--no-compose", is_flag=True,
               help="Skip opening the email draft at the end.")
-@click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
+@click.option("--backend",
+              type=click.Choice(["auto", "outlook", "default", "eml"]),
               default="auto",
-              help="Override mail-client detection for the compose step.")
+              help="Override mail-client detection for the compose step. "
+                   "`eml` writes a ready-to-send draft file "
+                   "(dist/issue-N.eml) with the photos embedded, and "
+                   "opens it -- no clipboard, no paste.")
 @click.option("--image-mode", type=click.Choice(["auto", "url", "cid"]),
               default="auto",
               help=("`auto` (default): pick the best mode for your mail "
-                    "client. Outlook desktop -> CID (photos attached "
-                    "inline via MIME, no GitHub publishing needed). "
-                    "Anything else -> URL (photos hosted on GitHub). "
-                    "`cid`: force CID (Outlook only). `url`: force URL "
-                    "(uploads photos via publish-images first)."))
+                    "client. Outlook desktop (or `--backend=eml`) -> CID "
+                    "(photos attached inline via MIME, no GitHub "
+                    "publishing needed). Anything else -> URL (photos "
+                    "hosted on GitHub). `cid`: force CID (needs "
+                    "`--backend=outlook` or `--backend=eml`). `url`: "
+                    "force URL (uploads photos via publish-images first)."))
 @click.option("--output-dir", "output_dir", default=None,
               type=click.Path(file_okay=False, resolve_path=True),
               help=("Where to write the rendered HTML and extracted "
@@ -632,10 +646,14 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     handler = detect_default_mail_handler()
     chosen = select_backend(backend, handler)
     resolved_image_mode = resolve_image_mode(
-        image_mode, handler,
-        backend=("outlook" if chosen.name == "outlook" else "default"),
+        image_mode, handler, backend=image_mode_key(chosen),
     )
-    if resolved_image_mode == "cid" and chosen.name != "outlook":
+    if resolved_image_mode == "cid" and not chosen.supports_inline_images:
+        # Ask the backend whether it can embed photos rather than
+        # testing `chosen.name != "outlook"` here: that string test was
+        # the round-15 bug in a different disguise, and it would also
+        # have silently rejected the `.eml` backend, which can embed
+        # photos perfectly well.
         # Round-16 python LOW: surface the user-facing CLI label
         # ("default" / "outlook"), not the internal backend ID
         # ("clipboard_mailto") which is opaque to a non-developer.
@@ -643,13 +661,13 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
             "default" if chosen.name == "clipboard_mailto" else chosen.name
         )
         click.echo(
-            "ERROR: --image-mode=cid is only supported with the "
-            "Outlook desktop backend. The toolkit selected "
+            "ERROR: --image-mode=cid needs a backend that can put the "
+            "photos inside the email. The toolkit selected "
             f"--backend={friendly_backend} for this run "
             f"(detected mail app: {handler.name}). Use "
-            "--image-mode=url for the non-Outlook path (photos "
-            "hosted on GitHub), or --image-mode=auto to let the "
-            "toolkit pick.",
+            "--backend=eml to get a ready-to-send draft file with the "
+            "photos embedded, --image-mode=url for the hosted-photo "
+            "path, or --image-mode=auto to let the toolkit pick.",
             err=True,
         )
         sys.exit(2)

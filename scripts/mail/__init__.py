@@ -31,6 +31,7 @@ from scripts.mail.clipboard_mailto import (
     ClipboardMailtoBackend, compose_via_default,
 )
 from scripts.mail.detect import detect_default_mail_handler
+from scripts.mail.eml import EmlBackend, build_eml, eml_path_for, write_eml
 from scripts.mail.outlook import OutlookBackend, compose_outlook
 from scripts.recipients import load_recipients
 
@@ -128,16 +129,43 @@ class ComposeOutcome:
         return self._format_legacy().startswith(prefix)
 
 
+# The universal fallback. Named explicitly rather than addressed as
+# `_BACKENDS[-1]`: with only two entries the positional form was
+# harmless, but it turns "append a new backend to the registry" into a
+# silent redefinition of what the auto-path falls back to.
+_FALLBACK_BACKEND: MailBackend = ClipboardMailtoBackend()
+
 # Registry: ordered, priority high-to-low. The dispatcher iterates and
 # stops at the first backend whose `matches(handler)` returns True AND
 # whose `is_available()` returns True.
 _BACKENDS: list[MailBackend] = [
-    OutlookBackend(),         # Windows + Outlook desktop -- rich HTML draft
-    ClipboardMailtoBackend(), # universal fallback
+    OutlookBackend(),      # Windows + Outlook desktop -- rich HTML draft
+    EmlBackend(),          # explicit `--backend=eml` only; matches() is False
+    _FALLBACK_BACKEND,     # universal fallback
 ]
 
+# Backends that can embed photos as MIME parts. Derived from the
+# registry rather than hand-listed so a new CID-capable backend is
+# picked up by `resolve_image_mode` automatically.
+_CID_CAPABLE_NAMES: frozenset[str] = frozenset(
+    b.name for b in _BACKENDS if b.supports_inline_images
+)
 
-BackendName = Literal["auto", "outlook", "default"]
+
+BackendName = Literal["auto", "outlook", "default", "eml"]
+
+
+def image_mode_key(chosen: MailBackend) -> str:
+    """Map a chosen backend to the vocabulary `resolve_image_mode` speaks.
+
+    `resolve_image_mode`'s `backend` argument is CLI-level
+    (`"auto"` / `"outlook"` / `"default"` / `"eml"`), while the
+    dispatcher works in backend identities (`"clipboard_mailto"`).
+    Every call site needs the same translation, so it lives here once
+    instead of being re-spelled as an inline conditional in three
+    files -- which is how the two paths drifted apart in round 15.
+    """
+    return chosen.name if chosen.name in _CID_CAPABLE_NAMES else "default"
 
 
 def select_backend(name: BackendName, handler: MailHandler) -> MailBackend:
@@ -160,13 +188,18 @@ def select_backend(name: BackendName, handler: MailHandler) -> MailBackend:
             if backend.matches(handler) and backend.is_available():
                 return backend
         # Universal fallback always matches; ClipboardMailtoBackend wins.
-        return _BACKENDS[-1]
+        # `EmlBackend.matches()` is False, so `auto` never lands there --
+        # `.eml` is an explicit choice, never a surprise.
+        return _FALLBACK_BACKEND
     if name == "outlook":
         return next(b for b in _BACKENDS if b.name == "outlook")
+    if name == "eml":
+        return next(b for b in _BACKENDS if b.name == "eml")
     if name == "default":
         return next(b for b in _BACKENDS if b.name == "clipboard_mailto")
     raise ValueError(
-        f"backend must be 'auto', 'outlook' or 'default' -- got {name!r}")
+        f"backend must be 'auto', 'outlook', 'eml' or 'default' -- "
+        f"got {name!r}")
 
 
 def resolve_image_mode(image_mode: str, handler: MailHandler,
@@ -180,7 +213,8 @@ def resolve_image_mode(image_mode: str, handler: MailHandler,
     HIGH 1 ("resolution-logic divergence").
 
     The rule:
-      * `auto` + the chosen backend will be Outlook  -> `cid`
+      * `auto` + the chosen backend can embed images -> `cid`
+        (that means Outlook desktop, or an explicit `--backend=eml`)
       * `auto` + anything else                       -> `url`
       * explicit `cid` / `url`                       -> passthrough
 
@@ -199,12 +233,12 @@ def resolve_image_mode(image_mode: str, handler: MailHandler,
             f"image_mode must be 'url', 'cid', or 'auto' -- got "
             f"{image_mode!r}"
         )
-    # auto: outlook gets cid, anyone else url.
-    will_use_outlook = (
-        backend == "outlook"
+    # auto: a CID-capable backend gets cid, anyone else url.
+    will_embed_images = (
+        backend in _CID_CAPABLE_NAMES
         or (backend == "auto" and handler.is_outlook_desktop)
     )
-    return "cid" if will_use_outlook else "url"
+    return "cid" if will_embed_images else "url"
 
 
 def compose(html: str, *, subject: str, backend: str = "auto",
@@ -260,8 +294,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     # box where Outlook would have been preferred but is unavailable
     # still resolves to URL (matching the real dispatch).
     image_mode = resolve_image_mode(
-        image_mode, handler,
-        backend=("outlook" if chosen.name == "outlook" else "default"),
+        image_mode, handler, backend=image_mode_key(chosen),
     )
 
     inline_images: tuple[InlineImage, ...] = ()
@@ -272,12 +305,13 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     # fallback path receives the original URL HTML.
     original_url_html = html
     if image_mode == "cid":
-        if chosen.name != "outlook":
+        if not chosen.supports_inline_images:
             raise ValueError(
-                "image_mode='cid' is only supported with the Outlook "
-                f"desktop backend, but {chosen.name!r} was selected. "
-                "Use --backend=outlook (or --image-mode=url for the "
-                "non-Outlook path)."
+                "image_mode='cid' needs a backend that can embed "
+                "photos as MIME parts, but "
+                f"{chosen.name!r} was selected. Use --backend=outlook "
+                "(Outlook desktop), --backend=eml (writes a .eml draft "
+                "file), or --image-mode=url for the hosted-photo path."
             )
         if asset_dir is None:
             raise ValueError(
@@ -325,7 +359,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             preview_path=preview_path,
             handler=handler,
         )
-        fallback = _BACKENDS[-1]
+        fallback = _FALLBACK_BACKEND
         fallback.compose(fallback_draft)
         return ComposeOutcome(
             backend=fallback.name,
@@ -347,15 +381,20 @@ def compose(html: str, *, subject: str, backend: str = "auto",
 __all__ = [
     "ComposeOutcome",
     "DraftEmail",
+    "EmlBackend",
     "MailBackend",
     "MailHandler",
+    "build_eml",
     "compose",
     "compose_outlook",
     "compose_via_default",
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
+    "eml_path_for",
+    "image_mode_key",
     "resolve_image_mode",
     "select_backend",
+    "write_eml",
 ]
 # `load_recipients` is intentionally NOT re-exported -- it's not a
 # mail-backend concern. New code imports from `scripts.recipients`.
