@@ -120,6 +120,34 @@ _MAX_COMPRESSION_RATIO = 100
 _MAX_EMBEDDED_TOTAL_BYTES = 50_000_000
 
 
+def _copy_capped(z: zipfile.ZipFile, name: str, target: Path,
+                 limit: int) -> int | None:
+    """Stream one member to `target`, aborting past `limit` bytes.
+
+    Returns the byte count, or None if the cap was exceeded.
+
+    The size and ratio gates in `extract_embedded` read `file_size` and
+    `compress_size` from the zip's central directory -- i.e. from
+    attacker-supplied metadata. CPython does currently cap a member's
+    output at the declared `file_size` and then fail the CRC, so an
+    understated header truncates rather than expands (verified). But
+    that is an implementation detail of `ZipExtFile`, not a guarantee,
+    and a security control resting on one is a control that can be
+    removed by a patch release nobody reads. This enforces the ceiling
+    on bytes we actually wrote, which is true regardless.
+    """
+    written = 0
+    with z.open(name) as src, target.open("wb") as dst:
+        while True:
+            chunk = src.read(64 * 1024)
+            if not chunk:
+                return written
+            written += len(chunk)
+            if written > limit:
+                return None
+            dst.write(chunk)
+
+
 def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
     """Extract images from word/media/ into dest_dir. Return {basename: path}.
 
@@ -190,8 +218,27 @@ def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
                 break
 
             target = dest_dir / base
-            with z.open(name) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
+            try:
+                written = _copy_capped(z, name, target, _MAX_EMBEDDED_BYTES)
+            except (zipfile.BadZipFile, OSError, EOFError) as e:
+                # A malformed or truncated member must not abort the whole
+                # build with a traceback -- in the browser that surfaces
+                # to the editor as "a bug in the toolkit". Note a forged
+                # size header lands here: CPython truncates the stream at
+                # the declared length and then fails the CRC.
+                log.warning(
+                    "Rejected embedded file %s: could not be read (%s).",
+                    base, e)
+                target.unlink(missing_ok=True)
+                continue
+            if written is None:
+                log.warning(
+                    "Rejected embedded file %s: it kept producing data "
+                    "past the %d-byte cap, so its declared size was a "
+                    "lie. Treating it as a decompression bomb.",
+                    base, _MAX_EMBEDDED_BYTES)
+                target.unlink(missing_ok=True)
+                continue
 
             # Gate 2 -- content must actually be a supported raster image.
             if not _is_supported_image(target):

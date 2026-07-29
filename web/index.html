@@ -37,7 +37,7 @@
     </div>
     <div class="lang-switch" role="group" aria-label="Language / 言語">
       <button type="button" data-lang="en" class="is-active" aria-pressed="true">EN</button>
-      <button type="button" data-lang="ja" aria-pressed="false">日本語</button>
+      <button type="button" data-lang="ja" lang="ja" aria-pressed="false">日本語</button>
     </div>
   </div>
 </header>
@@ -64,7 +64,8 @@
         <p id="drop-label" data-i18n="dropHere">Drop <code>issue-N.docx</code> here, or click to choose</p>
         <p id="file-hint" class="hint" data-i18n="fileHint">Only .docx files. The file stays on this device.</p>
       </div>
-      <p id="file-chosen" class="chosen" hidden></p>
+      <p id="file-chosen" class="chosen" role="status" hidden></p>
+      <p id="file-error" class="msg error" role="alert" hidden></p>
     </section>
 
     <section class="step">
@@ -88,6 +89,7 @@
       <div class="field">
         <label for="bcc" data-i18n="bccLabel">BCC recipients <span class="optional" data-i18n="optional">(optional)</span></label>
         <textarea id="bcc" rows="3" spellcheck="false"
+                  data-i18n-attr="placeholder:bccPlaceholder"
                   placeholder="one address per line"></textarea>
         <p class="hint" data-i18n="bccHint">Pre-fills the BCC field of the draft. These addresses stay on this device and are written only into the draft file you download.</p>
       </div>
@@ -106,7 +108,7 @@
   </form>
 
   <section id="results" class="results" hidden aria-live="polite">
-    <h2 data-i18n="resultsTitle">Result</h2>
+    <h2 id="results-heading" tabindex="-1" data-i18n="resultsTitle">Result</h2>
     <div id="verdict"></div>
     <dl id="summary" class="summary"></dl>
     <div id="messages"></div>
@@ -121,9 +123,12 @@
       <p class="hint" data-i18n="emlHint">Double-click the .eml file: Outlook opens it as a ready-to-send draft, with the subject, the BCC list and the photos already in place. Add the To: address and press Send.</p>
     </div>
 
-    <h3 data-i18n="previewTitle">Preview</h3>
-    <p class="hint" data-i18n="previewHint">This is what recipients will see.</p>
-    <iframe id="preview" title="Newsletter preview" sandbox></iframe>
+    <div id="preview-block" hidden>
+      <h3 data-i18n="previewTitle">Preview</h3>
+      <p class="hint" data-i18n="previewHint">This is what recipients will see.</p>
+      <iframe id="preview" data-i18n-attr="title:previewTitle"
+              title="Newsletter preview" sandbox></iframe>
+    </div>
   </section>
 
 </main>

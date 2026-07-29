@@ -65,9 +65,15 @@ const STRINGS = {
     emlHint: "Double-click the .eml file: Outlook opens it as a ready-to-send draft, with the subject, the BCC list and the photos already in place. Add the To: address and press Send.",
     previewTitle: "Preview",
     previewHint: "This is what recipients will see.",
-    footer: "Runs offline after first load. Nothing is sent anywhere.",
+    footer: "Your document never leaves this device. Nothing is sent anywhere.",
     verdictOk: "Ready to send.",
     verdictBad: "Not ready — please fix the points below in Word and build again.",
+    tooBig: "That file is too large for the browser version (over 40 MB). In Word, use File → Compress Pictures, save, and try again — or use the desktop launcher, which has no size limit.",
+    oneFileOnly: "Please drop one .docx file at a time.",
+    technicalDetail: "Technical detail (for the maintainer)",
+    bootBundleMissing: "The toolkit files are missing from this page. This is a setup problem on the server, not something you can fix — please tell whoever published the page.",
+    bccPlaceholder: "one address per line",
+    sumBytes: "bytes",
     sumSubject: "Subject",
     sumSections: "Sections",
     sumPhotos: "Photos embedded",
@@ -106,9 +112,15 @@ const STRINGS = {
     emlHint: ".emlファイルをダブルクリックしてください。Outlookが、件名・BCC・写真がすでに入った送信可能な下書きとして開きます。宛先（To）を入力して送信してください。",
     previewTitle: "プレビュー",
     previewHint: "受信者にはこのように表示されます。",
-    footer: "初回読み込み後はオフラインでも動作します。データはどこにも送信されません。",
+    footer: "文書がこの端末から出ることはありません。データはどこにも送信されません。",
     verdictOk: "送信できます。",
     verdictBad: "まだ送信できません。以下の点をWordで修正して、もう一度作成してください。",
+    tooBig: "このファイルはブラウザ版には大きすぎます（40MB超）。Word の「ファイル → 図の圧縮」で小さくして保存し直すか、サイズ制限のないデスクトップ版ランチャーをご利用ください。",
+    oneFileOnly: "一度にドラッグできる .docx ファイルは 1 つだけです。",
+    technicalDetail: "技術的な詳細（管理者向け）",
+    bootBundleMissing: "このページにツールキットのファイルが見つかりません。サーバー側の設定の問題ですので、ページの公開担当者にお伝えください。",
+    bccPlaceholder: "1 行に 1 件ずつ",
+    sumBytes: "バイト",
     sumSubject: "件名",
     sumSections: "セクション数",
     sumPhotos: "埋め込んだ写真",
@@ -127,11 +139,24 @@ function applyLanguage() {
   document.documentElement.lang = lang;
   for (const el of document.querySelectorAll("[data-i18n]")) {
     const value = t(el.dataset.i18n);
+    // Setting `textContent` on an element that CONTAINS another
+    // `[data-i18n]` element destroys that child. The BCC label wraps a
+    // `<span data-i18n="optional">`, so this loop deleted the
+    // "(optional)" hint on every single page load -- in both languages,
+    // since the span was detached before its own turn came round. Skip
+    // container elements; their descendants are handled on their own.
+    if (el.querySelector("[data-i18n]")) continue;
     // A few strings carry inline markup (<code>). They are authored
     // here, never derived from the DOCX, so this is not a sink for
     // untrusted content.
     if (value.includes("<")) el.innerHTML = value;
     else el.textContent = value;
+  }
+  // Attribute translations -- `placeholder` and `title` are read by
+  // editors and screen readers respectively, and were English-only.
+  for (const el of document.querySelectorAll("[data-i18n-attr]")) {
+    const [attr, key] = el.dataset.i18nAttr.split(":");
+    el.setAttribute(attr, t(key));
   }
   for (const btn of document.querySelectorAll(".lang-switch button")) {
     const active = btn.dataset.lang === lang;
@@ -139,7 +164,15 @@ function applyLanguage() {
     // The visual state is a colour swap, which a screen reader cannot see.
     btn.setAttribute("aria-pressed", String(active));
   }
-  if (lastResult) renderResult(lastResult);
+  // The boot line is driven imperatively through its phases, so it
+  // cannot be bound to a static `data-i18n` -- doing so meant a language
+  // toggle during (or after) boot rewound the message to "Starting…",
+  // erasing a failure notice and its "reload the page" instruction.
+  if (bootKey) {
+    bootText.textContent = t(bootKey) + (bootDetail ? `\n\n${bootDetail}` : "");
+  }
+  if (fatalKey) showFatal(t(fatalKey), fatalDetail);
+  else if (lastResult) renderResult(lastResult);
 }
 
 // ---------------------------------------------------------------- boot
@@ -151,13 +184,25 @@ let pyodide = null;
 let buildFn = null;
 let lastResult = null;
 let chosenFile = null;
+// Boot state is tracked by KEY, not by rendered text, so a language
+// toggle re-renders the current phase instead of rewinding it.
+let bootKey = "bootStarting";
+let bootDetail = "";
+let fatalKey = null;
+let fatalDetail = "";
+
+function setBoot(key, detail = "") {
+  bootKey = key;
+  bootDetail = detail;
+  bootText.textContent = t(key) + (detail ? `\n\n${detail}` : "");
+}
 
 async function boot() {
   try {
-    bootText.textContent = t("bootStarting");
+    setBoot("bootStarting");
     pyodide = await loadPyodide();
 
-    bootText.textContent = t("bootPackages");
+    setBoot("bootPackages");
     await pyodide.loadPackage("micropip");
     const micropip = pyodide.pyimport("micropip");
     // One call with the whole list, not one per package: micropip's
@@ -167,8 +212,16 @@ async function boot() {
     // site-packages independently.
     await micropip.install(PY_PACKAGES);
 
-    bootText.textContent = t("bootBundle");
-    const zip = await (await fetch("meridian-bundle.zip")).arrayBuffer();
+    setBoot("bootBundle");
+    const res = await fetch("meridian-bundle.zip");
+    if (!res.ok) {
+      // A 404 here means the bundle was left out of the deploy, or the
+      // page is served from the wrong subdirectory. Telling the editor
+      // to check their internet connection would send them chasing
+      // something they cannot fix -- this one is the maintainer's.
+      throw new Error(`bundle HTTP ${res.status}`);
+    }
+    const zip = await res.arrayBuffer();
     pyodide.FS.mkdir(REPO_MOUNT);
     pyodide.FS.chdir(REPO_MOUNT);
     await pyodide.unpackArchive(zip, "zip");
@@ -180,7 +233,11 @@ async function boot() {
     $("builder").hidden = false;
   } catch (err) {
     bootBox.classList.add("verdict", "bad");
-    bootText.textContent = `${t("bootFailed")}\n\n${err}`;
+    // Stop the spinner: leaving it turning next to a failure message
+    // reads as "still working", so the editor waits instead of reloading.
+    for (const s of bootBox.querySelectorAll(".spinner")) s.remove();
+    setBoot(String(err).includes("bundle HTTP") ? "bootBundleMissing"
+                                                : "bootFailed", String(err));
     console.error(err);
   }
 }
@@ -234,6 +291,7 @@ def _web_build(js_bytes, issue, image_mode, bcc):
         paths["preview"] = str(p)
     return json.dumps({
         "ok": result.ok,
+        "issue": int(issue),
         "subject": result.subject,
         "errors": list(result.errors),
         "warnings": list(result.warnings),
@@ -254,12 +312,46 @@ _web_build
 const dropzone = $("dropzone");
 const fileInput = $("file");
 
+/* Peak memory is several times the file size: the ArrayBuffer, a copy
+ * in the Pyodide heap, the extracted photos, and base64 data URIs for
+ * the preview. Past this the WASM heap dies and the editor gets either
+ * "Aw, Snap" or a RangeError under a misleading banner. 40 MB is far
+ * above any real newsletter. */
+const MAX_DOCX_BYTES = 40 * 1024 * 1024;
+
+function clearChosenFile() {
+  chosenFile = null;
+  $("file-chosen").hidden = true;
+  $("build").disabled = true;
+  // Reset the input too, so re-picking the SAME file still fires `change`.
+  fileInput.value = "";
+}
+
+function rejectFile(key) {
+  // Disarm before complaining. Leaving the previous file loaded meant an
+  // editor who picked issue-7.docx, then dropped issue-8.doc and saw it
+  // rejected, could press Build and get a flawless, wrong newsletter.
+  clearChosenFile();
+  showFileError(t(key));
+}
+
 function chooseFile(file) {
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".docx")) {
-    showFatal(t("notDocx"));
+  if (!file) {
+    // Dropping a folder, or an attachment dragged straight out of
+    // Outlook, yields an empty file list. Silence here looks like the
+    // page ignoring them.
+    rejectFile("notDocx");
     return;
   }
+  if (!file.name.toLowerCase().endsWith(".docx")) {
+    rejectFile("notDocx");
+    return;
+  }
+  if (file.size > MAX_DOCX_BYTES) {
+    rejectFile("tooBig");
+    return;
+  }
+  clearFileError();
   chosenFile = file;
   const chosen = $("file-chosen");
   chosen.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
@@ -272,11 +364,29 @@ function chooseFile(file) {
   if (m) $("issue").value = m[1];
 }
 
+function showFileError(message) {
+  // Rendered next to the drop zone, not in the "Result" panel below the
+  // fold: no result was produced, and an editor who drops a PDF on a
+  // laptop would otherwise see the page do nothing at all.
+  const box = $("file-error");
+  box.textContent = message;
+  box.hidden = false;
+}
+
+function clearFileError() {
+  $("file-error").hidden = true;
+}
+
 dropzone.addEventListener("click", () => fileInput.click());
 dropzone.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
 });
-fileInput.addEventListener("change", () => chooseFile(fileInput.files[0]));
+fileInput.addEventListener("change", () => {
+  chooseFile(fileInput.files[0]);
+  // The real <input> is hidden and cannot hold focus, so after the file
+  // dialog closes a keyboard user would be left with focus on <body>.
+  dropzone.focus();
+});
 
 for (const evt of ["dragenter", "dragover"]) {
   dropzone.addEventListener(evt, (e) => {
@@ -290,7 +400,28 @@ for (const evt of ["dragleave", "drop"]) {
     dropzone.classList.remove("is-over");
   });
 }
-dropzone.addEventListener("drop", (e) => chooseFile(e.dataTransfer.files[0]));
+dropzone.addEventListener("drop", (e) => {
+  if (e.dataTransfer.files.length > 1) { rejectFile("oneFileOnly"); return; }
+  chooseFile(e.dataTransfer.files[0]);
+});
+
+/* Releasing the file a few pixels outside the drop zone -- over the
+ * masthead, the settings card, the page margin -- otherwise hits the
+ * browser's default handler, which NAVIGATES the tab to the .docx. The
+ * page is gone, the loaded Pyodide runtime with it, and the tool looks
+ * like it crashed. Catch it at the window and treat a near-miss as a
+ * successful drop. */
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  if (e.target.closest("#dropzone")) return;   // already handled above
+  if (!buildFn) return;                        // still booting
+  const files = e.dataTransfer?.files;
+  if (files && files.length) {
+    if (files.length > 1) rejectFile("oneFileOnly");
+    else chooseFile(files[0]);
+  }
+});
 
 // --------------------------------------------------------------- build
 
@@ -303,6 +434,9 @@ $("builder").addEventListener("submit", async (e) => {
 async function runBuild() {
   $("build").disabled = true;
   $("working").hidden = false;
+  // The build blocks the main thread for seconds; without this a screen
+  // reader announces nothing at all while it runs.
+  $("builder").setAttribute("aria-busy", "true");
 
   try {
     const bytes = new Uint8Array(await chosenFile.arrayBuffer());
@@ -314,13 +448,17 @@ async function runBuild() {
     const json = buildFn(bytes, $("issue").value, $("mode").value,
                          $("bcc").value);
     lastResult = JSON.parse(json);
+    fatalKey = null;
     renderResult(lastResult);
   } catch (err) {
     console.error(err);
-    showFatal(`${t("crashed")}\n\n${err}`);
+    fatalKey = "crashed";
+    fatalDetail = String(err);
+    showFatal(t("crashed"), fatalDetail);
   } finally {
     $("build").disabled = false;
     $("working").hidden = true;
+    $("builder").removeAttribute("aria-busy");
   }
 }
 
@@ -340,7 +478,7 @@ function blobUrl(path, type) {
   return url;
 }
 
-function showFatal(message) {
+function showFatal(message, detail = "") {
   lastResult = null;
   revokeObjectUrls();
   $("results").hidden = false;
@@ -348,8 +486,41 @@ function showFatal(message) {
   $("verdict").textContent = message;
   $("summary").innerHTML = "";
   $("messages").innerHTML = "";
+  // Raw technical detail goes in a collapsed <details>, so the editor
+  // reads one human sentence and a maintainer can still expand the
+  // traceback. Previously both were concatenated into one run-on line.
+  const box = $("messages");
+  if (detail) {
+    const d = document.createElement("details");
+    const s = document.createElement("summary");
+    s.textContent = t("technicalDetail");
+    const pre = document.createElement("pre");
+    pre.textContent = detail;
+    d.append(s, pre);
+    box.append(d);
+  }
   $("downloads").hidden = true;
+  clearPreview();
+  focusResults();
+}
+
+function clearPreview() {
+  // `removeAttribute("src")` does NOT unload an already-loaded document,
+  // so a failed build sat under a red "Not ready" banner showing a
+  // preview of the previous, good newsletter.
   $("preview").removeAttribute("src");
+  $("preview").srcdoc = "";
+  $("preview-block").hidden = true;
+}
+
+function focusResults() {
+  const h = $("results-heading");
+  h.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto" : "smooth",
+    block: "start",
+  });
+  h.focus();
 }
 
 function renderResult(res) {
@@ -371,7 +542,7 @@ function renderResult(res) {
       ? `${res.photo_count} (${res.unembedded_photo_count} ${t("sumNotEmbedded")})`
       : String(res.photo_count)],
     [t("sumRecipients"), String(res.recipient_count)],
-    [t("sumSize"), `${res.size_bytes.toLocaleString()} bytes`],
+    [t("sumSize"), `${res.size_bytes.toLocaleString(lang)} ${t("sumBytes")}`],
   ];
   $("summary").innerHTML = "";
   for (const [term, value] of rows) {
@@ -390,20 +561,33 @@ function renderResult(res) {
   const downloads = $("downloads");
   if (res.ok && res.paths.eml) {
     downloads.hidden = false;
+    // Filenames captured from the RESULT, not from the live #issue
+    // field: editing that box after a build (or toggling language,
+    // which re-renders) would otherwise rename the file without
+    // rebuilding its contents.
     const eml = $("dl-eml");
     eml.href = blobUrl(res.paths.eml, "message/rfc822");
-    eml.download = `issue-${$("issue").value}.eml`;
+    eml.download = `issue-${res.issue}.eml`;
     const html = $("dl-html");
     html.href = blobUrl(res.paths.html, "text/html");
-    html.download = `issue-${$("issue").value}.html`;
+    html.download = `issue-${res.issue}.html`;
   } else {
     downloads.hidden = true;
   }
 
   if (res.paths.preview) {
-    $("preview").src = blobUrl(res.paths.preview, "text/html");
+    // `srcdoc` rather than a blob URL: it renders under `sandbox=""`
+    // without depending on how a given browser version scopes blob URLs
+    // to the creating origin, and it leaves one less object URL alive.
+    // The photos are `data:` URIs, so nothing else needs fetching.
+    $("preview").removeAttribute("src");
+    $("preview").srcdoc = pyodide.FS.readFile(res.paths.preview,
+                                              { encoding: "utf8" });
+    $("preview-block").hidden = false;
+  } else {
+    clearPreview();
   }
-  $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+  focusResults();
 }
 
 function message(kind, text) {

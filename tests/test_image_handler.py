@@ -212,3 +212,48 @@ def test_decompression_bomb_is_refused_before_it_is_written(tmp_path):
     assert "huge.jpg" not in out
     written = sum(p.stat().st_size for p in dest.glob("*"))
     assert written < 5_000_000, f"bomb reached disk: {written} bytes"
+
+
+def test_a_forged_size_header_cannot_smuggle_a_bomb(tmp_path):
+    """The size and ratio gates read the zip's CENTRAL DIRECTORY, i.e.
+    attacker-supplied metadata. A member declaring 1 KB while its
+    deflate stream holds 20 MB passes both gates on paper.
+
+    CPython currently truncates at the declared size and fails the CRC,
+    so the bomb does not land -- but that is an implementation detail of
+    `ZipExtFile`, and the extraction must survive it as a skipped file
+    rather than an unhandled `BadZipFile` reaching the editor."""
+    import struct
+
+    from scripts.image_handler import extract_embedded
+
+    payload = JPEG_MAGIC + b"\x00" * 20_000_000
+    honest = _docx_with_media(tmp_path, {"forged.jpg": payload})
+    raw = bytearray(honest.read_bytes())
+    raw = raw.replace(struct.pack("<I", len(payload)), struct.pack("<I", 1000))
+    forged = tmp_path / "forged.docx"
+    forged.write_bytes(bytes(raw))
+
+    dest = tmp_path / "assets"
+    out = extract_embedded(forged, dest)          # must not raise
+
+    assert "forged.jpg" not in out
+    written = sum(p.stat().st_size for p in dest.glob("*"))
+    assert written < 5_000_000, f"bomb reached disk: {written:,} bytes"
+
+
+def test_the_write_cap_holds_even_if_the_header_gates_are_bypassed(tmp_path):
+    """Directly exercise `_copy_capped`, the gate that does not trust
+    metadata: it counts what was actually written."""
+    import zipfile as zf
+
+    from scripts.image_handler import _copy_capped
+
+    archive = tmp_path / "a.zip"
+    with zf.ZipFile(archive, "w", zf.ZIP_DEFLATED) as z:
+        z.writestr("big.bin", b"\x00" * 5_000_000)
+        z.writestr("small.bin", b"\x00" * 1000)
+
+    with zf.ZipFile(archive) as z:
+        assert _copy_capped(z, "big.bin", tmp_path / "big", 1_000_000) is None
+        assert _copy_capped(z, "small.bin", tmp_path / "small", 1_000_000) == 1000

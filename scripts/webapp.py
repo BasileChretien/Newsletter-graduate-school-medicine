@@ -309,8 +309,23 @@ def _build_in(
     # mixed-mode rendering round 12 went out of its way to eliminate.
     _mirror_brand_assets(root)
 
-    # 1) Parse.
-    newsletter = parse(docx_path)
+    # 1) Parse. A file named `.docx` that is not a valid OPC package --
+    # a renamed `.doc`, a truncated download, an unsynced OneDrive
+    # placeholder, a password-protected file -- raises out of
+    # `python-docx`. Left unhandled it reached the browser as "this is a
+    # bug in the toolkit, not in your Word file", which is exactly
+    # backwards: it IS their file, and it is fixable in thirty seconds.
+    try:
+        newsletter = parse(docx_path)
+    except Exception as e:  # noqa: BLE001 -- any parse failure is editorial
+        log.warning("Could not parse %s: %s", docx_path.name, e)
+        return WebBuildResult(
+            ok=False, subject=f"{TITLE} — Issue {issue}",
+            preview_html="", html="", eml=None,
+            errors=(_EMPTY_DOCX_ERROR,),
+            report_text=_EMPTY_DOCX_ERROR,
+            image_mode=image_mode,
+        )
     if not newsletter.sections:
         return WebBuildResult(
             ok=False, subject=f"{TITLE} — Issue {issue}",

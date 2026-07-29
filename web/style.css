@@ -25,6 +25,8 @@
   --sans: Calibri, "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+:root { color-scheme: light dark; }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --ink: #E9ECF1;
@@ -35,6 +37,14 @@
     --danger-bg: #35191A;
     --warn-bg: #332B15;
     --ok-bg: #16291D;
+    /* The foregrounds MUST be overridden too. Without these, the light
+     * theme's #A3282C sat on #35191A at about 1.9:1 -- and the text it
+     * colours is the single most important line on the page ("Not ready
+     * -- fix the points below"), plus every fatal error, which routes
+     * through `.verdict.bad`. Windows 11 defaults to dark. */
+    --danger: #F0A0A2;
+    --warn: #E8C97F;      /* the brand's footer-link gold */
+    --ok: #7BD69C;
   }
 }
 
@@ -146,6 +156,11 @@ main {
   gap: 0.6rem;
   color: var(--muted);
   font-size: 0.95rem;
+  /* Boot and error text is built with embedded newlines; without this
+   * a message and its technical detail ran together on one line, and a
+   * long traceback forced the whole page to scroll sideways. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .boot { padding: 1rem 0 1.5rem; }
 .working { margin-left: 0.9rem; }
@@ -267,6 +282,23 @@ a.secondary {
   border-radius: var(--radius);
   font-weight: 600;
   margin-bottom: 1rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.verdict:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+#messages details {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+#messages details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  padding: 0.6rem;
+  border-radius: 6px;
+  margin: 0.4rem 0 0;
 }
 .verdict.ok { background: var(--ok-bg); color: var(--ok); }
 .verdict.bad { background: var(--danger-bg); color: var(--danger); }
