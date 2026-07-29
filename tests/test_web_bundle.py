@@ -71,6 +71,31 @@ def test_the_page_files_exist(asset):
     assert (REPO_ROOT / "web" / asset).is_file()
 
 
+def test_zip_metadata_is_platform_independent():
+    """`ZipInfo.create_system` defaults to 0 (MS-DOS) on Windows and 3
+    (Unix) elsewhere, and it is written into the header -- so identical
+    content produced two different files depending on who ran the
+    builder. That is what first broke this suite on the Linux and macOS
+    CI runners."""
+    with zipfile.ZipFile(BUNDLE) as z:
+        infos = z.infolist()
+
+    assert {i.create_system for i in infos} == {3}
+    assert {i.date_time for i in infos} == {(1980, 1, 1, 0, 0, 0)}
+    # Archive names must be POSIX-separated whoever packed them.
+    assert not any("\\" in i.filename for i in infos)
+
+
+def test_entries_are_sorted_by_posix_name():
+    """`Path` ordering is case-folded and backslash-separated on
+    Windows, case-sensitive and slash-separated elsewhere, so sorting
+    by `Path` could pack the same tree in two different orders."""
+    with zipfile.ZipFile(BUNDLE) as z:
+        names = z.namelist()
+
+    assert names == sorted(names)
+
+
 def test_bundled_text_is_lf_normalised():
     """Determinism across checkouts. With `core.autocrlf=true` a Windows
     working tree holds CRLF and a Linux one holds LF, so a bundle that

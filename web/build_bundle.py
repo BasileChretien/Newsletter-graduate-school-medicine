@@ -58,8 +58,19 @@ TEXT_SUFFIXES = frozenset({
 })
 
 
+def _archive_name(path: Path) -> str:
+    """Path as it appears inside the zip -- always POSIX-separated."""
+    return path.relative_to(REPO_ROOT).as_posix()
+
+
 def _included_files() -> list[Path]:
-    """Every file that belongs in the bundle, sorted for determinism."""
+    """Every file that belongs in the bundle, sorted for determinism.
+
+    Sorted by the POSIX archive name rather than by `Path`: `Path`
+    ordering uses a case-folded, backslash-separated key on Windows and
+    a case-sensitive, slash-separated one elsewhere, so the same tree
+    could be packed in two different orders.
+    """
     out: list[Path] = []
     for rel in INCLUDE_DIRS:
         base = REPO_ROOT / rel
@@ -73,7 +84,7 @@ def _included_files() -> list[Path]:
             if path.suffix in EXCLUDE_SUFFIXES or path.name in EXCLUDE_NAMES:
                 continue
             out.append(path)
-    return sorted(out)
+    return sorted(out, key=_archive_name)
 
 
 def _payload(path: Path) -> bytes:
@@ -97,13 +108,50 @@ def write_bundle(target: Path) -> tuple[int, int]:
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
         for path in files:
             info = zipfile.ZipInfo(
-                str(path.relative_to(REPO_ROOT)).replace("\\", "/"),
+                _archive_name(path),
                 date_time=(1980, 1, 1, 0, 0, 0),
             )
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
+            # `ZipInfo` defaults this to 0 (MS-DOS) on Windows and 3
+            # (Unix) on everything else, and it is written into the
+            # header -- so identical content produced two different
+            # files depending on who ran the script. Pinned to Unix.
+            info.create_system = 3
             z.writestr(info, _payload(path))
     return len(files), target.stat().st_size
+
+
+def bundle_drift() -> list[str]:
+    """Describe how the committed bundle differs from the sources.
+
+    Compares CONTENT (name -> sha256 of the packed payload), not the
+    zip's bytes. A byte comparison also catches differences in the
+    container itself -- `create_system`, compression-level tweaks
+    between Python versions, field ordering -- none of which mean the
+    browser would run stale code, but all of which would fail CI on a
+    machine that differs from whoever last ran the builder. This
+    compares the thing we actually care about, and names the files that
+    drifted so the failure is actionable.
+
+    Returns an empty list when the bundle is current.
+    """
+    def _sha(data: bytes) -> str:
+        return hashlib.sha256(data).hexdigest()
+
+    expected = {_archive_name(p): _sha(_payload(p)) for p in _included_files()}
+    with zipfile.ZipFile(BUNDLE_PATH) as z:
+        actual = {name: _sha(z.read(name)) for name in z.namelist()}
+
+    drift: list[str] = []
+    for name in sorted(set(expected) - set(actual)):
+        drift.append(f"missing from the bundle: {name}")
+    for name in sorted(set(actual) - set(expected)):
+        drift.append(f"no longer in the sources: {name}")
+    for name in sorted(set(expected) & set(actual)):
+        if expected[name] != actual[name]:
+            drift.append(f"changed since the bundle was built: {name}")
+    return drift
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,16 +165,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {BUNDLE_PATH.name} is missing. Run "
                   f"`python web/build_bundle.py`.", file=sys.stderr)
             return 1
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp:
-            fresh = Path(tmp) / "fresh.zip"
-            write_bundle(fresh)
-            same = (hashlib.sha256(fresh.read_bytes()).hexdigest()
-                    == hashlib.sha256(BUNDLE_PATH.read_bytes()).hexdigest())
-        if not same:
+        drift = bundle_drift()
+        if drift:
             print("ERROR: web/meridian-bundle.zip is out of date with "
-                  "scripts/ templates/ locales/ images/. Run "
-                  "`python web/build_bundle.py` and commit the result.",
+                  "scripts/ templates/ locales/ images/:", file=sys.stderr)
+            for line in drift:
+                print(f"  {line}", file=sys.stderr)
+            print("Run `python web/build_bundle.py` and commit the result.",
                   file=sys.stderr)
             return 1
         print("web/meridian-bundle.zip is up to date.")
