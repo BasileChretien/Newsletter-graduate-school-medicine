@@ -71,6 +71,20 @@ def test_the_page_files_exist(asset):
     assert (REPO_ROOT / "web" / asset).is_file()
 
 
+def test_bundled_text_is_lf_normalised():
+    """Determinism across checkouts. With `core.autocrlf=true` a Windows
+    working tree holds CRLF and a Linux one holds LF, so a bundle that
+    packed raw bytes could never match a rebuild on the other platform
+    -- and CI runs `--verify` on all three."""
+    with zipfile.ZipFile(BUNDLE) as z:
+        offenders = [
+            n for n in z.namelist()
+            if Path(n).suffix.lower() in {".py", ".j2", ".css", ".toml"}
+            and b"\r\n" in z.read(n)
+        ]
+    assert offenders == [], offenders
+
+
 def test_pyodide_version_is_pinned_to_a_css_inline_capable_line():
     """`css_inline` is the one Rust-backed dependency and the whole
     email layout depends on it. It ships in Pyodide's 0.29.x

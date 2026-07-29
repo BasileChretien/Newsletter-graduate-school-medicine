@@ -45,6 +45,18 @@ EXCLUDE_PARTS = frozenset({"__pycache__", ".pytest_cache", ".git"})
 EXCLUDE_SUFFIXES = (".pyc", ".pyo", ".pyi")
 EXCLUDE_NAMES = frozenset({"recipients.txt", ".DS_Store", "Thumbs.db"})
 
+# Text files are normalized to LF before packing. Without this the
+# bundle's bytes depend on the *checkout*, not the source: with
+# `core.autocrlf=true` a Windows working tree holds CRLF and a Linux
+# one holds LF, so the committed zip built on one platform can never
+# match a rebuild on the other -- and `--verify` (which CI runs on all
+# three) would fail for a reason that has nothing to do with anyone's
+# changes. Python, Jinja2 and TOML are all newline-agnostic, so LF
+# inside the bundle is purely a determinism device.
+TEXT_SUFFIXES = frozenset({
+    ".py", ".j2", ".css", ".toml", ".html", ".txt", ".json", ".md",
+})
+
 
 def _included_files() -> list[Path]:
     """Every file that belongs in the bundle, sorted for determinism."""
@@ -64,12 +76,21 @@ def _included_files() -> list[Path]:
     return sorted(out)
 
 
+def _payload(path: Path) -> bytes:
+    """File bytes, with text normalized to LF. See `TEXT_SUFFIXES`."""
+    data = path.read_bytes()
+    if path.suffix.lower() in TEXT_SUFFIXES:
+        return data.replace(b"\r\n", b"\n")
+    return data
+
+
 def write_bundle(target: Path) -> tuple[int, int]:
     """Write the ZIP. Returns (file_count, byte_size).
 
-    Timestamps are pinned so re-running with no source changes produces
-    byte-identical output -- that is what makes `--verify` meaningful
-    and keeps the committed binary from churning in every diff.
+    Timestamps are pinned and text is LF-normalized so re-running with
+    no source changes produces byte-identical output on any platform --
+    that is what makes `--verify` meaningful and keeps the committed
+    binary from churning in every diff.
     """
     files = _included_files()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +102,7 @@ def write_bundle(target: Path) -> tuple[int, int]:
             )
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            z.writestr(info, path.read_bytes())
+            z.writestr(info, _payload(path))
     return len(files), target.stat().st_size
 
 
