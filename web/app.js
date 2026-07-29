@@ -66,6 +66,8 @@ const STRINGS = {
     sumSubject: "Subject",
     sumSections: "Sections",
     sumPhotos: "Photos embedded",
+    sumNotEmbedded: "not embedded",
+    sumRecipients: "BCC recipients",
     sumSize: "Size",
     crashed: "Something went wrong while building. This is a bug in the toolkit, not in your Word file.",
     notDocx: "That is not a .docx file. Save your newsletter from Word as .docx and try again.",
@@ -105,6 +107,8 @@ const STRINGS = {
     sumSubject: "件名",
     sumSections: "セクション数",
     sumPhotos: "埋め込んだ写真",
+    sumNotEmbedded: "件は未埋め込み",
+    sumRecipients: "BCC宛先数",
     sumSize: "サイズ",
     crashed: "作成中に問題が発生しました。これはWordファイルではなく、ツールキット側の不具合です。",
     notDocx: ".docxファイルではありません。Wordから.docx形式で保存し直してください。",
@@ -172,17 +176,30 @@ async function boot() {
  * bundle so that the bundle stays exactly "the toolkit", with no
  * web-only module smuggled inside it. */
 const GLUE = `
-import json, sys
+import json, shutil, sys
 from pathlib import Path
 sys.path.insert(0, "${REPO_MOUNT}")
 from scripts.webapp import build_from_bytes
 
+_WORKDIR = Path("/build")
+
 def _web_build(js_bytes, issue, image_mode, bcc):
+    # A fixed, wiped-per-run workdir. The default is a fresh temp
+    # directory, which is right for a process that exits -- but this
+    # "process" is a browser tab that may build a dozen times, and
+    # Pyodide's filesystem is memory. Each build copies in the brand
+    # images and extracts every photo, so temp dirs would accumulate
+    # for the lifetime of the tab.
+    shutil.rmtree(_WORKDIR, ignore_errors=True)
     result = build_from_bytes(
         bytes(js_bytes.to_py()),
         issue=int(issue),
         image_mode=image_mode,
+        # Passed raw: splitting and validating recipients is
+        # \`scripts.recipients.sanitize_addresses\`' job, so the browser
+        # and the CLI apply exactly the same rules.
         bcc=bcc or None,
+        workdir=_WORKDIR,
     )
     out = Path("${OUTPUT_DIR}")
     out.mkdir(parents=True, exist_ok=True)
@@ -209,6 +226,8 @@ def _web_build(js_bytes, issue, image_mode, bcc):
         "warnings": list(result.warnings),
         "section_count": result.section_count,
         "photo_count": result.photo_count,
+        "unembedded_photo_count": result.unembedded_photo_count,
+        "recipient_count": result.recipient_count,
         "size_bytes": result.size_bytes,
         "image_mode": result.image_mode,
         "paths": paths,
@@ -271,21 +290,16 @@ $("builder").addEventListener("submit", async (e) => {
 async function runBuild() {
   $("build").disabled = true;
   $("working").hidden = false;
-  revokeObjectUrls();
 
   try {
     const bytes = new Uint8Array(await chosenFile.arrayBuffer());
-    const bcc = $("bcc").value
-      .split(/[\n,;]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join("; ");
 
     // Yield a frame so the spinner paints before Pyodide blocks the
     // main thread for a few seconds.
     await new Promise((r) => setTimeout(r, 0));
 
-    const json = buildFn(bytes, $("issue").value, $("mode").value, bcc);
+    const json = buildFn(bytes, $("issue").value, $("mode").value,
+                         $("bcc").value);
     lastResult = JSON.parse(json);
     renderResult(lastResult);
   } catch (err) {
@@ -315,6 +329,7 @@ function blobUrl(path, type) {
 
 function showFatal(message) {
   lastResult = null;
+  revokeObjectUrls();
   $("results").hidden = false;
   $("verdict").className = "verdict bad";
   $("verdict").textContent = message;
@@ -325,6 +340,11 @@ function showFatal(message) {
 }
 
 function renderResult(res) {
+  // Revoke here rather than at the start of a build: this function also
+  // re-runs when the editor switches language, and each pass mints new
+  // blob URLs for the same files. Revoking at build time leaked one set
+  // per language toggle.
+  revokeObjectUrls();
   $("results").hidden = false;
 
   const verdict = $("verdict");
@@ -334,7 +354,10 @@ function renderResult(res) {
   const rows = [
     [t("sumSubject"), res.subject],
     [t("sumSections"), String(res.section_count)],
-    [t("sumPhotos"), String(res.photo_count)],
+    [t("sumPhotos"), res.unembedded_photo_count
+      ? `${res.photo_count} (${res.unembedded_photo_count} ${t("sumNotEmbedded")})`
+      : String(res.photo_count)],
+    [t("sumRecipients"), String(res.recipient_count)],
     [t("sumSize"), `${res.size_bytes.toLocaleString()} bytes`],
   ];
   $("summary").innerHTML = "";

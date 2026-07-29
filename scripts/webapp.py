@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import shutil
 import tempfile
 from collections import defaultdict
@@ -39,14 +40,16 @@ from pathlib import Path
 
 from scripts.config import IMAGES_DIR, TITLE, get_default_repo
 from scripts.docx_parser import ImageRef, Masthead, parse
+from scripts.html_utils import parse_html
 from scripts.image_handler import (
     extension_to_mime, extract_embedded, ingest_drop_folder, issue_dir,
     to_raw_url,
 )
 from scripts.inliner import inline
 from scripts.mail.base import DraftEmail
-from scripts.mail.cid import attach_inline_images
+from scripts.mail.cid import DEFAULT_MAX_IMAGE_BYTES, attach_inline_images
 from scripts.mail.eml import build_eml
+from scripts.recipients import sanitize_addresses
 from scripts.renderer import attach_image_urls, render
 from scripts.text_utils import sanitize_subject
 from scripts.validator import report, validate
@@ -55,6 +58,12 @@ log = logging.getLogger(__name__)
 
 # Image-delivery modes, mirroring the CLI's `--image-mode`.
 IMAGE_MODES = ("cid", "url")
+
+# Upper bound on the issue number. Purely a sanity rail: at a quarterly
+# cadence 9999 is about 2500 years of newsletters, while an unbounded
+# value reaches the filesystem as a several-hundred-digit filename that
+# the OS rejects with a bare `OSError`.
+_MAX_ISSUE = 9999
 
 
 @dataclass(frozen=True)
@@ -87,6 +96,9 @@ class WebBuildResult:
     size_bytes: int = 0
     section_count: int = 0
     photo_count: int = 0
+    unembedded_photo_count: int = 0
+    recipient_count: int = 0
+    rejected_addresses: tuple[str, ...] = ()
     image_mode: str = "cid"
 
 
@@ -139,6 +151,39 @@ def _data_uri(path: Path) -> str:
     return f"data:{extension_to_mime(path)};base64,{b64}"
 
 
+def _clean_addresses(value: str | None) -> tuple[str | None, list[str]]:
+    """Validate a free-text recipient box. Returns (joined, rejected).
+
+    The browser hands us whatever the editor typed or pasted, split on
+    newlines, commas and semicolons. Everything then goes through the
+    SAME guard `recipients.txt` gets -- see
+    `scripts.recipients.sanitize_addresses` for why that matters.
+    """
+    if not value:
+        return None, []
+    accepted, rejected = sanitize_addresses(re.split(r"[\n,;]+", value))
+    return ("; ".join(accepted) or None), rejected
+
+
+def _remote_images(html: str) -> int:
+    """Count `<img>` tags still pointing at a remote URL.
+
+    In CID mode these are photos `attach_inline_images` declined to
+    embed -- over the 2 MB per-image cap, or not resolvable on disk.
+    On the CLI that degrades gracefully: the URL still works once
+    `publish-images` has pushed the file. **In the browser there is no
+    publish step**, so the URL points at something that does not exist
+    and every recipient sees a broken image -- while the result screen
+    cheerfully reports how many photos were embedded. Hence the count,
+    and the warning built from it.
+    """
+    soup = parse_html(html)
+    return sum(
+        1 for img in soup.find_all("img")
+        if (img.get("src") or "").lower().startswith(("http://", "https://"))
+    )
+
+
 def _mirror_brand_assets(root: Path) -> None:
     """Copy the repo's `images/` into `root` unless it is already there.
 
@@ -187,6 +232,7 @@ def build_from_bytes(
     to: str | None = None,
     drop_dir: Path | None = None,
     workdir: Path | None = None,
+    max_image_bytes: int = DEFAULT_MAX_IMAGE_BYTES,
 ) -> WebBuildResult:
     """Run the full pipeline over an in-memory DOCX.
 
@@ -210,6 +256,25 @@ def build_from_bytes(
     if image_mode not in IMAGE_MODES:
         raise ValueError(
             f"image_mode must be one of {IMAGE_MODES} -- got {image_mode!r}")
+    # `issue` reaches the filesystem through `issue_dir()`. A caller
+    # outside the browser (a server handler wiring a query parameter
+    # straight through) could otherwise hand us `../..`; the int cast
+    # makes that impossible rather than merely unlikely.
+    # `bool` is an `int` subclass, and `int(3.7e300)` silently succeeds
+    # into a 300-digit number that produces an unopenable filename --
+    # so accept only whole numbers or their digit strings.
+    if isinstance(issue, bool) or not isinstance(issue, (int, str)):
+        raise ValueError(
+            f"issue must be a whole number -- got {type(issue).__name__}")
+    try:
+        issue = int(issue)
+    except (TypeError, ValueError):
+        raise ValueError(f"issue must be a whole number -- got {issue!r}")
+    if issue < 0:
+        raise ValueError(f"issue must not be negative -- got {issue}")
+    if issue > _MAX_ISSUE:
+        raise ValueError(
+            f"issue must be at most {_MAX_ISSUE} -- got {issue}")
 
     root = Path(workdir) if workdir is not None else Path(
         tempfile.mkdtemp(prefix="meridian-web-"))
@@ -260,7 +325,8 @@ def build_from_bytes(
     # 8) Resolve photos to local files ONCE. The returned specs drive
     # both the `.eml` attachments and the data-URI preview, so the two
     # can never disagree about which photos made it in.
-    cid_html, inline_images = attach_inline_images(final_html, asset_dir)
+    cid_html, inline_images = attach_inline_images(
+        final_html, asset_dir, max_image_bytes=max_image_bytes)
     preview_html = final_html
     for img in inline_images:
         try:
@@ -282,15 +348,45 @@ def build_from_bytes(
                        section_count=len(newsletter.sections),
                        image_mode=image_mode)
 
-    # 10) Build the draft. CID mode ships the rewritten HTML plus the
-    # attachment specs; URL mode ships the original and no parts.
+    # 10) Validate the recipient boxes with the same guard the CLI
+    # applies to `recipients.txt`, then build the draft. CID mode ships
+    # the rewritten HTML plus the attachment specs; URL mode ships the
+    # original and no parts.
+    clean_bcc, rejected_bcc = _clean_addresses(bcc)
+    clean_to, rejected_to = _clean_addresses(to)
+    rejected = tuple(rejected_bcc + rejected_to)
+
     draft = DraftEmail(
         html=cid_html if image_mode == "cid" else final_html,
         subject=subject,
-        bcc=bcc, to=to,
+        bcc=clean_bcc, to=clean_to,
         inline_images=inline_images if image_mode == "cid" else (),
     )
     eml_bytes = build_eml(draft).as_bytes()
+
+    # 11) Warnings the validator cannot produce, because they are about
+    # the DRAFT rather than the HTML.
+    warnings = list(result.warnings or ())
+    unembedded = _remote_images(cid_html) if image_mode == "cid" else 0
+    if unembedded:
+        warnings.append(
+            f"{unembedded} photo(s) could not be placed inside the email "
+            "-- most often because a photo is larger than 2 MB. They are "
+            "linked from the web instead, and recipients will see a "
+            "broken image where they should be. Fix: in Word, right-click "
+            "each large photo, choose 'Compress Pictures', save, and "
+            "build again."
+        )
+    if rejected:
+        shown = ", ".join(rejected[:5])
+        more = f" (+{len(rejected) - 5} more)" if len(rejected) > 5 else ""
+        warnings.append(
+            f"{len(rejected)} recipient address(es) did not look like "
+            f"valid email addresses and were left out: {shown}{more}. "
+            "Check them and build again if they should be included."
+        )
+
+    recipient_count = len(clean_bcc.split("; ")) if clean_bcc else 0
 
     return WebBuildResult(
         ok=True,
@@ -298,12 +394,15 @@ def build_from_bytes(
         preview_html=preview_html,
         html=final_html,
         eml=eml_bytes,
-        warnings=tuple(result.warnings or ()),
+        warnings=tuple(warnings),
         placeholders=tuple(result.placeholders or ()),
         report_text=report(result),
         size_bytes=result.size_bytes,
         section_count=len(newsletter.sections),
         photo_count=len(inline_images) if image_mode == "cid" else 0,
+        unembedded_photo_count=unembedded,
+        recipient_count=recipient_count,
+        rejected_addresses=rejected,
         image_mode=image_mode,
     )
 

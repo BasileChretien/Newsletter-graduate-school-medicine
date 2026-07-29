@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import Iterable
 
 from scripts.text_utils import normalize_compatibility, strip_invisibles
 
@@ -26,20 +27,33 @@ _MAX_RECIPIENTS = 1000
 # all defend against the same Word-paste hazards in lockstep.
 
 
-def load_recipients(recipients_path: Path) -> list[str]:
-    """Read a `recipients.txt` -- one address per line, # comments allowed.
+def sanitize_addresses(values: Iterable[str]) -> tuple[list[str], list[str]]:
+    """Normalize and validate address strings. Returns (accepted, rejected).
 
-    Each non-comment line is validated against a loose RFC 5322 pattern and
-    rejected if it contains a separator character (`;`, `,`, CR/LF) that
-    Outlook's BCC parser would split on -- prevents a malicious or typo'd
-    line from expanding into multiple recipients. Result is deduplicated
-    and capped at _MAX_RECIPIENTS entries.
+    Extracted from `load_recipients` so that EVERY path which can put an
+    address into an outgoing draft gets the same guard -- not just the
+    `recipients.txt` one. The browser build takes addresses typed into a
+    textarea, and without this it inherited none of the protections
+    below:
+
+      * CR/LF in an address makes `EmailMessage` raise `ValueError`
+        ("Header values may not contain linefeed or carriage return"),
+        which surfaced to the editor as an unexplained crash.
+      * `;` / `,` / `<` / `>` inside a single entry means one line can
+        expand into several recipients, or (via the display-name form
+        `Name <a@x>; Name2 <b@y>`) silently collapse a list down to its
+        first entry once RFC 5322 parses the `;` as a group terminator.
+      * Fullwidth `＠` and invisible characters (ZWSP, BOM, RLO) are
+        folded first, so a Word-pasted address cannot smuggle past the
+        pattern.
+
+    Comment lines (`#`) and blanks are skipped silently -- they are
+    expected in a `recipients.txt`, and harmless anywhere else.
     """
-    if not recipients_path.exists():
-        return []
     seen: set[str] = set()
-    out: list[str] = []
-    for raw in recipients_path.read_text(encoding="utf-8").splitlines():
+    accepted: list[str] = []
+    rejected: list[str] = []
+    for raw in values:
         # NFKC FIRST so fullwidth ASCII variants get folded before the
         # regex sees them. Round-10 security MEDIUM: a crafted
         # `victim<U+FF20>evil.com` (FULLWIDTH COMMERCIAL AT) would
@@ -55,20 +69,37 @@ def load_recipients(recipients_path: Path) -> list[str]:
         if not line or line.startswith("#"):
             continue
         if not _EMAIL_RE.match(line):
-            log.warning(
-                "Skipped one address from recipients.txt that didn't "
-                "look right: %r (the rest are fine).", line)
+            rejected.append(line)
             continue
         if line in seen:
             continue
         seen.add(line)
-        out.append(line)
-        if len(out) >= _MAX_RECIPIENTS:
-            log.warning(
-                "recipients.txt has more than %d entries -- truncated.",
-                _MAX_RECIPIENTS)
+        accepted.append(line)
+        if len(accepted) >= _MAX_RECIPIENTS:
             break
-    return out
+    return accepted, rejected
 
 
-__all__ = ["load_recipients"]
+def load_recipients(recipients_path: Path) -> list[str]:
+    """Read a `recipients.txt` -- one address per line, # comments allowed.
+
+    Validation lives in `sanitize_addresses`; this function adds the
+    file reading and the editor-facing warnings. Result is deduplicated
+    and capped at `_MAX_RECIPIENTS` entries.
+    """
+    if not recipients_path.exists():
+        return []
+    accepted, rejected = sanitize_addresses(
+        recipients_path.read_text(encoding="utf-8").splitlines())
+    for line in rejected:
+        log.warning(
+            "Skipped one address from recipients.txt that didn't "
+            "look right: %r (the rest are fine).", line)
+    if len(accepted) >= _MAX_RECIPIENTS:
+        log.warning(
+            "recipients.txt has more than %d entries -- truncated.",
+            _MAX_RECIPIENTS)
+    return accepted
+
+
+__all__ = ["load_recipients", "sanitize_addresses"]

@@ -177,6 +177,53 @@ def test_an_empty_document_is_rejected_with_readable_advice(tmp_path):
         assert token not in res.errors[0]
 
 
+def test_an_oversized_photo_is_reported_not_silently_linked(
+        filled_docx, tmp_path):
+    """`attach_inline_images` leaves photos over its 2 MB cap as remote
+    URLs. On the CLI that degrades gracefully -- `publish-images` pushes
+    the file and the URL resolves. **The browser has no publish step**,
+    so the URL points at nothing and every recipient sees a broken
+    image, while the result screen reports how many photos were
+    embedded. The editor has to be told."""
+    res = build_from_bytes(filled_docx, issue=3, workdir=tmp_path)
+    assert res.photo_count == 3, "precondition: all photos embed normally"
+
+    # Re-run with a cap low enough that nothing can be embedded.
+    capped = build_from_bytes(filled_docx, issue=4,
+                              workdir=tmp_path / "capped",
+                              max_image_bytes=10)
+
+    assert capped.photo_count == 0
+    assert capped.unembedded_photo_count > 0
+    assert any("broken image" in w for w in capped.warnings), capped.warnings
+    # Still sendable -- one oversized photo must not block the issue.
+    assert capped.ok is True
+
+
+def test_url_mode_does_not_warn_about_unembedded_photos(filled_docx, tmp_path):
+    """In URL mode remote images are the whole point, so the warning
+    would be noise -- and noise trains editors to ignore warnings."""
+    res = build_from_bytes(filled_docx, issue=3, image_mode="url",
+                           workdir=tmp_path)
+
+    assert res.unembedded_photo_count == 0
+    assert not any("broken image" in w for w in res.warnings)
+
+
+def test_issue_number_cannot_escape_the_workdir(filled_docx, tmp_path):
+    """`issue` reaches the filesystem via `issue_dir()`. A server
+    handler wiring a query parameter straight through must not be able
+    to write outside the workdir."""
+    for bad in ["../../etc", "1; rm -rf /", None, 3.7e300, True, [3]]:
+        with pytest.raises(ValueError, match="issue"):
+            build_from_bytes(filled_docx, issue=bad, workdir=tmp_path)
+    with pytest.raises(ValueError, match="negative"):
+        build_from_bytes(filled_docx, issue=-1, workdir=tmp_path)
+    with pytest.raises(ValueError, match="at most"):
+        # An unbounded value became a 300-digit filename and a bare OSError.
+        build_from_bytes(filled_docx, issue=10 ** 40, workdir=tmp_path)
+
+
 def test_unknown_image_mode_is_a_caller_error(filled_docx, tmp_path):
     """A bad `image_mode` is a programming mistake, not an editorial
     one -- it raises rather than returning a result the UI would have
@@ -215,6 +262,70 @@ def test_bcc_reaches_the_draft_and_is_comma_separated(filled_docx, tmp_path):
     msg = email.message_from_bytes(res.eml)
 
     assert msg["Bcc"] == "a@example.ac.jp, b@example.ac.jp, c@example.ac.jp"
+    assert res.recipient_count == 3
+
+
+def test_recipients_are_accepted_in_whatever_shape_they_are_pasted(
+        filled_docx, tmp_path):
+    """Editors paste from Word, Excel and Outlook. Newlines, commas and
+    semicolons must all work, and duplicates must collapse."""
+    res = build_from_bytes(
+        filled_docx, issue=3, workdir=tmp_path,
+        bcc="a@example.ac.jp\nb@example.ac.jp, c@example.ac.jp; a@example.ac.jp")
+    msg = email.message_from_bytes(res.eml)
+
+    assert msg["Bcc"] == "a@example.ac.jp, b@example.ac.jp, c@example.ac.jp"
+    assert res.rejected_addresses == ()
+
+
+def test_a_newline_in_an_address_cannot_crash_the_build(filled_docx, tmp_path):
+    """`EmailMessage` raises ValueError on CR/LF in a header value. Before
+    the shared guard, that reached the editor as an unexplained crash
+    instead of a message about the address they typed."""
+    res = build_from_bytes(
+        filled_docx, issue=3, workdir=tmp_path,
+        bcc="good@example.ac.jp\r\nBcc: someone-else@evil.test")
+
+    assert res.ok is True
+    msg = email.message_from_bytes(res.eml)
+    assert "evil.test" not in (msg["Bcc"] or "")
+    assert msg["Bcc"] == "good@example.ac.jp"
+
+
+def test_invalid_addresses_are_dropped_and_reported(filled_docx, tmp_path):
+    """Silently dropping them would be worse than including them: the
+    editor must find out before they press Send, not after."""
+    res = build_from_bytes(
+        filled_docx, issue=3, workdir=tmp_path,
+        bcc="good@example.ac.jp\nnot an address\nalso-bad@\n")
+    msg = email.message_from_bytes(res.eml)
+
+    assert msg["Bcc"] == "good@example.ac.jp"
+    assert set(res.rejected_addresses) == {"not an address", "also-bad@"}
+    assert any("did not look like" in w for w in res.warnings), res.warnings
+    assert res.recipient_count == 1
+
+
+def test_display_name_recipients_are_rejected_not_silently_truncated(
+        filled_docx, tmp_path):
+    """`Name <a@x>; Name2 <b@y>` would survive as a single opaque string
+    and RFC 5322 would then read the `;` as a group terminator, keeping
+    only the first entry. Rejecting is honest; truncating is not."""
+    res = build_from_bytes(
+        filled_docx, issue=3, workdir=tmp_path,
+        bcc="Katsuno <dean@example.ac.jp>; Office <office@example.ac.jp>")
+
+    assert res.recipient_count == 0
+    assert len(res.rejected_addresses) == 2
+    assert any("did not look like" in w for w in res.warnings)
+
+
+def test_no_bcc_leaves_the_header_absent(filled_docx, tmp_path):
+    res = build_from_bytes(filled_docx, issue=3, workdir=tmp_path, bcc="")
+    msg = email.message_from_bytes(res.eml)
+
+    assert msg["Bcc"] is None
+    assert res.recipient_count == 0
 
 
 # ---------- isolation ---------------------------------------------------

@@ -64,8 +64,11 @@ _CID_PREFIX = "meridian-"
 # external -- inconsistent rendering for recipients on filtered
 # networks). 2 MB is generous enough to cover normal institutional
 # imagery while still rejecting accidental-multimegapixel-paste
-# pathologies. Surfaced as `--cid-max-image-mb` on the CLI for
-# editors who need to tune it.
+# pathologies. Callers override it per call via `attach_inline_images(
+# ..., max_image_bytes=...)`, and `scripts.webapp.build_from_bytes`
+# exposes it as a parameter. There is deliberately no CLI flag -- an
+# editor who needs one is better served by compressing the photo in
+# Word, which is what the over-cap warning tells them to do.
 DEFAULT_MAX_IMAGE_BYTES = 2_000_000
 # RFC 2822 msg-id shape: `local-part@domain`. Older Outlook builds
 # (2013, some 2016 LTSC) don't auto-wrap PR_ATTACH_CONTENT_ID values
@@ -263,8 +266,9 @@ def attach_inline_images(
     build with a few unresolvable images degrades gracefully: those
     images load over HTTP exactly as they would in URL mode.
 
-    `max_image_bytes` (default 500 KB) caps the per-image attachment
-    size. Files over the cap are LEFT AS URLs rather than attached --
+    `max_image_bytes` (default `DEFAULT_MAX_IMAGE_BYTES`, 2 MB) caps
+    the per-image attachment size. Files over the cap are LEFT AS URLs
+    rather than attached --
     a 4 MB hospital exterior shot would otherwise bloat every
     forwarded copy of the message (a 50-recipient × 5-forward chain
     sends ~25 MB of duplicated photo across the corporate network).
