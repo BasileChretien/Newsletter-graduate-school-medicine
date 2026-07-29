@@ -40,10 +40,34 @@ python web/build_bundle.py
 2. Enable Pages for the repository, serving the `web/` directory (or
    copy `web/` to a `gh-pages` branch).
 
-There is nothing to configure and no secret to store. The page makes
-exactly two network requests, both to public CDNs: the Pyodide runtime
-and the Python wheels. After the first load both are browser-cached and
-the page works offline.
+There is nothing to configure and no secret to store.
+
+**What the page fetches, precisely** — the earlier claim of "exactly two
+requests" was wrong, and this section is the one place that has to be
+accurate:
+
+- `cdn.jsdelivr.net` — the Pyodide loader (pinned with Subresource
+  Integrity), plus the assets it then pulls itself: `pyodide.asm.js`,
+  `pyodide.asm.wasm`, `python_stdlib.zip`, `pyodide-lock.json`, and the
+  wheels for `css_inline`, `jinja2`, `beautifulsoup4` and `lxml`.
+- `pypi.org` and `files.pythonhosted.org` — `python-docx` only, which is
+  not in Pyodide's distribution. It carries an exact version pin.
+- Your own origin — `meridian-bundle.zip`.
+
+A `Content-Security-Policy` in `index.html` restricts `connect-src` to
+exactly those hosts and sets `form-action 'none'`, so the "nothing is
+uploaded" promise is enforced structurally rather than by intent alone.
+The trust anchor is jsDelivr: SRI pins the loader, but the loader
+fetches four further files from the same origin, so a compromise of
+jsDelivr is not something the hash defends against. Vendoring the
+Pyodide distribution next to `web/` and pointing `loadPyodide` at
+`./pyodide/` would move that anchor onto your own host, and is the right
+next step for an institution that wants the guarantee to be absolute.
+
+The DOCX itself is never sent anywhere — there is no endpoint to send it
+to. After the first load the runtime is browser-cached; note there is no
+service worker, so this is ordinary HTTP caching, not true offline
+support.
 
 ## Two things that will bite you
 

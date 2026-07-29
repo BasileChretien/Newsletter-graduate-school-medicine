@@ -13,6 +13,7 @@ three platforms without a bespoke workflow step.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import zipfile
@@ -121,4 +122,49 @@ def test_pyodide_version_is_pinned_to_a_css_inline_capable_line():
     assert "cdn.jsdelivr.net/pyodide/v0.29." in html, (
         "Pyodide must stay pinned to the 0.29.x line until css_inline "
         "publishes a build for the newer ABI."
+    )
+    # The version pin and the integrity hash must travel together. A
+    # bump that KEEPS a stale hash fails safe -- the page simply will not
+    # boot -- but a bump that DROPS the attribute silently removes the
+    # only check on the code that reads the editor's document.
+    tag = re.search(
+        r"<script[^>]*pyodide/v0\.29\.\d+/full/pyodide\.js[^>]*>", html, re.S)
+    assert tag, "Pyodide <script> tag not found"
+    assert re.search(r'integrity="sha384-[A-Za-z0-9+/=]{60,}"', tag.group(0)), (
+        "the Pyodide <script> tag must carry a sha384 integrity hash"
+    )
+    assert 'crossorigin="anonymous"' in tag.group(0), (
+        "SRI is silently inert without crossorigin=anonymous"
+    )
+
+
+def test_the_page_declares_a_content_security_policy():
+    """The page's headline promise is that the editor's document is never
+    uploaded. Without a CSP that is enforced only by intent; with one,
+    `connect-src` is an allowlist and a backdoored dependency has
+    nowhere to send a DOCX or a recipient list."""
+    html = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+    assert "Content-Security-Policy" in html
+    assert "form-action 'none'" in html
+    csp = re.search(r'Content-Security-Policy"\s+content="([^"]+)"', html)
+    assert csp, "CSP must be a single quoted content attribute"
+    connect = re.search(r"connect-src ([^;]+);", csp.group(1))
+    assert connect, "CSP must constrain connect-src"
+    # Whatever hosts are allowed, a wildcard would defeat the point.
+    assert "*" not in connect.group(1)
+
+
+def test_python_dependencies_fetched_from_pypi_are_version_pinned():
+    """Packages absent from Pyodide's own lockfile resolve against PyPI
+    at every cold load. Unpinned, that executes whatever was released
+    this morning inside the tab holding an unpublished newsletter and
+    the recipient list."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
+    assert packages, "PY_PACKAGES list not found"
+
+    assert re.search(r'"python-docx==\d+\.\d+', packages.group(1)), (
+        "python-docx is not in Pyodide's distribution, so it comes from "
+        "PyPI and must carry an exact version pin."
     )

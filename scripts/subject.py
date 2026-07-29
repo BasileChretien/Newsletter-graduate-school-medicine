@@ -20,13 +20,17 @@ from typing import TYPE_CHECKING
 from scripts.config import TITLE
 from scripts.text_utils import sanitize_subject
 
-if TYPE_CHECKING:  # avoids a runtime import cycle via docx_parser
+# Type-only import: there is no import cycle here (docx_parser reaches
+# only config/text_utils/html_utils). The reason is cost -- importing
+# docx_parser pulls in python-docx and lxml, which is real time in
+# Pyodide for a module that only needs the name for an annotation.
+if TYPE_CHECKING:
     from scripts.docx_parser import Masthead
 
 log = logging.getLogger(__name__)
 
 
-def subject_from_masthead(issue: int, masthead: "Masthead | None") -> str:
+def subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
     """Build the email subject from an already-parsed masthead.
 
     Runs the issue line through `sanitize_subject` so Word-pasted

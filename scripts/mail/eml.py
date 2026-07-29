@@ -52,6 +52,7 @@ caveat in `EmlBackend`'s docstring.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import os
 import platform
 import re
@@ -96,9 +97,20 @@ _X_UNSENT_VALUE = "1"
 # `Content-ID` grammatically is (RFC 2045 §7: `msg-id`) -- keeps the
 # value verbatim on one line. The registry is a private instance so
 # this never mutates the module-level default other code shares.
+#
+# `cte_type="7bit"` is the other necessary correction. `email.policy.SMTP`
+# inherits `cte_type="8bit"`, which emits RAW UTF-8 body bytes under
+# `Content-Transfer-Encoding: 8bit` whenever every line happens to fit in
+# 78 bytes. This module's whole premise (see the header) is that the file
+# is the exact bytes recipients would receive -- and an 8-bit body cannot
+# be relayed over an SMTP hop without the 8BITMIME extension. It is
+# content-dependent, which is worse than being always wrong: the current
+# template happens to serialize clean because Japanese at 3 bytes/char
+# pushes lines past the fold width, so a short JA section or a sparse
+# issue would have been the first thing to break, in the field.
 _HEADER_REGISTRY = HeaderRegistry()
 _HEADER_REGISTRY.map_to_type("content-id", MessageIDHeader)
-_POLICY = SMTP.clone(header_factory=_HEADER_REGISTRY)
+_POLICY = SMTP.clone(header_factory=_HEADER_REGISTRY, cte_type="7bit")
 
 
 _ADDRESS_SEPARATOR_RE = re.compile(r"[;,]")
@@ -116,15 +128,30 @@ def _rfc5322_address_list(value: str) -> str:
     anywhere. Caught by `test_bcc_survives_a_full_fifty_recipient_list`.
 
     Splitting on `[;,]` is safe for this toolkit specifically because
-    `scripts.recipients.load_recipients` rejects any address containing
-    `;`, `,`, `<`, `>` or whitespace -- so there are no display names
-    and no quoted strings to split through. As a guard for future
-    callers that don't come from `recipients.txt`, a value that looks
-    like it carries display-name syntax (`"` or `<`) is passed through
-    untouched on the assumption the caller already formatted it.
+    every in-tree caller routes through
+    `scripts.recipients.sanitize_addresses`, which rejects any address
+    containing `;`, `,`, `<`, `>` or whitespace -- so there are no
+    display names and no quoted strings to split through.
+
+    A value carrying display-name syntax therefore cannot arrive today,
+    and this **fails closed** rather than passing it through. The
+    earlier version returned such input verbatim, which quietly
+    reinstated the exact bug this function exists to prevent: a
+    semicolon-joined list like `A <a@x>; B <b@y>` would reach the header
+    intact and RFC 5322 would read the `;` as a group terminator,
+    delivering to one recipient out of fifty with no error anywhere.
+    A loud failure for a caller that does not yet exist is strictly
+    better than a silent 49-of-50 drop. If display names are ever
+    genuinely needed, parse with `email.utils.getaddresses` and re-emit
+    with `formataddr` -- do not restore the passthrough.
     """
-    if '"' in value or "<" in value:
-        return value
+    if '"' in value or "<" in value or ">" in value:
+        raise ValueError(
+            "Recipient lists must be bare addresses separated by ';' or "
+            "',' -- display-name syntax (\"Name <a@x>\") is not supported "
+            "because it cannot be split reliably, and silently keeping "
+            f"only the first recipient is worse than failing. Got: {value!r}"
+        )
     parts = (p.strip() for p in _ADDRESS_SEPARATOR_RE.split(value))
     return ", ".join(p for p in parts if p)
 
@@ -181,9 +208,23 @@ def _attach_inline(html_part: EmailMessage, inline: InlineImage) -> bool:
         )
         return False
     mime = extension_to_mime(inline.path)
+    if mime == "application/octet-stream":
+        # Second line of defence behind `extract_embedded`'s extension
+        # gate. An *inline image* is by definition a recognised raster
+        # format; anything landing here has an extension this toolkit
+        # does not consider an image, and attaching it would put an
+        # arbitrary-extension file (`.hta`, `.js`, `.lnk`) into ~50
+        # institutional mailboxes under the newsletter's good name.
+        # Skip loudly rather than ship it.
+        log.warning(
+            "Refusing to attach %s: %r is not a recognised image type. "
+            "The email will reference cid:%s with no matching part.",
+            inline.path.name, inline.path.suffix, inline.cid,
+        )
+        return False
     maintype, _, subtype = mime.partition("/")
     if not subtype:
-        maintype, subtype = "application", "octet-stream"
+        return False
     html_part.add_related(
         data,
         maintype=maintype,
@@ -236,10 +277,18 @@ def build_eml(draft: DraftEmail) -> EmailMessage:
     msg.add_alternative(draft.html, subtype="html")
 
     if draft.inline_images:
-        # payload[1] is the text/html part just added. Attaching the
-        # images to THAT part (not to `msg`) is what produces the
-        # `multipart/related` nesting the docstring describes.
-        html_part = msg.get_payload()[1]
+        # Attaching the images to the HTML part (not to `msg`) is what
+        # produces the `multipart/related` nesting the docstring
+        # describes. Located by content type rather than by index:
+        # `get_payload()[1]` is correct only as long as nothing is ever
+        # inserted between `set_content` and `add_alternative`, and if
+        # that assumption broke the images would attach to the PLAINTEXT
+        # part -- every `cid:` resolving to nothing, broken images for
+        # every recipient, and no test noticing. That is the same
+        # positional-assumption shape the `supports_inline_images`
+        # capability was introduced to remove.
+        html_part = next(p for p in msg.iter_parts()
+                         if p.get_content_type() == "text/html")
         attached = sum(
             1 for img in draft.inline_images if _attach_inline(html_part, img)
         )
@@ -253,9 +302,13 @@ def build_eml(draft: DraftEmail) -> EmailMessage:
         except OSError as e:
             log.warning("Attachment %s could not be read (%s); skipped.", p, e)
             continue
-        maintype, _, subtype = extension_to_mime(p).partition("/")
-        if not subtype:
-            maintype, subtype = "application", "octet-stream"
+        # `extension_to_mime` is image-only by design -- correct for
+        # inline images, wrong here, where it would label a PDF agenda
+        # `application/octet-stream` and cost it its preview icon in
+        # Outlook. Ordinary attachments get the full stdlib table.
+        guessed, _ = mimetypes.guess_type(p.name)
+        maintype, _, subtype = (
+            guessed or "application/octet-stream").partition("/")
         msg.add_attachment(data, maintype=maintype, subtype=subtype,
                            filename=p.name)
 
@@ -288,6 +341,18 @@ def write_eml(draft: DraftEmail, path: Path | None = None) -> Path:
     """Build the message and write it to disk. Returns the path written."""
     out = Path(path) if path is not None else eml_path_for(draft)
     out.parent.mkdir(parents=True, exist_ok=True)
+    # This file carries the full BCC list -- ~50 real institutional
+    # addresses -- in cleartext, and nothing deletes it afterwards. It
+    # lands in `dist/`, or on macOS under `~/Documents/Meridian-Newsletter/`
+    # via the v1.1.2 read-only fallback, which is routinely cloud-synced
+    # and search-indexed. Default 0644 would make it world-readable on a
+    # shared machine. Create it owner-only BEFORE writing, so the
+    # contents are never briefly readable.
+    out.unlink(missing_ok=True)
+    try:
+        out.touch(mode=0o600)
+    except OSError as e:  # pragma: no cover -- exotic filesystems
+        log.debug("Could not pre-create %s with 0600 (%s).", out, e)
     out.write_bytes(build_eml(draft).as_bytes())
     log.info("Wrote %s (%d bytes)", out, out.stat().st_size)
     return out

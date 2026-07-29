@@ -25,7 +25,7 @@ def _mock_response(status=200):
 
 
 def test_validate_size_ok():
-    with patch("scripts.validator.requests.head", return_value=_mock_response(200)):
+    with patch("requests.head", return_value=_mock_response(200)):
         r = validate(HTML_OK)
     assert r.size_bytes < GMAIL_CLIP_BYTES
     assert r.ok
@@ -210,7 +210,7 @@ def test_validate_html_comment_does_not_false_positive():
 def test_validate_broken_image_warns_not_errors():
     """Broken image URLs are now WARNINGS not ERRORS -- a flaky HEAD
     check shouldn't abort the editor's pipeline."""
-    with patch("scripts.validator.requests.head", return_value=_mock_response(404)):
+    with patch("requests.head", return_value=_mock_response(404)):
         r = validate(HTML_OK)
     assert r.ok            # build still succeeds
     assert r.broken_images
@@ -229,7 +229,7 @@ def test_validate_skip_remote():
 
 
 def test_validate_handles_request_exception():
-    with patch("scripts.validator.requests.head",
+    with patch("requests.head",
                side_effect=Exception("boom")):
         r = validate(HTML_OK)
     assert r.broken_images

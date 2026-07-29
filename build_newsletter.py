@@ -207,7 +207,7 @@ def _image_mode_blurb(image_mode: str | None) -> str | None:
 def _subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
     """Build the email subject from an already-parsed masthead.
 
-    Thin delegate to `scripts.webapp.subject_from_masthead`, which is
+    Thin delegate to `scripts.subject.subject_from_masthead`, which is
     the single source of truth shared with the browser build. Two
     implementations of "what is this issue's subject line?" would
     eventually disagree, and the subject is what recipients see in

@@ -10,6 +10,7 @@ import logging
 import re
 from collections.abc import Iterable
 from pathlib import Path
+from typing import NamedTuple
 
 from scripts.text_utils import normalize_compatibility, strip_invisibles
 
@@ -18,7 +19,26 @@ log = logging.getLogger(__name__)
 
 # Loose RFC 5322 -- enough to reject obvious typos plus header/separator
 # injection (`;`, `,`, CR/LF) without overfitting on valid edge cases.
-_EMAIL_RE = re.compile(r"^[^@\s;,<>]+@[^@\s;,<>]+\.[^@\s;,<>]+$")
+#
+# The excluded set is every RFC 5322 "special" that changes how a header
+# PARSES, not merely characters that look unusual:
+#   ; ,      separators -- one entry must never expand into several
+#   < >      angle-addr, i.e. display-name form
+#   "        quoted-string. This one was missing, and it mattered: an
+#            Excel/CSV paste yields `"jane@x.jp"`, and a single stray
+#            quote made the whole `"; "`-joined list parse as ONE quoted
+#            address -- fifty recipients silently collapsing to one.
+#   ( )      comments
+#   [ ]      domain literals
+#   :        group syntax -- `group:a@x.jp` turns the header into a group
+#   \        quoted-pair escape
+#
+# Deliberately NOT excluded: the apostrophe. It is valid `atext`, it does
+# not change parsing, and `o'brien@example.ac.jp` is a real address that
+# a stricter pattern would silently drop -- which is the exact failure
+# mode this guard exists to prevent.
+_SPECIALS = r'@\s;,<>"()\[\]:\\'
+_EMAIL_RE = re.compile(rf"^[^{_SPECIALS}]+@[^{_SPECIALS}]+\.[^{_SPECIALS}]+$")
 # Hard ceiling -- a runaway recipients.txt cannot generate a 50 MB BCC.
 _MAX_RECIPIENTS = 1000
 
@@ -27,9 +47,21 @@ _MAX_RECIPIENTS = 1000
 # all defend against the same Word-paste hazards in lockstep.
 
 
-def sanitize_addresses(
-    values: Iterable[str],
-) -> tuple[list[str], list[str], bool]:
+class AddressScan(NamedTuple):
+    """Result of `sanitize_addresses`.
+
+    A `NamedTuple` rather than a bare 3-tuple because the third element
+    is an unlabelled bool, and positional unpacking is exactly what let
+    `scripts/webapp.py` discard it without anyone noticing. Existing
+    `a, b, c = ...` call sites keep working.
+    """
+
+    accepted: list[str]
+    rejected: list[str]
+    truncated: bool
+
+
+def sanitize_addresses(values: Iterable[str]) -> AddressScan:
     """Normalize and validate addresses. -> (accepted, rejected, truncated).
 
     Extracted from `load_recipients` so that EVERY path which can put an
@@ -86,7 +118,7 @@ def sanitize_addresses(
             break
         seen.add(line)
         accepted.append(line)
-    return accepted, rejected, truncated
+    return AddressScan(accepted, rejected, truncated)
 
 
 def load_recipients(recipients_path: Path) -> list[str]:
@@ -111,4 +143,4 @@ def load_recipients(recipients_path: Path) -> list[str]:
     return accepted
 
 
-__all__ = ["load_recipients", "sanitize_addresses"]
+__all__ = ["AddressScan", "load_recipients", "sanitize_addresses"]

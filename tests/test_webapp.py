@@ -94,7 +94,7 @@ def test_the_eml_is_a_valid_draft_with_the_photos_inside(built):
 
     assert msg["X-Unsent"] == "1"
     assert msg.get_content_type() == "multipart/alternative"
-    # 3 photos embedded in the DOCX + the masthead logo mirrored in
+    # 2 photos embedded in the DOCX + the masthead logo mirrored in
     # from `images/`. If this drops to 2, brand assets stopped being
     # mirrored and CID mode is shipping a partly-external email.
     assert built.photo_count == 3
@@ -372,3 +372,23 @@ def test_cli_and_web_agree_on_the_subject():
 
 def test_subject_falls_back_when_the_masthead_is_missing():
     assert subject_from_masthead(12, None) == "MERIDIAN — Issue 12"
+
+
+def test_the_default_workdir_does_not_outlive_the_call(filled_docx):
+    """`build_from_bytes` promises "nothing on disk outlives the call"
+    when it creates its own workdir. The previous test asserted only
+    `ok is True` -- deleting the entire try/finally left it passing.
+
+    This branch has no production coverage either: the browser passes an
+    explicit `workdir`, so nothing else exercises the cleanup at all."""
+    import glob
+    import os
+    import tempfile
+
+    pattern = os.path.join(tempfile.gettempdir(), "meridian-web-*")
+    before = set(glob.glob(pattern))
+
+    res = build_from_bytes(filled_docx, issue=4)
+
+    assert res.ok is True
+    assert set(glob.glob(pattern)) == before, "temp workdir was left behind"

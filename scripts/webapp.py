@@ -52,7 +52,7 @@ from scripts.mail.eml import build_eml
 from scripts.recipients import sanitize_addresses
 from scripts.renderer import attach_image_urls, render
 from scripts.subject import subject_from_masthead
-from scripts.validator import report, validate
+from scripts.validator import ValidationResult, report, validate
 
 log = logging.getLogger(__name__)
 
@@ -125,8 +125,10 @@ def _data_uri(path: Path) -> str:
     return f"data:{extension_to_mime(path)};base64,{b64}"
 
 
-def _clean_addresses(value: str | None) -> tuple[str | None, list[str]]:
-    """Validate a free-text recipient box. Returns (joined, rejected).
+def _clean_addresses(
+    value: str | None,
+) -> tuple[str | None, list[str], bool]:
+    """Validate a free-text recipient box. -> (joined, rejected, truncated).
 
     The browser hands us whatever the editor typed or pasted, split on
     newlines, commas and semicolons. Everything then goes through the
@@ -134,10 +136,10 @@ def _clean_addresses(value: str | None) -> tuple[str | None, list[str]]:
     `scripts.recipients.sanitize_addresses` for why that matters.
     """
     if not value:
-        return None, []
-    accepted, rejected, _truncated = sanitize_addresses(
+        return None, [], False
+    accepted, rejected, truncated = sanitize_addresses(
         re.split(r"[\n,;]+", value))
-    return ("; ".join(accepted) or None), rejected
+    return ("; ".join(accepted) or None), rejected, truncated
 
 
 def _remote_images(html: str) -> int:
@@ -178,7 +180,8 @@ def _mirror_brand_assets(root: Path) -> None:
             dst, e)
 
 
-def _failed(subject: str, result, *, preview_html: str = "",
+def _failed(subject: str, result: ValidationResult | None, *,
+            preview_html: str = "",
             html: str = "", section_count: int = 0,
             image_mode: str = "cid") -> WebBuildResult:
     """Build a rejected result -- never carries a `.eml`."""
@@ -201,7 +204,7 @@ def _failed(subject: str, result, *, preview_html: str = "",
 def build_from_bytes(
     docx_bytes: bytes,
     *,
-    issue: int,
+    issue: int | str,
     image_mode: str = "cid",
     bcc: str | None = None,
     to: str | None = None,
@@ -368,8 +371,8 @@ def _build_in(
     # applies to `recipients.txt`, then build the draft. CID mode ships
     # the rewritten HTML plus the attachment specs; URL mode ships the
     # original and no parts.
-    clean_bcc, rejected_bcc = _clean_addresses(bcc)
-    clean_to, rejected_to = _clean_addresses(to)
+    clean_bcc, rejected_bcc, bcc_truncated = _clean_addresses(bcc)
+    clean_to, rejected_to, to_truncated = _clean_addresses(to)
     rejected = tuple(rejected_bcc + rejected_to)
 
     draft = DraftEmail(
@@ -392,6 +395,17 @@ def _build_in(
             "broken image where they should be. Fix: in Word, right-click "
             "each large photo, choose 'Compress Pictures', save, and "
             "build again."
+        )
+    if bcc_truncated or to_truncated:
+        # The CLI at least logs this. Dropping it silently in the browser
+        # would mean an editor who pastes an over-long list sees a
+        # recipient count that quietly disagrees with what they pasted.
+        warnings.append(
+            f"Only the first {len(clean_bcc.split('; ')) if clean_bcc else 0} "
+            "addresses were kept -- the list you pasted is longer than "
+            "this toolkit accepts. Send in smaller batches, and note the "
+            "university mail server caps a single send at about 50 "
+            "recipients anyway."
         )
     if rejected:
         shown = ", ".join(rejected[:5])

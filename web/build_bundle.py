@@ -75,7 +75,7 @@ def _included_files() -> list[Path]:
     for rel in INCLUDE_DIRS:
         base = REPO_ROOT / rel
         if not base.is_dir():
-            raise SystemExit(f"Missing directory: {base}")
+            raise FileNotFoundError(f"Missing directory: {base}")
         for path in base.rglob("*"):
             if not path.is_file():
                 continue

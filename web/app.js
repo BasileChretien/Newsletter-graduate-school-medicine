@@ -15,12 +15,17 @@
  * checking will break the page at install time.
  */
 
+/* Versions are pinned. Only `python-docx` is absent from Pyodide's own
+ * distribution, so it resolves against PyPI at every cold load — an
+ * unpinned spec would execute whatever was released this morning inside
+ * the tab holding an unpublished newsletter and ~50 recipient
+ * addresses. The rest come from Pyodide's lockfile and are named
+ * without versions so the runtime picks its own matching builds. */
 const PY_PACKAGES = [
-  "css_inline",      // the load-bearing one
-  "python-docx",
+  "css_inline",             // the load-bearing one (Rust; in the lockfile)
+  "python-docx==1.2.0",     // NOT in the lockfile -- fetched from PyPI
   "jinja2",
   "beautifulsoup4",
-  "requests",        // imported by scripts.validator at module level
 ];
 
 const REPO_MOUNT = "/repo";
@@ -155,7 +160,12 @@ async function boot() {
     bootText.textContent = t("bootPackages");
     await pyodide.loadPackage("micropip");
     const micropip = pyodide.pyimport("micropip");
-    await Promise.all(PY_PACKAGES.map((p) => micropip.install(p)));
+    // One call with the whole list, not one per package: micropip's
+    // transaction model expects to resolve the full set at once, and
+    // these share dependencies (jinja2/MarkupSafe, beautifulsoup4/
+    // soupsieve). Concurrent installs resolve against one shared
+    // site-packages independently.
+    await micropip.install(PY_PACKAGES);
 
     bootText.textContent = t("bootBundle");
     const zip = await (await fetch("meridian-bundle.zip")).arrayBuffer();

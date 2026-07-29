@@ -138,3 +138,77 @@ def test_extension_to_mime_lookup_matches_image_magic_formats():
         "stay in sync -- a format the magic-byte check accepts but "
         "the MIME-tag lookup doesn't will degrade Gmail rendering."
     )
+
+
+# ---------- crafted-DOCX hardening (security round) ---------------------
+#
+# Each of these reproduces an exploit that was verified end-to-end against
+# the branch before the gates below were added.
+
+def _docx_with_media(tmp_path, entries: dict[str, bytes]):
+    """A real DOCX with extra `word/media/` members appended."""
+    import zipfile
+    from scripts.config import MERIDIAN_TEMPLATE
+
+    out = tmp_path / "crafted.docx"
+    with zipfile.ZipFile(MERIDIAN_TEMPLATE) as zin, \
+            zipfile.ZipFile(out, "w") as zout:
+        for item in zin.infolist():
+            zout.writestr(item, zin.read(item.filename))
+        for name, data in entries.items():
+            # DEFLATED, so the bomb case actually achieves the
+            # compression ratio a real attacker would use. The default
+            # here is ZIP_STORED, which would leave the "bomb" as large
+            # on disk as in memory and make the test vacuous.
+            zout.writestr(f"word/media/{name}", data,
+                          compress_type=zipfile.ZIP_DEFLATED)
+    return out
+
+
+JPEG_MAGIC = b"\xff\xd8\xff"
+
+
+def test_dangerous_extension_is_rejected_even_with_valid_magic_bytes(tmp_path):
+    """The exploit: magic bytes alone were the only gate, and the DOCX's
+    extension travelled verbatim into the outgoing email's
+    `Content-Disposition: inline; filename=`. A member named
+    `report.hta` starting with the JPEG signature was extracted,
+    attached as `application/octet-stream`, and delivered from the
+    editor's own mailbox to ~50 institutional recipients."""
+    from scripts.image_handler import extract_embedded
+
+    payload = JPEG_MAGIC + b"<script>alert(1)</script>" * 4
+    docx = _docx_with_media(tmp_path, {
+        "quarterly-report.hta": payload,
+        "notes.js": payload,
+        "shortcut.lnk": payload,
+        "legit-photo.jpg": payload,
+    })
+
+    out = extract_embedded(docx, tmp_path / "assets")
+
+    assert "quarterly-report.hta" not in out
+    assert "notes.js" not in out
+    assert "shortcut.lnk" not in out
+    assert "legit-photo.jpg" in out, "a real photo must still come through"
+    # Nothing dangerous may survive on disk either.
+    assert not list((tmp_path / "assets").glob("*.hta"))
+
+
+def test_decompression_bomb_is_refused_before_it_is_written(tmp_path):
+    """A 400 KB DOCX expanded to 400 MB on disk: `copyfileobj` streamed
+    the member out in full and the magic-byte check ran afterwards, so
+    the bytes were already written. In the browser that inflates
+    Pyodide's in-memory filesystem until the tab dies."""
+    from scripts.image_handler import extract_embedded
+
+    bomb = JPEG_MAGIC + b"\x00" * 20_000_000   # compresses ~1000:1
+    docx = _docx_with_media(tmp_path, {"huge.jpg": bomb})
+    assert docx.stat().st_size < 1_000_000, "precondition: small DOCX"
+
+    dest = tmp_path / "assets"
+    out = extract_embedded(docx, dest)
+
+    assert "huge.jpg" not in out
+    written = sum(p.stat().st_size for p in dest.glob("*"))
+    assert written < 5_000_000, f"bomb reached disk: {written} bytes"

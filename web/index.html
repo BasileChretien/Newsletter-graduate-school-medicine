@@ -5,6 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MERIDIAN — Newsletter Builder</title>
 <meta name="description" content="Turn a MERIDIAN Word file into a ready-to-send email draft. Runs entirely in your browser.">
+<!-- The page promises that the editor's document is never uploaded. That
+     promise is currently kept by *intent* -- nothing in the code sends it
+     anywhere. This CSP makes it structural: `connect-src` lists the only
+     hosts any script may talk to (the Pyodide runtime and the Python
+     wheels), so even a backdoored dependency has nowhere to POST a DOCX
+     or a recipient list. `form-action 'none'` means the page cannot
+     submit anywhere at all.
+     Self-hosting the runtime would let this collapse to 'self'; until
+     then these three hosts are the trust anchor, and that is the honest
+     description of the guarantee. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+  style-src 'self' 'unsafe-inline';
+  connect-src 'self' https://cdn.jsdelivr.net https://pypi.org https://files.pythonhosted.org;
+  img-src 'self' data: blob:;
+  frame-src blob:;
+  worker-src blob:;
+  base-uri 'none';
+  form-action 'none'">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>

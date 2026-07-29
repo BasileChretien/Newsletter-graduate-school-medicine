@@ -253,3 +253,48 @@ def test_load_recipients_strips_unicode_invisibles(tmp_path: Path):
         "bob@example.org",
         "carol@example.net",
     ]
+
+
+def test_sanitize_rejects_header_parsing_specials_but_keeps_apostrophes():
+    """`_EMAIL_RE` excluded `;,<>` but NOT `"`, `(`, `)` or `:`. A quote
+    is the dangerous one: an Excel/CSV paste yields `"jane@x.jp"`, and a
+    single stray quote made the entire `"; "`-joined BCC parse as ONE
+    quoted address -- fifty recipients collapsing to one, silently.
+
+    The apostrophe must survive: it is valid `atext`, and dropping
+    `o'brien@...` would be the same silent-recipient-loss failure in a
+    different disguise."""
+    accepted, rejected, _ = sanitize_addresses([
+        'a"b@example.ac.jp',            # stray quote
+        '"jane@example.ac.jp"',         # CSV-quoted
+        "x(y)@example.ac.jp",           # comment syntax
+        "group:a@example.ac.jp",        # group syntax
+        "sq[br]@example.ac.jp",         # domain literal chars
+        "back\\slash@example.ac.jp",   # quoted-pair escape
+        "o'brien@example.ac.jp",        # VALID -- must be kept
+        "good@example.ac.jp",
+    ])
+
+    assert accepted == ["o'brien@example.ac.jp", "good@example.ac.jp"]
+    assert len(rejected) == 6
+
+
+def test_a_stray_quote_can_no_longer_collapse_the_bcc_list():
+    """End-to-end proof of the above: previously the quoted entry was
+    accepted, reached `_rfc5322_address_list`'s passthrough, and the
+    serializer closed the quote around the whole remaining list."""
+    import email
+    from scripts.mail.base import DraftEmail
+    from scripts.mail.eml import build_eml
+
+    raw_input = ['a"b@example.ac.jp'] + [
+        f"person{i:02d}@example.ac.jp" for i in range(50)]
+    accepted, rejected, _ = sanitize_addresses(raw_input)
+    assert len(accepted) == 50 and len(rejected) == 1
+
+    msg = email.message_from_bytes(build_eml(DraftEmail(
+        html="<html><body>x</body></html>", subject="t",
+        bcc="; ".join(accepted))).as_bytes())
+
+    assert msg["Bcc"].count("@") == 50, "BCC list collapsed"
+    assert '"' not in msg["Bcc"]

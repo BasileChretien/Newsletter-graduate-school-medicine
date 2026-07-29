@@ -163,13 +163,23 @@ def test_semicolon_joined_recipients_are_converted_to_rfc5322_commas():
     assert parsed["Bcc"] == "a@example.ac.jp, b@example.ac.jp, c@example.ac.jp"
 
 
-def test_display_name_recipients_are_left_untouched():
-    """Guard for callers outside `recipients.txt`: a value carrying
-    display-name syntax must not be split through its quoted commas."""
+def test_display_name_recipients_fail_closed():
+    """This used to pass such values through untouched, which quietly
+    reinstated the very bug the function exists to prevent: the
+    semicolons in `A <a@x>; B <b@y>` would survive into the header and
+    RFC 5322 would read them as a group terminator, delivering to one
+    recipient out of fifty. Failing loudly is the correct behaviour for
+    a caller that cannot exist today."""
     from scripts.mail.eml import _rfc5322_address_list
 
-    value = '"Katsuno, Masahisa" <dean@example.ac.jp>'
-    assert _rfc5322_address_list(value) == value
+    with pytest.raises(ValueError, match="display-name"):
+        _rfc5322_address_list('"Katsuno, Masahisa" <dean@example.ac.jp>')
+    with pytest.raises(ValueError, match="display-name"):
+        _rfc5322_address_list("A <a@example.ac.jp>; B <b@example.ac.jp>")
+
+    # The shape every real caller produces still works.
+    assert _rfc5322_address_list("a@example.ac.jp; b@example.ac.jp") == \
+        "a@example.ac.jp, b@example.ac.jp"
 
 
 def test_bcc_survives_a_full_fifty_recipient_list():
@@ -355,8 +365,11 @@ def test_editor_filesystem_path_never_reaches_the_message(tmp_path):
 def test_ordinary_attachments_promote_the_message_to_mixed(tmp_path):
     """Non-inline attachments must not be confused with CID photos:
     they belong outside the multipart/related, under multipart/mixed."""
-    doc = tmp_path / "agenda.png"
-    doc.write_bytes(PNG_BYTES)
+    # A PDF, not a PNG: the old fixture was an image, i.e. the one file
+    # type the image-only MIME lookup happened to get right, so the test
+    # name promised coverage it did not deliver.
+    doc = tmp_path / "agenda.pdf"
+    doc.write_bytes(b"%PDF-1.4 minimal")
 
     msg = build_eml(_draft("<html><body>x</body></html>",
                            attachments=(doc,)))
@@ -364,8 +377,12 @@ def test_ordinary_attachments_promote_the_message_to_mixed(tmp_path):
 
     assert parsed.get_content_type() == "multipart/mixed"
     dispositions = [p.get("Content-Disposition", "") for p in parsed.walk()]
-    assert any(d.startswith("attachment") and "agenda.png" in d
+    assert any(d.startswith("attachment") and "agenda.pdf" in d
                for d in dispositions)
+    # And it must carry a real type, not octet-stream, or Outlook drops
+    # the preview icon.
+    assert any(p.get_content_type() == "application/pdf"
+               for p in parsed.walk())
 
 
 # ---------- plaintext fallback -----------------------------------------
@@ -595,3 +612,21 @@ def test_compose_still_rejects_cid_for_the_clipboard_backend(monkeypatch):
     with pytest.raises(ValueError, match="cid"):
         compose("<html></html>", subject="x", backend="default",
                 image_mode="cid", asset_dir=Path("."))
+
+
+def test_the_whole_message_is_7bit_clean():
+    """`email.policy.SMTP` inherits `cte_type="8bit"`, which emits RAW
+    UTF-8 body bytes under `Content-Transfer-Encoding: 8bit` whenever
+    every line fits in 78 bytes. An 8-bit body cannot be relayed over an
+    SMTP hop without the 8BITMIME extension, and this module's premise
+    is that the file is the exact bytes recipients receive.
+
+    Content-dependent, which is worse than always-wrong: the production
+    template happens to serialize clean because Japanese at 3 bytes/char
+    pushes lines past the fold width. A SHORT Japanese line is what
+    exposes it -- hence the fixture below."""
+    raw = build_eml(_draft("<html><body>名古屋</body></html>")).as_bytes()
+
+    offenders = [b for b in raw if b > 127]
+    assert not offenders, f"{len(offenders)} raw 8-bit bytes in the .eml"
+    assert b"Content-Transfer-Encoding: 8bit" not in raw
