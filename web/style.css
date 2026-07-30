@@ -50,6 +50,23 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute is implemented by the browser as
+ * `[hidden] { display: none }` in its OWN stylesheet -- and any author
+ * rule beats a UA rule. So `.boot { display: flex }` silently defeated
+ * `<div id="boot" hidden>`, and the live page told the editor it was
+ * still "Loading the MERIDIAN toolkit…" long after it had finished,
+ * with a "Building…" spinner stuck beside a button they had not pressed.
+ *
+ * Functionally the app was fine; it just described itself incorrectly,
+ * which for a non-technical editor is worse than a visible error --
+ * they would wait for a load that had already completed.
+ *
+ * This must stay ABOVE the component rules, and it needs `!important`
+ * because those rules are more specific than `[hidden]`. Everything the
+ * page toggles from JS depends on it: #boot, #working, #downloads,
+ * #results, #builder, #file-chosen, #file-error, #preview-block. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
