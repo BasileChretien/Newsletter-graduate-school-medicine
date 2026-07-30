@@ -6,6 +6,70 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [Unreleased] — `.eml` export + browser build
+
+> **Note:** this file skips v1.1.0–v1.1.2. Those shipped from `git log`
+> without CHANGELOG entries; the gap is real and predates this branch.
+
+Two capabilities, plus the fixes that fell out of four specialist reviews
+(security, Python, architecture, frontend) and three CodeRabbit passes.
+**+88 regression tests (378 total).**
+
+### Added
+- **`.eml` draft export** (`--backend=eml`, `scripts/mail/eml.py`). Writes
+  an RFC 5322 draft next to the rendered HTML; opening it in Outlook
+  desktop gives an editable, ready-to-send draft with subject, BCC and
+  CID photos in place — no COM, no clipboard, no paste. Explicit-only:
+  `matches()` returns False, because **Apple Mail opens `.eml`
+  read-only** and making it a macOS default would be a regression
+  dressed as a fix.
+- **A no-install browser build** (`web/`). A static page that turns a
+  filled `issue-N.docx` into that same `.eml`, running the real
+  `scripts/` package inside Pyodide. No server, no upload. Pinned to
+  Pyodide 0.29.x — `css_inline` has no build for 314.x's ABI.
+- `scripts/webapp.py` — the pipeline as one pure function, reusable from
+  a server or notebook.
+- A CLI/web parity test asserting both pipelines emit byte-identical
+  HTML, and a guard that `scripts.webapp` imports with the OS-specific
+  modules blocked.
+
+### Fixed (CRITICAL)
+- **A crafted DOCX could ship an arbitrary-extension attachment to every
+  recipient.** `extract_embedded` gated on magic bytes only and kept the
+  attacker's extension, so `word/media/report.hta` beginning with the
+  JPEG signature was attached as `application/octet-stream` from the
+  editor's own mailbox, under the newsletter's reputation. Now gated on
+  extension as well. Pre-existing on the Outlook path; `.eml` and the
+  browser page widened the exposure.
+- **Fifty recipients could silently become one.** Recipients are joined
+  with `"; "` for Outlook COM, but RFC 5322 reads a semicolon as a group
+  terminator — `email.policy.SMTP` kept only the first address. A stray
+  quote from a CSV paste did the same thing, because `_EMAIL_RE` did not
+  exclude `"`.
+- **CID photos rendered broken for long filenames.** `Content-ID` is not
+  a registered structured header, so a value past the fold width was
+  RFC 2047 encoded and no longer matched the `cid:` reference. The
+  production masthead logo is exactly long enough to trigger it.
+
+### Fixed (HIGH)
+- Decompression bomb: a 400 KB DOCX expanded to 400 MB. Capped on bytes
+  actually written, not on the zip's self-reported sizes.
+- Brand assets were not embedded on the `--output-dir` path (including
+  the macOS read-only fallback), silently producing a partly-external
+  email.
+- Photos too large to embed were linked from the web with no warning, in
+  a mode where nothing publishes them.
+- The browser's BCC box bypassed every `recipients.txt` guard.
+- The `.eml` body was not 7-bit clean (`cte_type` left at `8bit`).
+- The `.eml` carrying ~50 cleartext addresses was created world-readable.
+- Nine editor-facing frontend faults, including a rejected file leaving
+  the previous one armed, and a corrupt DOCX reported as a toolkit bug.
+
+### Security
+- A CSP whose `connect-src` is an allowlist, so "nothing is uploaded" is
+  structural rather than a promise; SRI on the Pyodide loader, with its
+  limits documented; `python-docx` version-pinned.
+
 ## [v1.0.1] — bundle 29 (2026-04-28)
 
 Round-10 closeout. Two regressions from bundle 28 fixed, plus the convergent
