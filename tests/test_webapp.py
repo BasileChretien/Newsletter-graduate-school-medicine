@@ -451,9 +451,15 @@ def test_webapp_imports_without_os_specific_modules(monkeypatch):
     for name in blocked:
         monkeypatch.setitem(sys.modules, name, None)   # import -> ImportError
 
-    for mod in ("scripts.webapp", "scripts.mail", "scripts.mail.eml",
-                "scripts.subject", "scripts.recipients"):
-        sys.modules.pop(mod, None)
+    # EVERY `scripts*` entry, not a hand-picked list. A cached
+    # `scripts.mail.outlook` (and other tests import it) is never
+    # re-executed on `import scripts.webapp`, so its module-level code
+    # never runs and the exact regression this test exists to catch
+    # would sail through. `monkeypatch.delitem` rather than `pop` so the
+    # real modules are restored for whatever runs next.
+    for mod in tuple(sys.modules):
+        if mod == "scripts" or mod.startswith("scripts."):
+            monkeypatch.delitem(sys.modules, mod, raising=False)
     try:
         importlib.import_module("scripts.webapp")
     except ImportError as e:

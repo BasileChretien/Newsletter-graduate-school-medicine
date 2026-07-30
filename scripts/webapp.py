@@ -365,12 +365,13 @@ def _build_in(
     unembedded = count_remote_images(cid_html) if image_mode == "cid" else 0
     if unembedded:
         warnings.append(
-            f"{unembedded} photo(s) could not be placed inside the email "
-            "-- most often because a photo is larger than 2 MB. They are "
-            "linked from the web instead, and recipients will see a "
-            "broken image where they should be. Fix: in Word, right-click "
-            "each large photo, choose 'Compress Pictures', save, and "
-            "build again."
+            f"{unembedded} photo(s) could not be placed inside the "
+            "email, so they are linked from the web instead -- and "
+            "recipients will see a broken image where they should be. "
+            "The usual causes are a photo larger than 2 MB, or a photo "
+            "the toolkit could not find. Fix: in Word, right-click any "
+            "large photo, choose 'Compress Pictures', check every photo "
+            "still displays, save, and build again."
         )
     if bcc_truncated or to_truncated:
         # The CLI at least logs this. Dropping it silently in the browser

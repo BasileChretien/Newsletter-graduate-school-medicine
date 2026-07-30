@@ -216,13 +216,19 @@ def _unembedded_blurb(count: int) -> str | None:
     """
     if count <= 0:
         return None
+    # Deliberately does not name a single cause. `count_remote_images`
+    # counts photos over the size cap AND photos that could not be found
+    # on disk, and telling an editor to compress a photo that was
+    # actually missing sends them to fix the wrong thing.
     return (
-        f"WARNING: {count} photo(s) were too large to travel inside the "
-        "email (over 2 MB each), so they are linked from the web "
-        "instead -- and in this mode nothing uploads them, so "
-        "recipients will see a broken image where those photos should "
-        "be. Fix: in Word, right-click each large photo, choose "
-        "'Compress Pictures', save, and run this again."
+        f"WARNING: {count} photo(s) could not be placed inside the "
+        "email, so they are linked from the web instead -- and in this "
+        "mode nothing uploads them, so recipients will see a broken "
+        "image where those photos should be. The usual causes are a "
+        "photo larger than 2 MB, or a photo the toolkit could not find. "
+        "Fix: in Word, right-click any large photo, choose 'Compress "
+        "Pictures', check every photo still displays, save, and run "
+        "this again."
     )
 
 
