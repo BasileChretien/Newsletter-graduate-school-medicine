@@ -29,18 +29,29 @@ web/meridian-bundle.zip   committed output of the above (~230 KB)
 
 ## Deploying
 
-Any static host works. For GitHub Pages:
+**This repository deploys automatically.**
+`.github/workflows/deploy-web.yml` publishes **only** this directory to
+GitHub Pages on every push to `main` that touches `web/`, `scripts/`,
+`templates/`, `locales/` or `images/`. The live page is:
 
-1. Refresh the bundle and commit it:
+<https://basilechretien.github.io/Newsletter-graduate-school-medicine/>
 
-```bash
-python web/build_bundle.py
-```
+Two deliberate properties of that workflow:
 
-2. Enable Pages for the repository, serving the `web/` directory (or
-   copy `web/` to a `gh-pages` branch).
+- **Only `web/` is served.** Pages-from-branch-root would expose the
+  whole tree and push the page down to `/web/`.
+- **The deploy is gated on `build_bundle.py --verify`.** If someone edits
+  the toolkit and forgets to refresh the bundle, the deploy *fails* and
+  the live site stays on the last good version, rather than quietly
+  serving code a release behind the desktop launcher.
 
-There is nothing to configure and no secret to store.
+Pages must be set to build from **GitHub Actions** (not from a branch)
+for this to work — repository Settings → Pages → Source.
+
+Forking to another institution? Any static host works; the only
+requirement is an HTTP origin, because the page `fetch`es its bundle and
+`file://` will not do. Nothing needs configuring and there is no secret
+to store.
 
 **What the page fetches, precisely** — the earlier claim of "exactly two
 requests" was wrong, and this section is the one place that has to be

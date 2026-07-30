@@ -1,0 +1,66 @@
+name: deploy-web
+
+# Publishes ONLY the `web/` directory to GitHub Pages, so the site root is
+# the newsletter builder itself and nothing else in the repository is
+# served. The alternative (Pages from the branch root) would expose the
+# whole tree and push the page down to `/web/`.
+#
+# The deploy is gated on the bundle-drift check. `web/meridian-bundle.zip`
+# is a committed copy of `scripts/ templates/ locales/ images/`; if someone
+# edits the toolkit and forgets `python web/build_bundle.py`, the desktop
+# launcher gets the fix while the page keeps running the old code. Failing
+# here means the live site stays on the last good version instead of
+# quietly serving something stale.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # The page itself, and everything the bundle is built from -- a
+      # source change with no bundle refresh must fail the gate rather
+      # than skip it.
+      - 'web/**'
+      - 'scripts/**'
+      - 'templates/**'
+      - 'locales/**'
+      - 'images/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once, and never cancel one midway -- a
+# half-finished Pages deploy is a broken page for whoever loads it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  verify-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Stdlib only -- no `pip install` needed.
+      - name: Refuse to publish a bundle that has drifted from scripts/
+        run: python web/build_bundle.py --verify
+
+  deploy:
+    needs: verify-bundle
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4
