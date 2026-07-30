@@ -13,7 +13,7 @@ is preserved in `git log` for archaeology.
 
 Two capabilities, plus the fixes that fell out of four specialist reviews
 (security, Python, architecture, frontend) and three CodeRabbit passes.
-**+88 regression tests (378 total).**
+**+88 regression tests (378 passed, 2 skipped).**
 
 ### Added
 - **`.eml` draft export** (`--backend=eml`, `scripts/mail/eml.py`). Writes
@@ -66,9 +66,17 @@ Two capabilities, plus the fixes that fell out of four specialist reviews
   the previous one armed, and a corrupt DOCX reported as a toolkit bug.
 
 ### Security
-- A CSP whose `connect-src` is an allowlist, so "nothing is uploaded" is
-  structural rather than a promise; SRI on the Pyodide loader, with its
-  limits documented; `python-docx` version-pinned.
+- A CSP whose `connect-src` is an allowlist, narrowing where any script
+  on the page could send data. Stated precisely, because the distinction
+  matters: the application has **no upload endpoint** and all processing
+  is local, and the CSP is defence-in-depth on top of that — not proof
+  that no exfiltration path exists. The allowlist still contains three
+  third-party hosts, and SRI covers only the Pyodide loader, not the four
+  files it then fetches. Vendoring the runtime is what would make the
+  guarantee absolute.
+- `python-docx` version-pinned — it is the one dependency absent from
+  Pyodide's lockfile and was resolving unpinned against PyPI at every
+  cold load.
 
 ## [v1.0.1] — bundle 29 (2026-04-28)
 

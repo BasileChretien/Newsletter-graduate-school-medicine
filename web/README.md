@@ -66,8 +66,12 @@ accurate:
 - Your own origin — `meridian-bundle.zip`.
 
 A `Content-Security-Policy` in `index.html` restricts `connect-src` to
-exactly those hosts and sets `form-action 'none'`, so the "nothing is
-uploaded" promise is enforced structurally rather than by intent alone.
+exactly those hosts and sets `form-action 'none'`. Be precise about what
+that buys: the application has **no upload endpoint** and every step runs
+locally, and the CSP narrows where any script *could* send data. It is
+defence-in-depth on top of a local-only design — not a proof that no
+exfiltration path exists, since the allowlist still contains three
+third-party hosts.
 The trust anchor is jsDelivr: SRI pins the loader, but the loader
 fetches four further files from the same origin, so a compromise of
 jsDelivr is not something the hash defends against. Vendoring the

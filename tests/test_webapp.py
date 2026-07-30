@@ -451,15 +451,19 @@ def test_webapp_imports_without_os_specific_modules(monkeypatch):
     for name in blocked:
         monkeypatch.setitem(sys.modules, name, None)   # import -> ImportError
 
+    def _scripts_modules() -> set[str]:
+        return {m for m in sys.modules
+                if m == "scripts" or m.startswith("scripts.")}
+
     # EVERY `scripts*` entry, not a hand-picked list. A cached
     # `scripts.mail.outlook` (and other tests import it) is never
     # re-executed on `import scripts.webapp`, so its module-level code
     # never runs and the exact regression this test exists to catch
     # would sail through. `monkeypatch.delitem` rather than `pop` so the
-    # real modules are restored for whatever runs next.
-    for mod in tuple(sys.modules):
-        if mod == "scripts" or mod.startswith("scripts."):
-            monkeypatch.delitem(sys.modules, mod, raising=False)
+    # originally-cached modules are restored for whatever runs next.
+    original = _scripts_modules()
+    for mod in tuple(original):
+        monkeypatch.delitem(sys.modules, mod, raising=False)
     try:
         importlib.import_module("scripts.webapp")
     except ImportError as e:
@@ -467,3 +471,13 @@ def test_webapp_imports_without_os_specific_modules(monkeypatch):
             f"scripts.webapp needs an OS-specific module at import time: {e}. "
             "Move that import inside the function that uses it."
         ) from e
+    finally:
+        # `monkeypatch.delitem` only restores what it removed. Anything
+        # imported fresh DURING this test was imported while the OS
+        # modules were blocked, so it may have taken a different branch
+        # (e.g. `outlook.py`'s `except ImportError` fallback for
+        # `pywintypes`, which changes `_COM_ERRORS`). Leaving such a
+        # module cached would hand a subtly mis-initialised object to a
+        # later test.
+        for mod in _scripts_modules() - original:
+            sys.modules.pop(mod, None)
