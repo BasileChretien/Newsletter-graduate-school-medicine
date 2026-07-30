@@ -168,3 +168,51 @@ def test_python_dependencies_fetched_from_pypi_are_version_pinned():
         "python-docx is not in Pyodide's distribution, so it comes from "
         "PyPI and must carry an exact version pin."
     )
+
+
+def test_hidden_elements_are_not_defeated_by_a_display_rule():
+    """The `hidden` attribute is implemented by the browser as
+    `[hidden] { display: none }` in its own stylesheet, and ANY author
+    rule beats a UA rule. `.boot { display: flex }` therefore silently
+    defeated `<div id="boot" hidden>`: the live page told the editor it
+    was still "Loading the MERIDIAN toolkit…" long after boot finished,
+    with a "Building…" spinner stuck beside a button they had not
+    pressed. The app worked; it just described itself incorrectly.
+
+    This checks the actual interaction rather than merely asserting the
+    override exists: for every element in index.html that carries
+    `hidden`, if any CSS rule sets `display` for one of its classes,
+    then a global `[hidden]` override with `!important` must be present
+    to win against it.
+    """
+    html = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    css = (REPO_ROOT / "web" / "style.css").read_text(encoding="utf-8")
+
+    # Classes on elements that are toggled via the `hidden` attribute.
+    # Scanned one tag at a time: a pattern that walks past `>` merges a
+    # tag with the one after it and collects the neighbour's classes.
+    # Within a tag, `hidden` must be a standalone attribute -- a bare
+    # `\bhidden\b` also matches `aria-hidden="true"`, because `-` counts
+    # as a word boundary, which pulled in `.spinner`.
+    hidden_classes: set[str] = set()
+    for tag in re.findall(r"<[^>]+>", html):
+        if not re.search(r"(?<![\w-])hidden(?=[\s=>/])", tag):
+            continue
+        m = re.search(r'class="([^"]+)"', tag)
+        if m:
+            hidden_classes.update(m.group(1).split())
+
+    # Classes that some rule gives an explicit `display`.
+    display_classes = {
+        cls for cls in hidden_classes
+        if re.search(rf"\.{re.escape(cls)}\b[^{{]*{{[^}}]*\bdisplay\s*:", css)
+    }
+
+    if display_classes:
+        assert re.search(r"\[hidden\][^{]*{[^}]*display\s*:\s*none\s*!important",
+                         css), (
+            "these classes set `display` and are used on elements toggled by "
+            f"the `hidden` attribute: {sorted(display_classes)}. Without a "
+            "global `[hidden] { display: none !important }` they stay "
+            "visible even when hidden is set."
+        )
