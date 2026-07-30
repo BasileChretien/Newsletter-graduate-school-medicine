@@ -50,10 +50,6 @@ const STRINGS = {
     fileHint: "Only .docx files. The file stays on this device.",
     issueLabel: "Issue number",
     issueHint: "Used to name the files and to group this issue's photos.",
-    modeLabel: "Photos",
-    modeCid: "Embed inside the email (recommended)",
-    modeUrl: "Load from GitHub when opened",
-    modeHint: "Embedding means recipients see the photos even on networks that block outside images, and nothing needs publishing first.",
     bccLabel: "BCC recipients",
     optional: "(optional)",
     bccHint: "Pre-fills the BCC field of the draft. These addresses stay on this device and are written only into the draft file you download.",
@@ -97,10 +93,6 @@ const STRINGS = {
     fileHint: ".docxファイルのみ。ファイルはこの端末から出ません。",
     issueLabel: "号数",
     issueHint: "ファイル名と、この号の写真のまとめ方に使われます。",
-    modeLabel: "写真",
-    modeCid: "メールの中に埋め込む（推奨）",
-    modeUrl: "開いたときにGitHubから読み込む",
-    modeHint: "埋め込むと、外部画像を遮断するネットワークでも受信者に写真が表示され、事前の公開作業も不要です。",
     bccLabel: "BCC宛先",
     optional: "（任意）",
     bccHint: "下書きのBCC欄にあらかじめ入力されます。これらのアドレスはこの端末から出ず、ダウンロードする下書きファイルにのみ書き込まれます。",
@@ -447,8 +439,15 @@ async function runBuild() {
     // main thread for a few seconds.
     await new Promise((r) => setTimeout(r, 0));
 
-    const json = buildFn(bytes, $("issue").value, $("mode").value,
-                         $("bcc").value);
+    /* Always "cid". The hosted-URL mode is deliberately not offered
+     * here: inside Pyodide there is no env var and no `git`, so
+     * `get_default_repo()` always falls back to the UPSTREAM
+     * coordinates -- a forking institution would email photos pointing
+     * at someone else's repository, at paths that only exist in their
+     * own. The page also cannot publish, so the URLs would 404 even
+     * upstream. `build_from_bytes` still supports both modes for a
+     * server or notebook caller that can actually push. */
+    const json = buildFn(bytes, $("issue").value, "cid", $("bcc").value);
     lastResult = JSON.parse(json);
     fatalKey = null;
     renderResult(lastResult);

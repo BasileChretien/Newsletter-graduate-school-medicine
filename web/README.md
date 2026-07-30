@@ -92,10 +92,14 @@ rather than at us. A test pins the version for this reason.
   draft; the editor reviews it and presses Send in their own client
   from their own address. A browser page has no business holding
   credentials for a university mail server.
-- **Hosted-photo mode is offered but not recommended here.** It needs
-  the photos pushed to GitHub before recipients open the mail, and the
-  page cannot push. Embedding photos in the `.eml` is the default and
-  needs no publishing step at all.
+- **Hosted-photo mode is not offered here at all.** The page always
+  embeds. Two reasons: the page cannot push to GitHub, so the URLs would
+  point at files that were never published; and inside Pyodide there is
+  no env var and no `git`, so `get_default_repo()` always resolves to
+  the UPSTREAM repository -- a fork would email photos pointing at
+  someone else's repo, at paths that exist only in their own.
+  `scripts.webapp.build_from_bytes` still supports `image_mode="url"`
+  for a server or notebook caller that genuinely can publish.
 - **BCC stays local.** Addresses typed into the page are written only
   into the `.eml` the editor downloads. They are never transmitted —
   there is nowhere to transmit them to.

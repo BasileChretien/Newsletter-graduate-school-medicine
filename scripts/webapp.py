@@ -38,7 +38,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.config import IMAGES_DIR, TITLE, get_default_repo
+from scripts.config import TITLE, get_default_repo
 from scripts.docx_parser import ImageRef, parse
 from scripts.html_utils import parse_html
 from scripts.image_handler import (
@@ -47,7 +47,9 @@ from scripts.image_handler import (
 )
 from scripts.inliner import inline
 from scripts.mail.base import DraftEmail
-from scripts.mail.cid import DEFAULT_MAX_IMAGE_BYTES, attach_inline_images
+from scripts.mail.cid import (
+    DEFAULT_MAX_IMAGE_BYTES, attach_inline_images, count_remote_images,
+)
 from scripts.mail.eml import build_eml
 from scripts.recipients import sanitize_addresses
 from scripts.renderer import attach_image_urls, render
@@ -140,44 +142,6 @@ def _clean_addresses(
     accepted, rejected, truncated = sanitize_addresses(
         re.split(r"[\n,;]+", value))
     return ("; ".join(accepted) or None), rejected, truncated
-
-
-def _remote_images(html: str) -> int:
-    """Count `<img>` tags still pointing at a remote URL.
-
-    In CID mode these are photos `attach_inline_images` declined to
-    embed -- over the 2 MB per-image cap, or not resolvable on disk.
-    On the CLI that degrades gracefully: the URL still works once
-    `publish-images` has pushed the file. **In the browser there is no
-    publish step**, so the URL points at something that does not exist
-    and every recipient sees a broken image -- while the result screen
-    cheerfully reports how many photos were embedded. Hence the count,
-    and the warning built from it.
-    """
-    soup = parse_html(html)
-    return sum(
-        1 for img in soup.find_all("img")
-        if (img.get("src") or "").lower().startswith(("http://", "https://"))
-    )
-
-
-def _mirror_brand_assets(root: Path) -> None:
-    """Copy the repo's `images/` into `root` unless it is already there.
-
-    Best-effort: if the copy fails, the brand images simply stay as
-    remote URLs (the pre-CID behaviour), which still renders for most
-    recipients. Worth a warning, not worth failing the build.
-    """
-    dst = root / "images"
-    if dst.exists() or not IMAGES_DIR.is_dir():
-        return
-    try:
-        shutil.copytree(IMAGES_DIR, dst)
-    except OSError as e:
-        log.warning(
-            "Could not mirror brand images into %s (%s); the logo and "
-            "dean photo will be referenced by URL instead of embedded.",
-            dst, e)
 
 
 def _failed(subject: str, result: ValidationResult | None, *,
@@ -301,13 +265,10 @@ def _build_in(
     docx_path = root / f"issue-{issue}.docx"
     docx_path.write_bytes(docx_bytes)
 
-    # The masthead logo and the dean photo are permanent brand assets in
-    # `images/`, not content embedded in the DOCX. CID resolution looks
-    # for them at `<root>/images/` (sibling of `assets/`), so mirror them
-    # in -- otherwise they stay as `raw.githubusercontent.com` references
-    # and CID mode silently ships a *partly* external email, which is the
-    # mixed-mode rendering round 12 went out of its way to eliminate.
-    _mirror_brand_assets(root)
+    # No brand-asset mirroring needed: `scripts.mail.cid` resolves
+    # `images/<file>` against `scripts.config.IMAGES_DIR` directly, so
+    # the logo and dean photo embed without each build copying them into
+    # its own workdir.
 
     # 1) Parse. A file named `.docx` that is not a valid OPC package --
     # a renamed `.doc`, a truncated download, an unsynced OneDrive
@@ -401,7 +362,7 @@ def _build_in(
     # 11) Warnings the validator cannot produce, because they are about
     # the DRAFT rather than the HTML.
     warnings = list(result.warnings or ())
-    unembedded = _remote_images(cid_html) if image_mode == "cid" else 0
+    unembedded = count_remote_images(cid_html) if image_mode == "cid" else 0
     if unembedded:
         warnings.append(
             f"{unembedded} photo(s) could not be placed inside the email "

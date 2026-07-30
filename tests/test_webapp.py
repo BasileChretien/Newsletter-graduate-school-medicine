@@ -392,3 +392,72 @@ def test_the_default_workdir_does_not_outlive_the_call(filled_docx):
 
     assert res.ok is True
     assert set(glob.glob(pattern)) == before, "temp workdir was left behind"
+
+
+# ---------- CLI / web parity --------------------------------------------
+
+def test_the_cli_and_the_web_build_produce_identical_html(
+        filled_docx, tmp_path, monkeypatch):
+    """The two pipelines duplicate `parse -> attach URLs -> render ->
+    inline`, and they have already drifted once inside a single branch
+    (brand assets, the over-cap warning). Byte-equality is assertable
+    because both derive URLs from `assets/issue-N/<file>` relative to
+    their own root, so a divergence in ANY of those four steps fails
+    here rather than in an editor's inbox."""
+    import build_newsletter as bn
+
+    docx_path = tmp_path / "issue-3.docx"
+    docx_path.write_bytes(filled_docx)
+
+    # Redirect the CLI's output roots by monkeypatching rather than via
+    # `--output-dir`: that flag currently raises from `to_raw_url`
+    # (`Asset ... must be inside repo ...`) for any DOCX containing
+    # photos, which is being fixed separately. Patching PROJECT_ROOT too
+    # keeps the URL root consistent with the redirected assets, so this
+    # test exercises the parity property without depending on that fix
+    # -- and without writing into the real repo.
+    cli_out = tmp_path / "cli"
+    monkeypatch.setattr(bn, "DIST_DIR", cli_out / "dist")
+    monkeypatch.setattr(bn, "ASSETS_DIR", cli_out / "assets")
+    monkeypatch.setattr(bn, "PROJECT_ROOT", cli_out)
+
+    result = bn._build_pipeline(docx_path, 3, validate_remote=False)
+    assert result.exit_code == 0, "precondition: the CLI build succeeds"
+    cli_html = result.html_path.read_text(encoding="utf-8")
+
+    web = build_from_bytes(filled_docx, issue=3, workdir=tmp_path / "web")
+    assert web.ok is True
+
+    assert web.html == cli_html, (
+        "the CLI and browser pipelines produced different HTML -- one of "
+        "the shared render steps has drifted"
+    )
+
+
+def test_webapp_imports_without_os_specific_modules(monkeypatch):
+    """`scripts.webapp` transitively imports the whole `scripts.mail`
+    package, which reaches Outlook COM, the clipboard and handler
+    detection. That only works in Pyodide because every OS-specific
+    import is function-local -- nothing enforces it, and CI runs no
+    Pyodide job, so a future backend with a module-level
+    `import win32com.client` would break the browser build while every
+    existing test stayed green (the bundle would be current, just
+    broken)."""
+    import importlib
+    import sys
+
+    blocked = ("win32com", "win32com.client", "winreg", "win32clipboard",
+               "pywintypes", "tkinter")
+    for name in blocked:
+        monkeypatch.setitem(sys.modules, name, None)   # import -> ImportError
+
+    for mod in ("scripts.webapp", "scripts.mail", "scripts.mail.eml",
+                "scripts.subject", "scripts.recipients"):
+        sys.modules.pop(mod, None)
+    try:
+        importlib.import_module("scripts.webapp")
+    except ImportError as e:
+        raise AssertionError(
+            f"scripts.webapp needs an OS-specific module at import time: {e}. "
+            "Move that import inside the function that uses it."
+        ) from e

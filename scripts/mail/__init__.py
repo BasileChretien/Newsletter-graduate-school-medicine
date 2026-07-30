@@ -2,10 +2,27 @@
 
 Backends are registered in priority order. `compose()` walks them and
 picks the first one whose `matches()` accepts the detected handler AND
-which `is_available()` returns True. To add a new backend (Thunderbird
-XPCOM, Gmail OAuth, SMTP, ...), drop a module into `scripts/mail/`,
-expose a class implementing the `MailBackend` Protocol, and append it
-to `_BACKENDS` -- the dispatcher needs no edits.
+which `is_available()` returns True.
+
+Adding a backend is NOT edit-free, despite what this docstring used to
+claim. Six places currently need touching: `_BACKENDS`, the
+`select_backend` if-chain, the `BackendName` Literal, the two
+`click.Choice` lists in `build_newsletter.py`, and `_friendly_used`.
+The `click.Choice` lists are the ones that go stale silently. If a
+fourth backend arrives, derive the CLI choices and the name lookup from
+`_BACKENDS` (give each backend a `cli_name` and an `auto_selectable`
+flag) rather than extending the chain a fifth time.
+
+Two further requirements for a new backend:
+  * Declare `supports_inline_images` -- the CID feasibility check reads
+    it, and inferring capability from `name` at each call site is what
+    drifted apart in round 15.
+  * Keep OS-specific imports FUNCTION-LOCAL. `scripts.webapp` imports
+    this package inside Pyodide, where `win32com` and `winreg` do not
+    exist; a module-level import would break the browser build, and the
+    bundle-drift test would not catch it because the bundle would be
+    perfectly current, just broken. Pinned by
+    `tests/test_webapp.py::test_webapp_imports_without_os_specific_modules`.
 
 Public API:
     detect_default_mail_handler() -> MailHandler
@@ -25,7 +42,9 @@ from pathlib import Path
 from typing import Literal
 
 from scripts.mail.base import DraftEmail, MailBackend, MailHandler
-from scripts.mail.cid import InlineImage, attach_inline_images
+from scripts.mail.cid import (
+    InlineImage, attach_inline_images, count_remote_images,
+)
 from scripts.mail.clipboard import copy_html_to_clipboard
 from scripts.mail.clipboard_mailto import (
     ClipboardMailtoBackend, compose_via_default,
@@ -70,6 +89,14 @@ class ComposeOutcome:
     handler_kind: str
     fell_back_from: str | None = None
     image_mode: str | None = None
+    # Photos CID mode declined to embed (over the per-image cap, or
+    # unresolvable), so they remain `https://` references. In CID mode
+    # `all_cmd` deliberately skips `publish-images`, which means those
+    # URLs point at files that were never pushed -- a broken image for
+    # every recipient. The browser build already warned about this; the
+    # CLI had the identical hazard and only a `log.warning` deep in
+    # `cid.py`, so the count is surfaced here for both.
+    unembedded_images: int = 0
 
     @property
     def is_fallback(self) -> bool:
@@ -300,6 +327,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     )
 
     inline_images: tuple[InlineImage, ...] = ()
+    unembedded = 0
     # Round-12 architect HIGH 2: keep the un-rewritten URL HTML around
     # so that if the Outlook backend fails AND we auto-fall-back to
     # ClipboardMailto, the recipient doesn't paste a `<img src="cid:..."`
@@ -321,8 +349,10 @@ def compose(html: str, *, subject: str, backend: str = "auto",
                 "(the local directory holding the issue's photos)."
             )
         html, inline_images = attach_inline_images(html, asset_dir)
-        log.info("CID mode: %d inline image(s) prepared for attachment.",
-                 len(inline_images))
+        unembedded = count_remote_images(html)
+        log.info("CID mode: %d inline image(s) prepared for attachment, "
+                 "%d left as remote URL(s).",
+                 len(inline_images), unembedded)
 
     draft = DraftEmail(
         html=html, subject=subject,
@@ -377,6 +407,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
         backend=chosen.name,
         handler_kind=handler.kind,
         image_mode=image_mode,
+        unembedded_images=unembedded,
     )
 
 

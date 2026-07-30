@@ -204,6 +204,28 @@ def _image_mode_blurb(image_mode: str | None) -> str | None:
     return None
 
 
+def _unembedded_blurb(count: int) -> str | None:
+    """Warn when CID mode left photos as URLs nobody will publish.
+
+    In CID mode `all_cmd` skips `publish-images` on purpose, so a photo
+    that was too large to embed points at a file that was never pushed:
+    a broken image for every recipient. Until now the only trace was a
+    `log.warning` inside `cid.py` that scrolls past in the launcher
+    console. The browser build already surfaced this; the CLI is the
+    path that actually sends the newsletter.
+    """
+    if count <= 0:
+        return None
+    return (
+        f"WARNING: {count} photo(s) were too large to travel inside the "
+        "email (over 2 MB each), so they are linked from the web "
+        "instead -- and in this mode nothing uploads them, so "
+        "recipients will see a broken image where those photos should "
+        "be. Fix: in Word, right-click each large photo, choose "
+        "'Compress Pictures', save, and run this again."
+    )
+
+
 def _subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
     """Build the email subject from an already-parsed masthead.
 
@@ -566,6 +588,9 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     blurb = _image_mode_blurb(used.image_mode)
     if blurb is not None:
         click.echo(blurb)
+    warn = _unembedded_blurb(used.unembedded_images)
+    if warn is not None:
+        click.echo(click.style(warn, fg="yellow"))
     if recipients:
         click.echo(
             f"BCC pre-filled with {len(recipients)} recipient(s) "
@@ -752,6 +777,9 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         blurb = _image_mode_blurb(used.image_mode)
         if blurb is not None:
             click.echo(blurb)
+        warn = _unembedded_blurb(used.unembedded_images)
+        if warn is not None:
+            click.echo(click.style(warn, fg="yellow"))
         if recipients:
             click.echo(
                 f"BCC pre-filled with {len(recipients)} recipient(s) "
