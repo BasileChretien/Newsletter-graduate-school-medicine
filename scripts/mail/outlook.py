@@ -257,6 +257,9 @@ class OutlookBackend:
     """MailBackend implementation for Outlook desktop on Windows."""
 
     name = "outlook"
+    # COM `Attachments.Add` + `PR_ATTACH_CONTENT_ID` -- see
+    # `_attach_inline_image` above.
+    supports_inline_images = True
 
     def is_available(self) -> bool:
         return is_available()

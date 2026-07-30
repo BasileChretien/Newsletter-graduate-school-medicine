@@ -164,9 +164,16 @@ def test_resolve_local_path_assets_hit(tmp_path: Path):
     assert resolved == asset_dir / "photo1.jpg"
 
 
-def test_resolve_local_path_images_dir_hit(tmp_path: Path):
+def test_resolve_local_path_images_dir_hit(tmp_path: Path, monkeypatch):
+    """Brand assets resolve against `scripts.config.IMAGES_DIR`, NOT
+    against `asset_dir.parent.parent / "images"`. The old inference held
+    only for a default CLI run: with `--output-dir` (including the
+    automatic macOS read-only fallback) it pointed at a directory that
+    never exists, so the logo silently stayed a remote URL inside an
+    otherwise-CID email."""
     asset_dir = _make_asset_layout(
         tmp_path, image_files=(), brand_files=("seal.png",))
+    monkeypatch.setattr("scripts.mail.cid.IMAGES_DIR", tmp_path / "images")
     url = f"{REPO_PREFIX}/images/seal.png"
     resolved = _resolve_local_path(url, asset_dir, REPO_PREFIX)
     assert resolved == tmp_path / "images" / "seal.png"
@@ -214,12 +221,14 @@ def test_resolve_local_path_rejects_dotdot_in_assets_branch(tmp_path: Path):
     assert _resolve_local_path(url, asset_dir, REPO_PREFIX + "/") is None
 
 
-def test_resolve_local_path_rejects_dotdot_in_images_branch(tmp_path: Path):
+def test_resolve_local_path_rejects_dotdot_in_images_branch(
+        tmp_path: Path, monkeypatch):
     """Round-12 security H2: same defence on the `images/` branch,
-    which has root `asset_dir.parent.parent / images` -- one level
+    which is now rooted at `IMAGES_DIR` -- one level
     higher in the tree, even more dangerous if traversal succeeds."""
     asset_dir = _make_asset_layout(
         tmp_path, image_files=(), brand_files=("seal.png",))
+    monkeypatch.setattr("scripts.mail.cid.IMAGES_DIR", tmp_path / "images")
     url = f"{REPO_PREFIX}/images/../../../etc/passwd"
     assert _resolve_local_path(url, asset_dir, REPO_PREFIX + "/") is None
 
@@ -303,12 +312,14 @@ def test_attach_inline_images_leaves_unresolvable_untouched(tmp_path: Path):
     assert "missing.jpg" in rewritten
 
 
-def test_attach_inline_images_dedupes_repeated_image(tmp_path: Path):
+def test_attach_inline_images_dedupes_repeated_image(
+        tmp_path: Path, monkeypatch):
     """If the same local image is referenced twice (logo in masthead +
     footer), attach the file ONCE but rewrite both `<img>` tags to use
     the same CID."""
     asset_dir = _make_asset_layout(
         tmp_path, image_files=(), brand_files=("seal.png",))
+    monkeypatch.setattr("scripts.mail.cid.IMAGES_DIR", tmp_path / "images")
     html = (
         f'<html><body>'
         f'<img src="{REPO_PREFIX}/images/seal.png">'  # masthead

@@ -8,8 +8,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import requests
-
 from scripts.config import GMAIL_CLIP_BYTES
 from scripts.html_utils import parse_html, remove_hidden_elements
 from scripts.text_utils import normalize_for_match
@@ -73,6 +71,13 @@ class ValidationResult:
 
 
 def _check_url(url: str, timeout: float = _HEAD_TIMEOUT) -> bool:
+    # Imported here rather than at module scope: `requests` is used ONLY
+    # on the remote-check path, which the browser build never takes
+    # (`check_remote=False` -- Pyodide has no synchronous HTTP anyway).
+    # A module-level import forced an extra wheel download into every
+    # cold page load for code that can never run there.
+    import requests
+
     try:
         r = requests.head(url, timeout=timeout, allow_redirects=True)
         if r.status_code == 405:  # HEAD not allowed — try GET
@@ -92,6 +97,10 @@ def _check_urls_parallel(urls: tuple[str, ...]) -> list[str]:
     """
     if not urls:
         return []
+    # Same reasoning as `_check_url`: keep `requests` off the import path
+    # of anyone who never performs a remote check.
+    import requests
+
     broken: list[str] = []
     with ThreadPoolExecutor(max_workers=_HEAD_WORKERS) as pool:
         future_to_url = {pool.submit(_check_url, u): u for u in urls}

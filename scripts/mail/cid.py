@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+from scripts.config import IMAGES_DIR
 from scripts.html_utils import parse_html
 
 log = logging.getLogger(__name__)
@@ -64,8 +65,11 @@ _CID_PREFIX = "meridian-"
 # external -- inconsistent rendering for recipients on filtered
 # networks). 2 MB is generous enough to cover normal institutional
 # imagery while still rejecting accidental-multimegapixel-paste
-# pathologies. Surfaced as `--cid-max-image-mb` on the CLI for
-# editors who need to tune it.
+# pathologies. Callers override it per call via `attach_inline_images(
+# ..., max_image_bytes=...)`, and `scripts.webapp.build_from_bytes`
+# exposes it as a parameter. There is deliberately no CLI flag -- an
+# editor who needs one is better served by compressing the photo in
+# Word, which is what the over-cap warning tells them to do.
 DEFAULT_MAX_IMAGE_BYTES = 2_000_000
 # RFC 2822 msg-id shape: `local-part@domain`. Older Outlook builds
 # (2013, some 2016 LTSC) don't auto-wrap PR_ATTACH_CONTENT_ID values
@@ -225,16 +229,28 @@ def _resolve_local_path(src: str, asset_dir: Path,
         root = asset_dir.parent
         candidate = root.joinpath(*rel_parts)
         return _confined(candidate, root)
-    # `images/<file>`: file lives at the project's permanent brand-asset
-    # directory, sibling to `assets/`.
+    # `images/<file>`: the masthead logo and dean photo. These are
+    # PERMANENT brand assets that live in the toolkit, not per-issue
+    # content, so they are resolved against `scripts.config.IMAGES_DIR`
+    # rather than inferred from `asset_dir`'s ancestry.
+    #
+    # The old `asset_dir.parent.parent / "images"` assumed the issue's
+    # assets sit directly beside `images/`. That holds for a default CLI
+    # run and breaks everywhere else: with `--output-dir` -- including
+    # the automatic macOS read-only fallback -- `asset_dir` is
+    # `<out>/assets/issue-N`, so the lookup landed on `<out>/images`,
+    # which never exists. The logo silently stayed a
+    # raw.githubusercontent.com reference inside an otherwise-CID email,
+    # producing exactly the mixed-mode rendering round 12 set out to
+    # eliminate. It also forced the browser build to copy `images/` into
+    # every workdir just to satisfy the inference.
     if "images" in parts:
         idx = parts.index("images")
         rel_parts = parts[idx + 1:]
         if not rel_parts:
             return None
-        root = asset_dir.parent.parent / "images"
-        candidate = root.joinpath(*rel_parts)
-        return _confined(candidate, root)
+        candidate = IMAGES_DIR.joinpath(*rel_parts)
+        return _confined(candidate, IMAGES_DIR)
     return None
 
 
@@ -263,8 +279,9 @@ def attach_inline_images(
     build with a few unresolvable images degrades gracefully: those
     images load over HTTP exactly as they would in URL mode.
 
-    `max_image_bytes` (default 500 KB) caps the per-image attachment
-    size. Files over the cap are LEFT AS URLs rather than attached --
+    `max_image_bytes` (default `DEFAULT_MAX_IMAGE_BYTES`, 2 MB) caps
+    the per-image attachment size. Files over the cap are LEFT AS URLs
+    rather than attached --
     a 4 MB hospital exterior shot would otherwise bloat every
     forwarded copy of the message (a 50-recipient × 5-forward chain
     sends ~25 MB of duplicated photo across the corporate network).
@@ -336,4 +353,28 @@ def attach_inline_images(
     return rewritten, tuple(inline)
 
 
-__all__ = ["InlineImage", "attach_inline_images"]
+def count_remote_images(html: str) -> int:
+    """How many `<img>` tags still point at an http(s) URL.
+
+    After `attach_inline_images`, these are the photos it declined to
+    embed -- over the per-image cap, or unresolvable on disk. They are
+    left as URLs deliberately, which degrades gracefully ONLY where
+    something publishes them:
+
+    * CLI, URL mode      -- `publish-images` pushes them. Fine.
+    * CLI, CID mode      -- `all_cmd` SKIPS publishing (that is the
+      point of CID mode), so the URL points at a file that was never
+      pushed. Broken image for every recipient.
+    * Browser build      -- no publish step exists at all. Same.
+
+    Both adapters therefore need to warn, which is why this lives here
+    rather than being reimplemented on each side.
+    """
+    soup = parse_html(html)
+    return sum(
+        1 for img in soup.find_all("img")
+        if (img.get("src") or "").lower().startswith(("http://", "https://"))
+    )
+
+
+__all__ = ["InlineImage", "attach_inline_images", "count_remote_images"]

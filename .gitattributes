@@ -1,20 +1,3 @@
-# Default: let git auto-detect text vs binary.
-* text=auto
-
-# macOS / Linux shell scripts MUST keep LF line endings even when the
-# repo is cloned on Windows — CRLF breaks them.
-*.sh        text eol=lf
-*.command   text eol=lf
-
-# Windows batch / cmd files keep CRLF.
-*.bat       text eol=crlf
-*.cmd       text eol=crlf
-
-# Binary files git should never touch.
-*.docx      binary
-*.jpg       binary
-*.jpeg      binary
-*.png       binary
-*.webp      binary
-*.gif       binary
-*.pdf       binary
+# The web bundle is a generated binary. Never try to merge it -- on a
+# conflict, re-run `python web/build_bundle.py` and commit the result.
+web/meridian-bundle.zip binary -merge -diff

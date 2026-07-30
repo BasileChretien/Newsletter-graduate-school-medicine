@@ -45,6 +45,9 @@ class ClipboardMailtoBackend:
     """MailBackend implementation that always works -- the universal fallback."""
 
     name = "clipboard_mailto"
+    # A clipboard payload and a `mailto:` URL have nowhere to put a
+    # MIME attachment, so CID mode is impossible here.
+    supports_inline_images = False
 
     def is_available(self) -> bool:
         return True

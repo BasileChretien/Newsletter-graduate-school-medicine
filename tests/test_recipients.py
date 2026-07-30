@@ -4,7 +4,117 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.recipients import load_recipients
+from scripts.recipients import load_recipients, sanitize_addresses
+
+
+# ---------- sanitize_addresses -----------------------------------------
+#
+# `load_recipients` is a thin wrapper over this. It was extracted so that
+# every path which can put an address into an outgoing draft shares one
+# guard -- the browser build takes addresses from a textarea and had
+# inherited none of these protections.
+
+def test_sanitize_rejects_header_injection():
+    """CR/LF in a header value makes `EmailMessage` raise, which reached
+    the editor as an unexplained crash. It is also the classic
+    header-injection vector, so it must never reach the draft."""
+    accepted, rejected, _ = sanitize_addresses([
+        "good@example.ac.jp",
+        "evil@example.ac.jp\r\nBcc: attacker@evil.test",
+        "evil2@example.ac.jp\nX-Injected: yes",
+    ])
+    assert accepted == ["good@example.ac.jp"]
+    assert len(rejected) == 2
+
+
+def test_sanitize_rejects_separator_smuggling():
+    """One entry must never expand into several recipients."""
+    accepted, rejected, _ = sanitize_addresses([
+        "a@example.ac.jp, sneaky@evil.test",
+        "b@example.ac.jp; sneaky2@evil.test",
+    ])
+    assert accepted == []
+    assert len(rejected) == 2
+
+
+def test_sanitize_rejects_display_name_form():
+    """`Name <a@x>; Name2 <b@y>` would otherwise survive as one opaque
+    string, and RFC 5322 would read the `;` as a group terminator --
+    silently keeping only the first recipient."""
+    accepted, rejected, _ = sanitize_addresses([
+        "Katsuno <dean@example.ac.jp>",
+        "<office@example.ac.jp>",
+    ])
+    assert accepted == []
+    assert len(rejected) == 2
+
+
+def test_sanitize_folds_fullwidth_at_sign():
+    """NFKC runs before the pattern, so a Word-pasted fullwidth `＠`
+    cannot slip past the `@`-based validation."""
+    accepted, _, _ = sanitize_addresses(["victim＠example.ac.jp"])
+    assert accepted == ["victim@example.ac.jp"]
+
+
+def test_sanitize_deduplicates_and_preserves_order():
+    accepted, rejected, _ = sanitize_addresses(
+        ["b@example.ac.jp", "a@example.ac.jp", "b@example.ac.jp"])
+    assert accepted == ["b@example.ac.jp", "a@example.ac.jp"]
+    assert rejected == []
+
+
+def test_sanitize_skips_blanks_and_comments_silently():
+    """Comment lines are expected in a recipients.txt and must not be
+    reported to the editor as rejected addresses."""
+    accepted, rejected, _ = sanitize_addresses(
+        ["# the department list", "", "   ", "a@example.ac.jp"])
+    assert accepted == ["a@example.ac.jp"]
+    assert rejected == []
+
+
+def test_sanitize_reports_what_it_dropped():
+    """The caller needs the rejects to tell the editor about them --
+    silently dropping a recipient is worse than refusing the build."""
+    _, rejected, _ = sanitize_addresses(["not an address", "also-bad@"])
+    assert rejected == ["not an address", "also-bad@"]
+
+
+def test_sanitize_reports_truncation_only_when_it_truncated():
+    """The cap check used to run AFTER appending, so a list of exactly
+    `_MAX_RECIPIENTS` valid addresses -- a complete list -- reported
+    itself as truncated and sent the editor hunting for missing
+    recipients that were never missing."""
+    from scripts.recipients import _MAX_RECIPIENTS
+
+    exact = [f"person{i:05d}@example.ac.jp" for i in range(_MAX_RECIPIENTS)]
+    accepted, _, truncated = sanitize_addresses(exact)
+    assert len(accepted) == _MAX_RECIPIENTS
+    assert truncated is False, "a full-but-complete list is not truncated"
+
+    accepted, _, truncated = sanitize_addresses(
+        exact + ["one-too-many@example.ac.jp"])
+    assert len(accepted) == _MAX_RECIPIENTS
+    assert truncated is True
+    assert "one-too-many@example.ac.jp" not in accepted
+
+
+def test_load_recipients_warns_only_on_real_truncation(tmp_path: Path, caplog):
+    from scripts.recipients import _MAX_RECIPIENTS
+
+    exact = "\n".join(
+        f"person{i:05d}@example.ac.jp" for i in range(_MAX_RECIPIENTS))
+    path = tmp_path / "recipients.txt"
+
+    path.write_text(exact, encoding="utf-8")
+    caplog.clear()
+    assert len(load_recipients(path)) == _MAX_RECIPIENTS
+    assert "truncated" not in caplog.text
+
+    path.write_text(exact + "\nover@example.ac.jp", encoding="utf-8")
+    caplog.clear()
+    assert len(load_recipients(path)) == _MAX_RECIPIENTS
+    assert "truncated" in caplog.text
+
 
 
 def test_load_recipients_empty_when_missing(tmp_path: Path):
@@ -143,3 +253,48 @@ def test_load_recipients_strips_unicode_invisibles(tmp_path: Path):
         "bob@example.org",
         "carol@example.net",
     ]
+
+
+def test_sanitize_rejects_header_parsing_specials_but_keeps_apostrophes():
+    """`_EMAIL_RE` excluded `;,<>` but NOT `"`, `(`, `)` or `:`. A quote
+    is the dangerous one: an Excel/CSV paste yields `"jane@x.jp"`, and a
+    single stray quote made the entire `"; "`-joined BCC parse as ONE
+    quoted address -- fifty recipients collapsing to one, silently.
+
+    The apostrophe must survive: it is valid `atext`, and dropping
+    `o'brien@...` would be the same silent-recipient-loss failure in a
+    different disguise."""
+    accepted, rejected, _ = sanitize_addresses([
+        'a"b@example.ac.jp',            # stray quote
+        '"jane@example.ac.jp"',         # CSV-quoted
+        "x(y)@example.ac.jp",           # comment syntax
+        "group:a@example.ac.jp",        # group syntax
+        "sq[br]@example.ac.jp",         # domain literal chars
+        "back\\slash@example.ac.jp",   # quoted-pair escape
+        "o'brien@example.ac.jp",        # VALID -- must be kept
+        "good@example.ac.jp",
+    ])
+
+    assert accepted == ["o'brien@example.ac.jp", "good@example.ac.jp"]
+    assert len(rejected) == 6
+
+
+def test_a_stray_quote_can_no_longer_collapse_the_bcc_list():
+    """End-to-end proof of the above: previously the quoted entry was
+    accepted, reached `_rfc5322_address_list`'s passthrough, and the
+    serializer closed the quote around the whole remaining list."""
+    import email
+    from scripts.mail.base import DraftEmail
+    from scripts.mail.eml import build_eml
+
+    raw_input = ['a"b@example.ac.jp'] + [
+        f"person{i:02d}@example.ac.jp" for i in range(50)]
+    accepted, rejected, _ = sanitize_addresses(raw_input)
+    assert len(accepted) == 50 and len(rejected) == 1
+
+    msg = email.message_from_bytes(build_eml(DraftEmail(
+        html="<html><body>x</body></html>", subject="t",
+        bcc="; ".join(accepted))).as_bytes())
+
+    assert msg["Bcc"].count("@") == 50, "BCC list collapsed"
+    assert '"' not in msg["Bcc"]

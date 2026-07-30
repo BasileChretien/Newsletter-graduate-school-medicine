@@ -138,3 +138,122 @@ def test_extension_to_mime_lookup_matches_image_magic_formats():
         "stay in sync -- a format the magic-byte check accepts but "
         "the MIME-tag lookup doesn't will degrade Gmail rendering."
     )
+
+
+# ---------- crafted-DOCX hardening (security round) ---------------------
+#
+# Each of these reproduces an exploit that was verified end-to-end against
+# the branch before the gates below were added.
+
+def _docx_with_media(tmp_path, entries: dict[str, bytes]):
+    """A real DOCX with extra `word/media/` members appended."""
+    import zipfile
+    from scripts.config import MERIDIAN_TEMPLATE
+
+    out = tmp_path / "crafted.docx"
+    with zipfile.ZipFile(MERIDIAN_TEMPLATE) as zin, \
+            zipfile.ZipFile(out, "w") as zout:
+        for item in zin.infolist():
+            zout.writestr(item, zin.read(item.filename))
+        for name, data in entries.items():
+            # DEFLATED, so the bomb case actually achieves the
+            # compression ratio a real attacker would use. The default
+            # here is ZIP_STORED, which would leave the "bomb" as large
+            # on disk as in memory and make the test vacuous.
+            zout.writestr(f"word/media/{name}", data,
+                          compress_type=zipfile.ZIP_DEFLATED)
+    return out
+
+
+JPEG_MAGIC = b"\xff\xd8\xff"
+
+
+def test_dangerous_extension_is_rejected_even_with_valid_magic_bytes(tmp_path):
+    """The exploit: magic bytes alone were the only gate, and the DOCX's
+    extension travelled verbatim into the outgoing email's
+    `Content-Disposition: inline; filename=`. A member named
+    `report.hta` starting with the JPEG signature was extracted,
+    attached as `application/octet-stream`, and delivered from the
+    editor's own mailbox to ~50 institutional recipients."""
+    from scripts.image_handler import extract_embedded
+
+    payload = JPEG_MAGIC + b"<script>alert(1)</script>" * 4
+    docx = _docx_with_media(tmp_path, {
+        "quarterly-report.hta": payload,
+        "notes.js": payload,
+        "shortcut.lnk": payload,
+        "legit-photo.jpg": payload,
+    })
+
+    out = extract_embedded(docx, tmp_path / "assets")
+
+    assert "quarterly-report.hta" not in out
+    assert "notes.js" not in out
+    assert "shortcut.lnk" not in out
+    assert "legit-photo.jpg" in out, "a real photo must still come through"
+    # Nothing dangerous may survive on disk either.
+    assert not list((tmp_path / "assets").glob("*.hta"))
+
+
+def test_decompression_bomb_is_refused_before_it_is_written(tmp_path):
+    """A 400 KB DOCX expanded to 400 MB on disk: `copyfileobj` streamed
+    the member out in full and the magic-byte check ran afterwards, so
+    the bytes were already written. In the browser that inflates
+    Pyodide's in-memory filesystem until the tab dies."""
+    from scripts.image_handler import extract_embedded
+
+    bomb = JPEG_MAGIC + b"\x00" * 20_000_000   # compresses ~1000:1
+    docx = _docx_with_media(tmp_path, {"huge.jpg": bomb})
+    assert docx.stat().st_size < 1_000_000, "precondition: small DOCX"
+
+    dest = tmp_path / "assets"
+    out = extract_embedded(docx, dest)
+
+    assert "huge.jpg" not in out
+    written = sum(p.stat().st_size for p in dest.glob("*"))
+    assert written < 5_000_000, f"bomb reached disk: {written} bytes"
+
+
+def test_a_forged_size_header_cannot_smuggle_a_bomb(tmp_path):
+    """The size and ratio gates read the zip's CENTRAL DIRECTORY, i.e.
+    attacker-supplied metadata. A member declaring 1 KB while its
+    deflate stream holds 20 MB passes both gates on paper.
+
+    CPython currently truncates at the declared size and fails the CRC,
+    so the bomb does not land -- but that is an implementation detail of
+    `ZipExtFile`, and the extraction must survive it as a skipped file
+    rather than an unhandled `BadZipFile` reaching the editor."""
+    import struct
+
+    from scripts.image_handler import extract_embedded
+
+    payload = JPEG_MAGIC + b"\x00" * 20_000_000
+    honest = _docx_with_media(tmp_path, {"forged.jpg": payload})
+    raw = bytearray(honest.read_bytes())
+    raw = raw.replace(struct.pack("<I", len(payload)), struct.pack("<I", 1000))
+    forged = tmp_path / "forged.docx"
+    forged.write_bytes(bytes(raw))
+
+    dest = tmp_path / "assets"
+    out = extract_embedded(forged, dest)          # must not raise
+
+    assert "forged.jpg" not in out
+    written = sum(p.stat().st_size for p in dest.glob("*"))
+    assert written < 5_000_000, f"bomb reached disk: {written:,} bytes"
+
+
+def test_the_write_cap_holds_even_if_the_header_gates_are_bypassed(tmp_path):
+    """Directly exercise `_copy_capped`, the gate that does not trust
+    metadata: it counts what was actually written."""
+    import zipfile as zf
+
+    from scripts.image_handler import _copy_capped
+
+    archive = tmp_path / "a.zip"
+    with zf.ZipFile(archive, "w", zf.ZIP_DEFLATED) as z:
+        z.writestr("big.bin", b"\x00" * 5_000_000)
+        z.writestr("small.bin", b"\x00" * 1000)
+
+    with zf.ZipFile(archive) as z:
+        assert _copy_capped(z, "big.bin", tmp_path / "big", 1_000_000) is None
+        assert _copy_capped(z, "small.bin", tmp_path / "small", 1_000_000) == 1000

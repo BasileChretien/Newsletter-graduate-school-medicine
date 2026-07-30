@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MERIDIAN — Newsletter Builder</title>
+<meta name="description" content="Turn a MERIDIAN Word file into a ready-to-send email draft. Runs entirely in your browser.">
+<!-- The page promises that the editor's document is never uploaded. That
+     promise is currently kept by *intent* -- nothing in the code sends it
+     anywhere. This CSP makes it structural: `connect-src` lists the only
+     hosts any script may talk to (the Pyodide runtime and the Python
+     wheels), so even a backdoored dependency has nowhere to POST a DOCX
+     or a recipient list. `form-action 'none'` means the page cannot
+     submit anywhere at all.
+     Self-hosting the runtime would let this collapse to 'self'; until
+     then these three hosts are the trust anchor, and that is the honest
+     description of the guarantee. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+  style-src 'self' 'unsafe-inline';
+  connect-src 'self' https://cdn.jsdelivr.net https://pypi.org https://files.pythonhosted.org;
+  img-src 'self' data: blob:;
+  frame-src blob:;
+  worker-src blob:;
+  base-uri 'none';
+  form-action 'none'">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div>
+      <h1>MERIDIAN</h1>
+      <p class="tagline" data-i18n="tagline">Newsletter of the Graduate School of Medicine – Nagoya University</p>
+    </div>
+    <div class="lang-switch" role="group" aria-label="Language / 言語">
+      <button type="button" data-lang="en" class="is-active" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ja" lang="ja" aria-pressed="false">日本語</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <p class="privacy" data-i18n="privacy">
+    Your Word file is processed entirely inside this browser tab. Nothing is
+    uploaded — there is no server to upload it to.
+  </p>
+
+  <div id="boot" class="boot" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="boot-text" data-i18n="bootStarting">Starting the newsletter engine…</span>
+  </div>
+
+  <form id="builder" hidden>
+
+    <section class="step">
+      <h2><span class="step-num">1</span> <span data-i18n="step1">Choose your Word file</span></h2>
+      <div id="dropzone" class="dropzone" tabindex="0" role="button"
+           aria-describedby="file-hint">
+        <input type="file" id="file" accept=".docx" hidden>
+        <p id="drop-label" data-i18n="dropHere">Drop <code>issue-N.docx</code> here, or click to choose</p>
+        <p id="file-hint" class="hint" data-i18n="fileHint">Only .docx files. The file stays on this device.</p>
+      </div>
+      <p id="file-chosen" class="chosen" role="status" hidden></p>
+      <p id="file-error" class="msg error" role="alert" hidden></p>
+    </section>
+
+    <section class="step">
+      <h2><span class="step-num">2</span> <span data-i18n="step2">Settings</span></h2>
+
+      <div class="field">
+        <label for="issue" data-i18n="issueLabel">Issue number</label>
+        <input type="number" id="issue" min="0" max="999" value="1" required>
+        <p class="hint" data-i18n="issueHint">Used to name the files and to group this issue's photos.</p>
+      </div>
+
+      <div class="field">
+        <label for="bcc" data-i18n="bccLabel">BCC recipients <span class="optional" data-i18n="optional">(optional)</span></label>
+        <textarea id="bcc" rows="3" spellcheck="false"
+                  data-i18n-attr="placeholder:bccPlaceholder"
+                  placeholder="one address per line"></textarea>
+        <p class="hint" data-i18n="bccHint">Pre-fills the BCC field of the draft. These addresses stay on this device and are written only into the draft file you download.</p>
+      </div>
+    </section>
+
+    <section class="step">
+      <button type="submit" id="build" class="primary" disabled>
+        <span data-i18n="buildBtn">Build the newsletter</span>
+      </button>
+      <span id="working" class="working" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span data-i18n="working">Building…</span>
+      </span>
+    </section>
+
+  </form>
+
+  <section id="results" class="results" hidden aria-live="polite">
+    <h2 id="results-heading" tabindex="-1" data-i18n="resultsTitle">Result</h2>
+    <div id="verdict"></div>
+    <dl id="summary" class="summary"></dl>
+    <div id="messages"></div>
+
+    <div id="downloads" class="downloads" hidden>
+      <a id="dl-eml" class="primary" download>
+        <span data-i18n="dlEml">Download the email draft (.eml)</span>
+      </a>
+      <a id="dl-html" class="secondary" download>
+        <span data-i18n="dlHtml">Download the HTML</span>
+      </a>
+      <p class="hint" data-i18n="emlHint">Double-click the .eml file: Outlook opens it as a ready-to-send draft, with the subject, the BCC list and the photos already in place. Add the To: address and press Send.</p>
+    </div>
+
+    <div id="preview-block" hidden>
+      <h3 data-i18n="previewTitle">Preview</h3>
+      <p class="hint" data-i18n="previewHint">This is what recipients will see.</p>
+      <iframe id="preview" data-i18n-attr="title:previewTitle"
+              title="Newsletter preview" sandbox></iframe>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p data-i18n="footer">Runs offline after first load. Nothing is sent anywhere.</p>
+</footer>
+
+<!-- Subresource Integrity on the loader: this page reads unpublished
+     institutional documents, so a compromised or swapped CDN file would
+     be reading them too. The hash pins the exact bytes of pyodide.js
+     v0.29.4. Note the runtime assets it then fetches (wasm, wheels) are
+     not covered by SRI -- this narrows the attack surface, it does not
+     eliminate it. Regenerate the hash if the version changes. -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js"
+        integrity="sha384-wkkA2EvfjhI/Ka1xso+9XYjVf5am63bStLbKX4X5gkFcHcfY5QLUMsFf7AsnoXCU"
+        crossorigin="anonymous"></script>
+<script src="app.js" type="module"></script>
+</body>
+</html>

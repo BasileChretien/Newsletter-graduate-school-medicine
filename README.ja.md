@@ -3,7 +3,7 @@
 [![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![python: 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![tests: 201 passing](https://img.shields.io/badge/tests-201%20passing-brightgreen.svg)](tests/)
+[![tests: 378 passing](https://img.shields.io/badge/tests-378%20passing-brightgreen.svg)](tests/)
 
 > 🇬🇧 [English version](README.md)
 
@@ -65,7 +65,7 @@
 <details>
 <summary><strong>内部構成（開発者・保守担当者向け）</strong></summary>
 
-Python 3.12、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`BeautifulSoup4`、`click`、`pytest`。Outlook 連携は Windows で `pywin32` COM、macOS で AppleScript（`osascript`）、Linux で `xclip` または `wl-copy` を使用します。テストは 21 ファイル・201 件で、パーサ、画像処理、バリデータ、平文変換、メールバックエンド、セキュリティ（受信者検証時の NFKC 正規化と不可視文字の除去、CSS による非表示要素のスクラブ、URL スキームの allowlist）、ビジュアル回帰までを網羅しています。設計、Python 実装、セキュリティ、コード品質、ビジュアル、UX、メール到達性の各観点から査読を計 10 ラウンド実施し、29 件の改修パッケージを適用しました。各変更には少なくとも 1 つの回帰テストを紐づけています。本番タグは `v1.0.1-bundle29` です。
+Python 3.12、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`BeautifulSoup4`、`click`、`pytest`。Outlook 連携は Windows で `pywin32` COM、macOS で AppleScript（`osascript`）、Linux で `xclip` または `wl-copy` を使用します。テストは 28 ファイル・378 件成功（2 件スキップ）で、パーサ、画像処理、バリデータ、平文変換、メールバックエンド、`.eml` 下書き生成、ブラウザ版、セキュリティ（受信者検証時の NFKC 正規化と不可視文字の除去、CSS による非表示要素のスクラブ、URL スキームの allowlist、埋め込み画像のマジックバイト**および拡張子**の検査、実書き込みバイト数で強制する解凍爆弾対策）、ビジュアル回帰までを網羅しています。設計、Python 実装、セキュリティ、コード品質、ビジュアル、UX、メール到達性の各観点から査読を計 10 ラウンド実施し、29 件の改修パッケージを適用しました。各変更には少なくとも 1 つの回帰テストを紐づけています。本番タグは `v1.0.1-bundle29` です。
 
 編集担当としてご利用いただく場合、上記の技術的内容を理解する必要はありません。次の 4 ステップの初期設定だけで使い始められます。
 
@@ -261,6 +261,22 @@ Word file / Wordファイル [issue-3.docx]:        ← Enter キーを押すだ
 ### 宛先リストを保存しておく（任意）
 
 毎号同じ宛先（おおむね 50 名）に送信する場合は、`recipients.example.txt` を `recipients.txt` にコピーし、メールアドレスを 1 行 1 件で記入しておきます。次回以降、Outlook の BCC 欄が自動で入力されます。`recipients.txt` はお使いの PC のみに保存され、GitHub には公開されません。
+
+---
+
+## インストールできない場合は、ブラウザで作成できます
+
+職場の PC の制限でランチャーを実行できない場合や、代理で 1 号だけ担当する場合のために、インストール不要のブラウザ版を用意しています。
+
+1. **[ニュースレター作成ページ](https://basilechretien.github.io/Newsletter-graduate-school-medicine/)** を開きます。
+2. `issue-N.docx` をページ上にドラッグします。
+3. `.eml` ファイルをダウンロードし、ダブルクリックします。件名・BCC・写真がすでに入った送信可能な下書きが Outlook で開きます。宛先（To）を入力して送信してください。
+
+**Word ファイルがアップロードされることはありません。** このページにサーバーは存在せず、変換はすべてご自身のブラウザのタブ内で行われます。入力した BCC アドレスも、ダウンロードする下書きファイルに書き込まれるだけです。
+
+注意点は 2 つあります。初回の読み込みに約 10 秒かかること（エンジンを取得し、以後はキャッシュされます）、そして Apple Mail は `.eml` を閲覧専用で開くため、Mac ではデスクトップ版ランチャーの利用をおすすめすることです。
+
+各機関で公開する手順は [`web/README.md`](web/README.md) をご覧ください。
 
 ---
 

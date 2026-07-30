@@ -104,23 +104,143 @@ def issue_dir(assets_dir: Path, issue: int) -> Path:
     return assets_dir / f"issue-{issue}"
 
 
+# Per-member ceiling on an extracted image, and the compression ratio
+# above which a member is treated as a decompression bomb rather than a
+# photograph. A real institutional photo is well under 2 MB and
+# compresses barely at all inside the DOCX zip (JPEG/PNG are already
+# compressed), so a 100:1 ratio is not something legitimate content
+# reaches. Without these, `word/media/x.jpg` holding 400 MB of zeroes
+# expands from a 400 KB DOCX -- on the CLI that fills the editor's disk
+# and can wedge `publish-images` against GitHub's push limit; in the
+# browser it inflates Pyodide's in-memory filesystem until the tab dies.
+_MAX_EMBEDDED_BYTES = 2_000_000
+_MAX_COMPRESSION_RATIO = 100
+# Ceiling on the total extracted across one DOCX, so a hundred
+# individually-legal members cannot add up to the same problem.
+_MAX_EMBEDDED_TOTAL_BYTES = 50_000_000
+
+
+def _copy_capped(z: zipfile.ZipFile, name: str, target: Path,
+                 limit: int) -> int | None:
+    """Stream one member to `target`, aborting past `limit` bytes.
+
+    Returns the byte count, or None if the cap was exceeded.
+
+    The size and ratio gates in `extract_embedded` read `file_size` and
+    `compress_size` from the zip's central directory -- i.e. from
+    attacker-supplied metadata. CPython does currently cap a member's
+    output at the declared `file_size` and then fail the CRC, so an
+    understated header truncates rather than expands (verified). But
+    that is an implementation detail of `ZipExtFile`, not a guarantee,
+    and a security control resting on one is a control that can be
+    removed by a patch release nobody reads. This enforces the ceiling
+    on bytes we actually wrote, which is true regardless.
+    """
+    written = 0
+    with z.open(name) as src, target.open("wb") as dst:
+        while True:
+            chunk = src.read(64 * 1024)
+            if not chunk:
+                return written
+            written += len(chunk)
+            if written > limit:
+                return None
+            dst.write(chunk)
+
+
 def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
     """Extract images from word/media/ into dest_dir. Return {basename: path}.
 
-    Files whose magic bytes don't match a supported raster format are
-    rejected -- this prevents a crafted DOCX from smuggling SVG, HTML,
-    or executables into the public assets/issue-N/ directory.
+    Three independent gates, because each one alone has been shown to be
+    insufficient:
+
+    1. **Declared size and compression ratio**, checked BEFORE any bytes
+       are written. A zip member is attacker-controlled data and
+       `shutil.copyfileobj` will happily stream 400 MB out of a 400 KB
+       file.
+    2. **Magic bytes**, which reject SVG / HTML / executables whose
+       content is not a supported raster format.
+    3. **File extension**, which must be one this module recognises as
+       an image. Magic bytes alone are NOT enough: the extension is
+       preserved verbatim from the DOCX and travels all the way into
+       the outgoing email's `Content-Disposition: inline; filename=`.
+       A member named `report.hta` whose content begins with the JPEG
+       signature passes gate 2, gets attached as
+       `application/octet-stream`, and turns the newsletter into a
+       delivery vehicle for an executable payload -- sent from the
+       editor's own mailbox, to ~50 institutional recipients, carrying
+       the newsletter's reputation. Gate 3 closes that.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     out: dict[str, Path] = {}
+    total = 0
     with zipfile.ZipFile(docx_path) as z:
-        for name in z.namelist():
+        for info in z.infolist():
+            name = info.filename
             if not name.startswith("word/media/"):
                 continue
             base = Path(name).name
+
+            # Gate 3 first -- it is the cheapest and needs no I/O.
+            if Path(base).suffix.lower() not in _EXT_TO_MIME:
+                log.warning(
+                    "Rejected embedded file %s: %r is not an image "
+                    "extension this toolkit accepts. A file with a "
+                    "non-image extension must never reach a recipient's "
+                    "mailbox as an attachment.",
+                    base, Path(base).suffix,
+                )
+                continue
+
+            # Gate 1 -- refuse before writing anything to disk.
+            if info.file_size > _MAX_EMBEDDED_BYTES:
+                log.warning(
+                    "Rejected embedded file %s: %d bytes exceeds the "
+                    "%d-byte cap. Compress the photo in Word "
+                    "(right-click -> Compress Pictures) and re-run.",
+                    base, info.file_size, _MAX_EMBEDDED_BYTES,
+                )
+                continue
+            ratio = info.file_size / max(info.compress_size, 1)
+            if ratio > _MAX_COMPRESSION_RATIO:
+                log.warning(
+                    "Rejected embedded file %s: compression ratio %.0f:1 "
+                    "looks like a decompression bomb, not a photograph.",
+                    base, ratio,
+                )
+                continue
+            if total + info.file_size > _MAX_EMBEDDED_TOTAL_BYTES:
+                log.warning(
+                    "Stopped extracting at %s: the DOCX's images exceed "
+                    "the %d-byte total cap.",
+                    base, _MAX_EMBEDDED_TOTAL_BYTES,
+                )
+                break
+
             target = dest_dir / base
-            with z.open(name) as src, target.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
+            try:
+                written = _copy_capped(z, name, target, _MAX_EMBEDDED_BYTES)
+            except (zipfile.BadZipFile, OSError, EOFError) as e:
+                # A malformed or truncated member must not abort the whole
+                # build with a traceback -- in the browser that surfaces
+                # to the editor as "a bug in the toolkit". Note a forged
+                # size header lands here: CPython truncates the stream at
+                # the declared length and then fails the CRC.
+                log.warning(
+                    "Rejected embedded file %s: could not be read (%s).",
+                    base, e)
+                target.unlink(missing_ok=True)
+                continue
+            if written is None:
+                log.warning(
+                    "Rejected embedded file %s: it kept producing data "
+                    "past the %d-byte cap, so its declared size was a "
+                    "lie. Treating it as a decompression bomb.",
+                    base, _MAX_EMBEDDED_BYTES)
+                target.unlink(missing_ok=True)
+                continue
+
+            # Gate 2 -- content must actually be a supported raster image.
             if not _is_supported_image(target):
                 log.warning(
                     "Rejected embedded file %s (not a supported image format)",
@@ -128,6 +248,7 @@ def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
                 )
                 target.unlink(missing_ok=True)
                 continue
+            total += target.stat().st_size
             out[base] = target
     return out
 

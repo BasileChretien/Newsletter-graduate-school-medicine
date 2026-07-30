@@ -21,7 +21,7 @@ import click
 
 from scripts import build_template as bt
 from scripts.mail import (
-    ComposeOutcome, compose, detect_default_mail_handler,
+    ComposeOutcome, compose, detect_default_mail_handler, image_mode_key,
     resolve_image_mode, select_backend,
 )
 from scripts.publisher import publish_assets
@@ -38,6 +38,7 @@ from scripts.image_handler import (
 from scripts.inliner import inline
 from scripts.manifest import load_manifest, write_manifest
 from scripts.renderer import attach_image_urls, render
+from scripts.subject import subject_from_masthead
 from scripts.text_utils import sanitize_subject
 from scripts.validator import report, validate
 
@@ -105,6 +106,11 @@ def _friendly_used(used: ComposeOutcome) -> str:
                 "email app. Click in the body and press Ctrl+V (Mac: Cmd+V).")
     if used.backend == "outlook":
         return "Email draft opened in Outlook desktop."
+    if used.backend == "eml":
+        return ("Draft file written next to the preview (issue-N.eml) "
+                "and handed to your default email app. If it didn't "
+                "open by itself, double-click that .eml file -- it is "
+                "a ready-to-send draft with the photos already inside.")
     if used.handler_kind == "apple_mail":
         return "Email draft opened in Apple Mail."
     if used.handler_kind == "thunderbird":
@@ -198,30 +204,46 @@ def _image_mode_blurb(image_mode: str | None) -> str | None:
     return None
 
 
+def _unembedded_blurb(count: int) -> str | None:
+    """Warn when CID mode left photos as URLs nobody will publish.
+
+    In CID mode `all_cmd` skips `publish-images` on purpose, so a photo
+    that was too large to embed points at a file that was never pushed:
+    a broken image for every recipient. Until now the only trace was a
+    `log.warning` inside `cid.py` that scrolls past in the launcher
+    console. The browser build already surfaced this; the CLI is the
+    path that actually sends the newsletter.
+    """
+    if count <= 0:
+        return None
+    # Deliberately does not name a single cause. `count_remote_images`
+    # counts photos over the size cap AND photos that could not be found
+    # on disk, and telling an editor to compress a photo that was
+    # actually missing sends them to fix the wrong thing.
+    return (
+        f"WARNING: {count} photo(s) could not be placed inside the "
+        "email, so they are linked from the web instead -- and in this "
+        "mode nothing uploads them, so recipients will see a broken "
+        "image where those photos should be. The usual causes are a "
+        "photo larger than 2 MB, or a photo the toolkit could not find. "
+        "Fix: in Word, right-click any large photo, choose 'Compress "
+        "Pictures', check every photo still displays, save, and run "
+        "this again."
+    )
+
+
 def _subject_from_masthead(issue: int, masthead: Masthead | None) -> str:
     """Build the email subject from an already-parsed masthead.
 
-    Runs the issue line through `sanitize_subject` so Word-pasted
-    invisibles (ZWSP, NBSP, BOM, RLO, ...) never reach the wire --
-    otherwise the inbox preview displays one string while logs/audit
-    trail show another.
-
-    Defends against a non-string `issue_line` (schema drift / bug)
-    by falling back to the generic subject -- a TypeError here used
-    to short-circuit the validate-before-write guard, so we keep
-    subject derivation total.
+    Thin delegate to `scripts.subject.subject_from_masthead`, which is
+    the single source of truth shared with the browser build. Two
+    implementations of "what is this issue's subject line?" would
+    eventually disagree, and the subject is what recipients see in
+    their inbox preview *and* what the manifest records for the audit
+    trail -- a mismatch between those two is exactly the class of bug
+    `sanitize_subject` was added to prevent.
     """
-    try:
-        issue_line = (masthead.issue_line or "") if masthead else ""
-        issue_line = sanitize_subject(issue_line)
-    except (AttributeError, TypeError) as e:
-        log.warning(
-            "Could not derive subject from masthead (%s); "
-            "falling back to generic subject.", e)
-        issue_line = ""
-    if issue_line:
-        return f"{TITLE} — {issue_line}"
-    return f"{TITLE} — Issue {issue}"
+    return subject_from_masthead(issue, masthead)
 
 
 def _delete_stale_html(out_html: Path) -> None:
@@ -503,15 +525,20 @@ def detect_mail_cmd():
 @click.option("--input", "input_path", default=None,
               type=click.Path(exists=True),
               help="DOCX used to derive a richer subject line.")
-@click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
+@click.option("--backend",
+              type=click.Choice(["auto", "outlook", "default", "eml"]),
               default="auto",
-              help="Override mail-client detection.")
+              help="Override mail-client detection. `eml` writes a "
+                   "ready-to-send draft file next to the preview "
+                   "(dist/issue-N.eml) with the photos embedded, and "
+                   "opens it -- no clipboard, no paste.")
 @click.option("--image-mode", type=click.Choice(["auto", "url", "cid"]),
               default="auto",
-              help=("`auto` (default): CID for Outlook desktop, URL for "
-                    "everything else. `url`: force URL hosting via "
-                    "raw.githubusercontent.com. `cid`: force MIME inline "
-                    "attachments (Outlook only)."))
+              help=("`auto` (default): CID for Outlook desktop and for "
+                    "`--backend=eml`, URL for everything else. `url`: "
+                    "force URL hosting via raw.githubusercontent.com. "
+                    "`cid`: force MIME inline attachments (needs "
+                    "`--backend=outlook` or `--backend=eml`)."))
 @click.option("--output-dir", "output_dir", default=None,
               type=click.Path(file_okay=False, resolve_path=True),
               help="Where `build` wrote the HTML (must match `build`'s "
@@ -544,8 +571,7 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     # actually dispatch to.
     chosen = select_backend(backend, handler)
     resolved_image_mode = resolve_image_mode(
-        image_mode, handler,
-        backend=("outlook" if chosen.name == "outlook" else "default"),
+        image_mode, handler, backend=image_mode_key(chosen),
     )
     if chosen.name == "outlook":
         click.echo(
@@ -568,6 +594,9 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     blurb = _image_mode_blurb(used.image_mode)
     if blurb is not None:
         click.echo(blurb)
+    warn = _unembedded_blurb(used.unembedded_images)
+    if warn is not None:
+        click.echo(click.style(warn, fg="yellow"))
     if recipients:
         click.echo(
             f"BCC pre-filled with {len(recipients)} recipient(s) "
@@ -580,17 +609,22 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
 @click.option("--issue", required=True, type=int)
 @click.option("--no-compose", is_flag=True,
               help="Skip opening the email draft at the end.")
-@click.option("--backend", type=click.Choice(["auto", "outlook", "default"]),
+@click.option("--backend",
+              type=click.Choice(["auto", "outlook", "default", "eml"]),
               default="auto",
-              help="Override mail-client detection for the compose step.")
+              help="Override mail-client detection for the compose step. "
+                   "`eml` writes a ready-to-send draft file "
+                   "(dist/issue-N.eml) with the photos embedded, and "
+                   "opens it -- no clipboard, no paste.")
 @click.option("--image-mode", type=click.Choice(["auto", "url", "cid"]),
               default="auto",
               help=("`auto` (default): pick the best mode for your mail "
-                    "client. Outlook desktop -> CID (photos attached "
-                    "inline via MIME, no GitHub publishing needed). "
-                    "Anything else -> URL (photos hosted on GitHub). "
-                    "`cid`: force CID (Outlook only). `url`: force URL "
-                    "(uploads photos via publish-images first)."))
+                    "client. Outlook desktop (or `--backend=eml`) -> CID "
+                    "(photos attached inline via MIME, no GitHub "
+                    "publishing needed). Anything else -> URL (photos "
+                    "hosted on GitHub). `cid`: force CID (needs "
+                    "`--backend=outlook` or `--backend=eml`). `url`: "
+                    "force URL (uploads photos via publish-images first)."))
 @click.option("--output-dir", "output_dir", default=None,
               type=click.Path(file_okay=False, resolve_path=True),
               help=("Where to write the rendered HTML and extracted "
@@ -632,10 +666,14 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     handler = detect_default_mail_handler()
     chosen = select_backend(backend, handler)
     resolved_image_mode = resolve_image_mode(
-        image_mode, handler,
-        backend=("outlook" if chosen.name == "outlook" else "default"),
+        image_mode, handler, backend=image_mode_key(chosen),
     )
-    if resolved_image_mode == "cid" and chosen.name != "outlook":
+    if resolved_image_mode == "cid" and not chosen.supports_inline_images:
+        # Ask the backend whether it can embed photos rather than
+        # testing `chosen.name != "outlook"` here: that string test was
+        # the round-15 bug in a different disguise, and it would also
+        # have silently rejected the `.eml` backend, which can embed
+        # photos perfectly well.
         # Round-16 python LOW: surface the user-facing CLI label
         # ("default" / "outlook"), not the internal backend ID
         # ("clipboard_mailto") which is opaque to a non-developer.
@@ -643,13 +681,13 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
             "default" if chosen.name == "clipboard_mailto" else chosen.name
         )
         click.echo(
-            "ERROR: --image-mode=cid is only supported with the "
-            "Outlook desktop backend. The toolkit selected "
+            "ERROR: --image-mode=cid needs a backend that can put the "
+            "photos inside the email. The toolkit selected "
             f"--backend={friendly_backend} for this run "
             f"(detected mail app: {handler.name}). Use "
-            "--image-mode=url for the non-Outlook path (photos "
-            "hosted on GitHub), or --image-mode=auto to let the "
-            "toolkit pick.",
+            "--backend=eml to get a ready-to-send draft file with the "
+            "photos embedded, --image-mode=url for the hosted-photo "
+            "path, or --image-mode=auto to let the toolkit pick.",
             err=True,
         )
         sys.exit(2)
@@ -745,6 +783,9 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         blurb = _image_mode_blurb(used.image_mode)
         if blurb is not None:
             click.echo(blurb)
+        warn = _unembedded_blurb(used.unembedded_images)
+        if warn is not None:
+            click.echo(click.style(warn, fg="yellow"))
         if recipients:
             click.echo(
                 f"BCC pre-filled with {len(recipients)} recipient(s) "

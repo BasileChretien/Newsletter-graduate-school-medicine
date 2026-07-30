@@ -2,10 +2,27 @@
 
 Backends are registered in priority order. `compose()` walks them and
 picks the first one whose `matches()` accepts the detected handler AND
-which `is_available()` returns True. To add a new backend (Thunderbird
-XPCOM, Gmail OAuth, SMTP, ...), drop a module into `scripts/mail/`,
-expose a class implementing the `MailBackend` Protocol, and append it
-to `_BACKENDS` -- the dispatcher needs no edits.
+which `is_available()` returns True.
+
+Adding a backend is NOT edit-free, despite what this docstring used to
+claim. Six places currently need touching: `_BACKENDS`, the
+`select_backend` if-chain, the `BackendName` Literal, the two
+`click.Choice` lists in `build_newsletter.py`, and `_friendly_used`.
+The `click.Choice` lists are the ones that go stale silently. If a
+fourth backend arrives, derive the CLI choices and the name lookup from
+`_BACKENDS` (give each backend a `cli_name` and an `auto_selectable`
+flag) rather than extending the chain a fifth time.
+
+Two further requirements for a new backend:
+  * Declare `supports_inline_images` -- the CID feasibility check reads
+    it, and inferring capability from `name` at each call site is what
+    drifted apart in round 15.
+  * Keep OS-specific imports FUNCTION-LOCAL. `scripts.webapp` imports
+    this package inside Pyodide, where `win32com` and `winreg` do not
+    exist; a module-level import would break the browser build, and the
+    bundle-drift test would not catch it because the bundle would be
+    perfectly current, just broken. Pinned by
+    `tests/test_webapp.py::test_webapp_imports_without_os_specific_modules`.
 
 Public API:
     detect_default_mail_handler() -> MailHandler
@@ -25,12 +42,15 @@ from pathlib import Path
 from typing import Literal
 
 from scripts.mail.base import DraftEmail, MailBackend, MailHandler
-from scripts.mail.cid import InlineImage, attach_inline_images
+from scripts.mail.cid import (
+    InlineImage, attach_inline_images, count_remote_images,
+)
 from scripts.mail.clipboard import copy_html_to_clipboard
 from scripts.mail.clipboard_mailto import (
     ClipboardMailtoBackend, compose_via_default,
 )
 from scripts.mail.detect import detect_default_mail_handler
+from scripts.mail.eml import EmlBackend, build_eml, eml_path_for, write_eml
 from scripts.mail.outlook import OutlookBackend, compose_outlook
 from scripts.recipients import load_recipients
 
@@ -69,6 +89,14 @@ class ComposeOutcome:
     handler_kind: str
     fell_back_from: str | None = None
     image_mode: str | None = None
+    # Photos CID mode declined to embed (over the per-image cap, or
+    # unresolvable), so they remain `https://` references. In CID mode
+    # `all_cmd` deliberately skips `publish-images`, which means those
+    # URLs point at files that were never pushed -- a broken image for
+    # every recipient. The browser build already warned about this; the
+    # CLI had the identical hazard and only a `log.warning` deep in
+    # `cid.py`, so the count is surfaced here for both.
+    unembedded_images: int = 0
 
     @property
     def is_fallback(self) -> bool:
@@ -128,16 +156,43 @@ class ComposeOutcome:
         return self._format_legacy().startswith(prefix)
 
 
+# The universal fallback. Named explicitly rather than addressed as
+# `_BACKENDS[-1]`: with only two entries the positional form was
+# harmless, but it turns "append a new backend to the registry" into a
+# silent redefinition of what the auto-path falls back to.
+_FALLBACK_BACKEND: MailBackend = ClipboardMailtoBackend()
+
 # Registry: ordered, priority high-to-low. The dispatcher iterates and
 # stops at the first backend whose `matches(handler)` returns True AND
 # whose `is_available()` returns True.
 _BACKENDS: list[MailBackend] = [
-    OutlookBackend(),         # Windows + Outlook desktop -- rich HTML draft
-    ClipboardMailtoBackend(), # universal fallback
+    OutlookBackend(),      # Windows + Outlook desktop -- rich HTML draft
+    EmlBackend(),          # explicit `--backend=eml` only; matches() is False
+    _FALLBACK_BACKEND,     # universal fallback
 ]
 
+# Backends that can embed photos as MIME parts. Derived from the
+# registry rather than hand-listed so a new CID-capable backend is
+# picked up by `resolve_image_mode` automatically.
+_CID_CAPABLE_NAMES: frozenset[str] = frozenset(
+    b.name for b in _BACKENDS if b.supports_inline_images
+)
 
-BackendName = Literal["auto", "outlook", "default"]
+
+BackendName = Literal["auto", "outlook", "default", "eml"]
+
+
+def image_mode_key(chosen: MailBackend) -> str:
+    """Map a chosen backend to the vocabulary `resolve_image_mode` speaks.
+
+    `resolve_image_mode`'s `backend` argument is CLI-level
+    (`"auto"` / `"outlook"` / `"default"` / `"eml"`), while the
+    dispatcher works in backend identities (`"clipboard_mailto"`).
+    Every call site needs the same translation, so it lives here once
+    instead of being re-spelled as an inline conditional in three
+    files -- which is how the two paths drifted apart in round 15.
+    """
+    return chosen.name if chosen.name in _CID_CAPABLE_NAMES else "default"
 
 
 def select_backend(name: BackendName, handler: MailHandler) -> MailBackend:
@@ -160,13 +215,18 @@ def select_backend(name: BackendName, handler: MailHandler) -> MailBackend:
             if backend.matches(handler) and backend.is_available():
                 return backend
         # Universal fallback always matches; ClipboardMailtoBackend wins.
-        return _BACKENDS[-1]
+        # `EmlBackend.matches()` is False, so `auto` never lands there --
+        # `.eml` is an explicit choice, never a surprise.
+        return _FALLBACK_BACKEND
     if name == "outlook":
         return next(b for b in _BACKENDS if b.name == "outlook")
+    if name == "eml":
+        return next(b for b in _BACKENDS if b.name == "eml")
     if name == "default":
         return next(b for b in _BACKENDS if b.name == "clipboard_mailto")
     raise ValueError(
-        f"backend must be 'auto', 'outlook' or 'default' -- got {name!r}")
+        f"backend must be 'auto', 'outlook', 'eml' or 'default' -- "
+        f"got {name!r}")
 
 
 def resolve_image_mode(image_mode: str, handler: MailHandler,
@@ -180,7 +240,8 @@ def resolve_image_mode(image_mode: str, handler: MailHandler,
     HIGH 1 ("resolution-logic divergence").
 
     The rule:
-      * `auto` + the chosen backend will be Outlook  -> `cid`
+      * `auto` + the chosen backend can embed images -> `cid`
+        (that means Outlook desktop, or an explicit `--backend=eml`)
       * `auto` + anything else                       -> `url`
       * explicit `cid` / `url`                       -> passthrough
 
@@ -199,12 +260,12 @@ def resolve_image_mode(image_mode: str, handler: MailHandler,
             f"image_mode must be 'url', 'cid', or 'auto' -- got "
             f"{image_mode!r}"
         )
-    # auto: outlook gets cid, anyone else url.
-    will_use_outlook = (
-        backend == "outlook"
+    # auto: a CID-capable backend gets cid, anyone else url.
+    will_embed_images = (
+        backend in _CID_CAPABLE_NAMES
         or (backend == "auto" and handler.is_outlook_desktop)
     )
-    return "cid" if will_use_outlook else "url"
+    return "cid" if will_embed_images else "url"
 
 
 def compose(html: str, *, subject: str, backend: str = "auto",
@@ -223,15 +284,17 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     Image-handling modes (`image_mode`):
 
     * `"auto"` (default, **Phase 2**) -- pick the best mode for the
-      detected backend. Outlook desktop -> `"cid"` (most robust against
-      corporate filters that quarantine `raw.githubusercontent.com`,
+      chosen backend. A backend that can embed photos as MIME parts
+      (`supports_inline_images`: Outlook desktop, or an explicit
+      `--backend=eml`) -> `"cid"`, which is the most robust against
+      corporate filters that quarantine `raw.githubusercontent.com`
       and removes the requirement for the editor to have a GitHub
-      account). Anything else -> `"url"` (CID requires Outlook COM
-      to attach files; clipboard / mailto can't do that).
+      account. Anything else -> `"url"` (the clipboard / mailto path
+      has nowhere to put an attachment).
     * `"cid"` -- explicit CID. HTML images that resolve to local
       files under `asset_dir` are CID-rewritten and attached to the
-      message via MIME `multipart/related`. Requires the Outlook
-      backend; raises `ValueError` otherwise.
+      message via MIME `multipart/related`. Requires a backend whose
+      `supports_inline_images` is True; raises `ValueError` otherwise.
     * `"url"` -- explicit URL. HTML's `<img src="https://...">`
       references are sent as-is; recipients' clients fetch images at
       display time. The pre-Phase-1 default; useful for forks at
@@ -260,11 +323,11 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     # box where Outlook would have been preferred but is unavailable
     # still resolves to URL (matching the real dispatch).
     image_mode = resolve_image_mode(
-        image_mode, handler,
-        backend=("outlook" if chosen.name == "outlook" else "default"),
+        image_mode, handler, backend=image_mode_key(chosen),
     )
 
     inline_images: tuple[InlineImage, ...] = ()
+    unembedded = 0
     # Round-12 architect HIGH 2: keep the un-rewritten URL HTML around
     # so that if the Outlook backend fails AND we auto-fall-back to
     # ClipboardMailto, the recipient doesn't paste a `<img src="cid:..."`
@@ -272,12 +335,13 @@ def compose(html: str, *, subject: str, backend: str = "auto",
     # fallback path receives the original URL HTML.
     original_url_html = html
     if image_mode == "cid":
-        if chosen.name != "outlook":
+        if not chosen.supports_inline_images:
             raise ValueError(
-                "image_mode='cid' is only supported with the Outlook "
-                f"desktop backend, but {chosen.name!r} was selected. "
-                "Use --backend=outlook (or --image-mode=url for the "
-                "non-Outlook path)."
+                "image_mode='cid' needs a backend that can embed "
+                "photos as MIME parts, but "
+                f"{chosen.name!r} was selected. Use --backend=outlook "
+                "(Outlook desktop), --backend=eml (writes a .eml draft "
+                "file), or --image-mode=url for the hosted-photo path."
             )
         if asset_dir is None:
             raise ValueError(
@@ -285,8 +349,10 @@ def compose(html: str, *, subject: str, backend: str = "auto",
                 "(the local directory holding the issue's photos)."
             )
         html, inline_images = attach_inline_images(html, asset_dir)
-        log.info("CID mode: %d inline image(s) prepared for attachment.",
-                 len(inline_images))
+        unembedded = count_remote_images(html)
+        log.info("CID mode: %d inline image(s) prepared for attachment, "
+                 "%d left as remote URL(s).",
+                 len(inline_images), unembedded)
 
     draft = DraftEmail(
         html=html, subject=subject,
@@ -325,7 +391,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             preview_path=preview_path,
             handler=handler,
         )
-        fallback = _BACKENDS[-1]
+        fallback = _FALLBACK_BACKEND
         fallback.compose(fallback_draft)
         return ComposeOutcome(
             backend=fallback.name,
@@ -341,21 +407,27 @@ def compose(html: str, *, subject: str, backend: str = "auto",
         backend=chosen.name,
         handler_kind=handler.kind,
         image_mode=image_mode,
+        unembedded_images=unembedded,
     )
 
 
 __all__ = [
     "ComposeOutcome",
     "DraftEmail",
+    "EmlBackend",
     "MailBackend",
     "MailHandler",
+    "build_eml",
     "compose",
     "compose_outlook",
     "compose_via_default",
     "copy_html_to_clipboard",
     "detect_default_mail_handler",
+    "eml_path_for",
+    "image_mode_key",
     "resolve_image_mode",
     "select_backend",
+    "write_eml",
 ]
 # `load_recipients` is intentionally NOT re-exported -- it's not a
 # mail-backend concern. New code imports from `scripts.recipients`.
