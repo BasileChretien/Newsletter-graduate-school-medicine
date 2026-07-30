@@ -189,9 +189,15 @@ def test_hidden_elements_are_not_defeated_by_a_display_rule():
     css = (REPO_ROOT / "web" / "style.css").read_text(encoding="utf-8")
 
     # Classes on elements that are toggled via the `hidden` attribute.
-    hidden_tags = re.findall(r"<[^>]*\bhidden\b[^>]*>", html)
+    # Scanned one tag at a time: a pattern that walks past `>` merges a
+    # tag with the one after it and collects the neighbour's classes.
+    # Within a tag, `hidden` must be a standalone attribute -- a bare
+    # `\bhidden\b` also matches `aria-hidden="true"`, because `-` counts
+    # as a word boundary, which pulled in `.spinner`.
     hidden_classes: set[str] = set()
-    for tag in hidden_tags:
+    for tag in re.findall(r"<[^>]+>", html):
+        if not re.search(r"(?<![\w-])hidden(?=[\s=>/])", tag):
+            continue
         m = re.search(r'class="([^"]+)"', tag)
         if m:
             hidden_classes.update(m.group(1).split())
