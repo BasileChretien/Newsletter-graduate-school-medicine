@@ -242,3 +242,69 @@ def test_report_contains_size_and_counts():
     assert "Size:" in text
     assert "Images:" in text
     assert "Links:" in text
+
+
+# ---------------------------------------------------------------------
+# Placeholder detection: reported as "[date] is not highlighted in the
+# preview", which turned out to be the validator never reporting it.
+# ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("token", [
+    "[date]",                        # the reported miss
+    "[handle]",
+    "[inquiry@med.nagoya-u.ac.jp]",  # example address in the template
+    "[joint research / student exchange / joint degree]",
+    "[X]",                           # single character inside
+    "[Author(s)]",                   # these already worked
+    "[YYYY/MM/DD]",
+    "[Paper Title]",
+])
+def test_unfilled_placeholders_are_reported_whatever_their_case(token):
+    """`[A-Z]` required an uppercase ASCII first character, so every
+    lowercase placeholder was invisible: no reminder, and no highlight
+    in the preview. `[A-Z]` plus `{1,60}` also demanded two characters
+    inside, which is why `[X]` was missed too."""
+    from scripts.validator import PLACEHOLDER_RE
+    assert PLACEHOLDER_RE.fullmatch(token), f"{token} would go unreported"
+
+
+@pytest.mark.parametrize("token", ["[1]", "[12]", "[2023]", "[1-3]", "[42]"])
+def test_numbered_citations_are_not_mistaken_for_placeholders(token):
+    """The counterweight to the fix above. A newsletter carrying a
+    reference list would otherwise flag every citation, burying the real
+    placeholders the reminder exists to surface -- and, now that the
+    preview highlights them, covering the document in false marks."""
+    from scripts.validator import PLACEHOLDER_RE
+    assert not PLACEHOLDER_RE.fullmatch(token), f"{token} is a citation"
+
+
+def test_a_japanese_placeholder_would_be_caught():
+    """The template is bilingual. It uses no Japanese placeholder today,
+    so this guards a future one rather than current behaviour -- but
+    silently missing it is the exact failure just fixed, and an
+    ASCII-only rule would reintroduce it."""
+    from scripts.validator import PLACEHOLDER_RE
+    assert PLACEHOLDER_RE.fullmatch("[\u65e5\u4ed8]")
+
+
+def test_the_shipped_template_has_no_unreported_placeholders():
+    """The regression that matters: nine placeholders in the template
+    the editor was never told about. Scans the DOCX itself rather than a
+    fixture, so adding a lowercase placeholder to the template in future
+    fails here instead of shipping unnoticed."""
+    import re
+    import zipfile
+
+    from scripts.config import MERIDIAN_TEMPLATE
+    from scripts.validator import PLACEHOLDER_RE
+
+    with zipfile.ZipFile(MERIDIAN_TEMPLATE) as z:
+        xml = b"".join(z.read(n) for n in z.namelist()
+                       if n.startswith("word/") and n.endswith(".xml"))
+    text = re.sub(rb"<[^>]+>", b"", xml).decode("utf-8", "replace")
+
+    every_token = set(re.findall(r"\[[^\[\]]{1,60}\]", text))
+    # Every bracket token in the template is a placeholder: it ships
+    # unfilled by definition.
+    missed = {t for t in every_token if not PLACEHOLDER_RE.fullmatch(t)}
+    assert not missed, f"unreported placeholders in the template: {sorted(missed)}"

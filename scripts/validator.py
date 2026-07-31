@@ -25,14 +25,37 @@ _HEAD_WORKERS = 8
 _HEAD_TIMEOUT = 3.0
 
 
-# Matches typical leftover placeholder text like [Author(s)],
-# [YYYY/MM/DD], [Country], [Paper Title]. The pattern is intentionally
-# broad -- it catches every unfilled placeholder in the template -- so
-# legitimate scholarly citations like `[Fig. 1]` or `[J Med Chem 2023]`
-# may be flagged too. Acceptable trade-off: validator output now says
-# "Reminder: …review before sending", not "ERROR". False positives in
-# real citations are easy for the editor to dismiss visually.
-PLACEHOLDER_RE = re.compile(r"\[[A-Z][^\[\]]{1,60}\]")
+# Matches leftover placeholder text like [Author(s)], [YYYY/MM/DD],
+# [date], [Country], [X]. Intentionally broad -- it must catch every
+# unfilled placeholder in the template -- so legitimate scholarly
+# citations like `[Fig. 1]` or `[J Med Chem 2023]` are flagged too.
+# Acceptable trade-off: this is a "Reminder: …review before sending",
+# not an ERROR, and a false positive is easy to dismiss visually.
+#
+# It was NOT broad enough, and the gap was invisible precisely because
+# what it missed never appeared in the output at all. Two defects, both
+# surfacing from one report -- "[date] is not highlighted in the
+# preview":
+#
+#   1. `[A-Z]` required the first character inside the brackets to be
+#      an uppercase ASCII letter, so `[date]`, `[handle]` and
+#      `[inquiry@med.nagoya-u.ac.jp]` were never reported.
+#   2. `[A-Z]` followed by `{1,60}` required at least TWO characters
+#      inside, so `[X]` was missed as well.
+#
+# Nine unfilled placeholders in the shipped template went unreported
+# because of this: no reminder for the editor, and -- once the preview
+# began highlighting -- no highlight either.
+#
+# The lookahead now requires at least one LETTER inside, which is what
+# separates a placeholder from a citation: `[1]`, `[12]`, `[2023]` and
+# `[1-3]` are numbered references and must stay unflagged, or a
+# reference list would bury the real placeholders this is meant to
+# surface. `[^\W\d_]` is any Unicode letter rather than ASCII only, so a
+# Japanese placeholder like `[日付]` is caught too -- the template is
+# bilingual and does not use one today, but silently missing it later is
+# the same failure being fixed here.
+PLACEHOLDER_RE = re.compile(r"\[(?=[^\[\]]*[^\W\d_])[^\[\]]{1,60}\]")
 # Tokens that mean the masthead's `VOL. XX | ISSUE NO. XX | MONTH YEAR`
 # placeholders weren't filled in. If any of these survive into the
 # rendered HTML, the recipient's inbox will preview a "broken send"
