@@ -9,6 +9,7 @@ to ~50 institutional recipients, so it inherits the newsletter's trust.
 
 from __future__ import annotations
 
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -131,7 +132,10 @@ def test_the_validator_hard_blocks_an_unsafe_scheme_it_can_see():
 
 
 @pytest.mark.parametrize("href", [
-    "java​script:alert(1)",      # zero-width space inside the scheme
+    # Written as an escape on purpose: a literal U+200B here would be
+    # invisible to a reviewer, which is the exact property the test
+    # is about.
+    "java​script:alert(1)",     # zero-width space inside the scheme
     "\x01javascript:alert(1)",        # leading control character
     "  javascript:alert(1)",          # leading whitespace
     "ｊａｖａｓｃｒｉｐｔ:alert(1)",
@@ -213,3 +217,82 @@ def test_an_absurdly_long_section_number_does_not_crash(tmp_path):
     body = (f'<w:p><w:r><w:t>{"9" * 5000}. Boom</w:t></w:r></w:p>'
             "<w:p><w:r><w:t>Body.</w:t></w:r></w:p>")
     parse(_docx(tmp_path, body))   # must not raise
+
+
+# ---------------------------------------------------------------------
+# Round-19: findings from the PR review of the tracked-changes traversal
+# ---------------------------------------------------------------------
+
+def test_nested_tracked_changes_do_not_grow_the_call_stack():
+    """`_iter_content_children` walks an explicit stack, not the C one.
+
+    The review flagged this as a `RecursionError` of the same shape as
+    the `w:vMerge` chain. It is not, and the difference is worth
+    recording: libxml2 refuses documents nested deeper than 256 elements
+    and python-docx does not pass `XML_PARSE_HUGE`, so the deepest
+    `w:ins` chain that can reach this function is 254 -- well inside
+    Python's limit. `_tc_above` recursion, by contrast, scales with the
+    number of sibling ROWS, which no nesting cap bounds at all.
+
+    So this pins the property rather than a crash: the traversal must
+    survive far more nesting than the parser can currently deliver, so
+    that the guarantee does not silently depend on an undocumented
+    default of a transitive dependency.
+    """
+    from docx.oxml.parser import parse_xml
+
+    from scripts.docx_parser import _iter_content_children
+
+    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    depth = 254  # the deepest python-docx will actually parse, measured
+    xml = (f"<w:p {ns}>" + "<w:ins>" * depth
+           + "<w:r><w:t>payload</w:t></w:r>"
+           + "</w:ins>" * depth + "</w:p>")
+
+    children = list(_iter_content_children(parse_xml(xml)))
+    assert len(children) == 1
+
+    # And the same walk with a recursion limit far below the nesting
+    # depth: a recursive implementation cannot pass this, an iterative
+    # one does not notice.
+    limit = sys.getrecursionlimit()
+    try:
+        sys.setrecursionlimit(60)
+        assert len(list(_iter_content_children(parse_xml(xml)))) == 1
+    finally:
+        sys.setrecursionlimit(limit)
+
+
+def test_total_cell_budget_is_actually_enforced():
+    """`MAX_TABLE_ROWS` and `MAX_TABLE_COLS` bound each dimension
+    separately, so on their own they admit 500 x 64 = 32,000 cells --
+    more than the 20,000 total the module declares. The constant was
+    defined and never read, which is worse than not declaring it: it
+    reads as a guarantee nobody was providing.
+
+    Cost is per cell, not per row or per column -- each one runs
+    `paragraph_to_html` over its paragraphs.
+    """
+    from docx.oxml.parser import parse_xml
+    from docx.table import Table
+
+    from scripts.docx_parser import (
+        MAX_TABLE_CELLS_TOTAL,
+        MAX_TABLE_COLS,
+        MAX_TABLE_ROWS,
+        _table_to_block,
+    )
+
+    assert MAX_TABLE_ROWS * MAX_TABLE_COLS > MAX_TABLE_CELLS_TOTAL, (
+        "this test is meaningless unless the per-dimension caps can "
+        "exceed the total on their own")
+
+    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    row = "<w:tr>" + "<w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc>" * 64 + "</w:tr>"
+    tbl = parse_xml(f"<w:tbl {ns}>" + row * MAX_TABLE_ROWS + "</w:tbl>")
+
+    block = _table_to_block(Table(tbl, None))
+    total = sum(len(r) for r in block.rows)
+    assert total <= MAX_TABLE_CELLS_TOTAL, (
+        f"emitted {total} cells against a declared cap of "
+        f"{MAX_TABLE_CELLS_TOTAL}")

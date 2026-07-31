@@ -243,10 +243,28 @@ def _iter_content_children(element):
     which means nobody had decided it, and the next person to widen the
     traversal could easily have started publishing struck-out text.
     """
-    for child in element.iterchildren():
+    # Iterative rather than recursive, on an explicit stack. Nested
+    # wrappers are bounded today -- libxml2 refuses documents deeper than
+    # 256 elements and python-docx does not pass `XML_PARSE_HUGE`, so the
+    # deepest `w:ins` chain that can reach this function is 254, measured
+    # -- but that bound is an undocumented default of a transitive
+    # dependency, not a decision this file made. Growing on the heap
+    # instead of the C call stack means it stays correct if anyone ever
+    # sets `huge_tree`.
+    #
+    # Note this is NOT the same situation as `_row_cells`: that recursion
+    # (`_tc_above`) scales with the number of sibling ROWS, which no
+    # nesting cap bounds, which is why a ~3000-row `w:vMerge` chain really
+    # did raise `RecursionError`.
+    stack = [element.iterchildren()]
+    while stack:
+        child = next(stack[-1], None)
+        if child is None:
+            stack.pop()
+            continue
         tag = child.tag
         if tag in (qn("w:ins"), qn("w:moveTo")):
-            yield from _iter_content_children(child)
+            stack.append(child.iterchildren())
         elif tag in (qn("w:del"), qn("w:moveFrom")):
             continue
         else:
@@ -449,15 +467,24 @@ def _row_cells(row) -> list:
 # ---------- table → block ----------
 def _table_to_block(table: Table) -> TableBlock:
     rows_out: list[tuple[str, ...]] = []
+    # The row and column caps bound each dimension separately, so on
+    # their own they still admit 500 x 64 = 32,000 cells -- more than the
+    # 20,000 total this file declares. The total is the one that matters:
+    # cost is per cell (each runs `paragraph_to_html` over its
+    # paragraphs), not per row or per column.
+    budget = MAX_TABLE_CELLS_TOTAL
     for row in table.rows[:MAX_TABLE_ROWS]:
+        if budget <= 0:
+            break
         cells = []
-        for cell in _row_cells(row):
+        for cell in _row_cells(row)[:budget]:
             cell_html_parts = []
             for p in cell.paragraphs:
                 ph = paragraph_to_html(p)
                 if ph:
                     cell_html_parts.append(ph)
             cells.append("<br>".join(cell_html_parts))
+        budget -= len(cells)
         rows_out.append(tuple(cells))
     # First row is header if all cells are short labels (heuristic: <= 30 chars
     # and bold dominant) — for safety we say it's a header.
