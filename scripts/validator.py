@@ -10,7 +10,7 @@ from pathlib import Path
 
 from scripts.config import GMAIL_CLIP_BYTES
 from scripts.html_utils import parse_html, remove_hidden_elements
-from scripts.text_utils import normalize_for_match
+from scripts.text_utils import is_safe_url_scheme, normalize_for_match
 
 log = logging.getLogger(__name__)
 
@@ -152,10 +152,20 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     img_urls = tuple(
         img["src"] for img in soup.find_all("img") if img.get("src")
     )
-    anchor_urls = tuple(
-        a["href"] for a in soup.find_all("a")
-        if a.get("href", "").startswith(("http://", "https://"))
+    # Every anchor, not just the http(s) ones. Filtering here was a
+    # blind spot rather than a filter: a DOCX carrying six links with
+    # `javascript:` / `file://` / `data:` targets produced a report
+    # reading "Links: 1 (0 broken)", and the manifest recorded the same
+    # count -- so the audit trail actively asserted the message was
+    # clean. The renderer now drops unsafe schemes, and this reports
+    # what it dropped so the editor learns their document contained
+    # one instead of silently losing a link they meant to keep.
+    all_anchors = tuple(
+        a["href"] for a in soup.find_all("a") if a.get("href")
     )
+    anchor_urls = tuple(u for u in all_anchors if is_safe_url_scheme(u))
+    unsafe_anchors = tuple(u for u in all_anchors if not is_safe_url_scheme(u))
+    dropped_links = soup.select("span.meridian-dropped-link")
 
     broken_images: list[str] = []
     broken_anchors: list[str] = []
@@ -170,6 +180,29 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
 
     warnings: list[str] = []
     errors: list[str] = []
+
+    if dropped_links:
+        warnings.append(
+            f"{len(dropped_links)} link(s) in your Word file pointed "
+            "somewhere this toolkit will not send to recipients, so the "
+            "wording was kept but the link itself was removed. Only web "
+            "addresses (http, https) and email addresses (mailto) are "
+            "sent. The addresses that were removed are listed above in "
+            "this window, on the lines starting \"Dropped a link\". If "
+            "one of them was genuine, re-add it in Word as a normal web "
+            "address."
+        )
+    if unsafe_anchors:
+        # Belt and braces: if an unsafe scheme ever reaches the rendered
+        # HTML despite the renderer's guard, block the send rather than
+        # warn. This is the last gate before ~50 institutional mailboxes.
+        errors.append(
+            f"{len(unsafe_anchors)} link(s) in the built email point to "
+            f"an address type that is not safe to send "
+            f"({', '.join(u[:60] for u in unsafe_anchors[:3])}). This is "
+            "a bug in the toolkit rather than something you did -- please "
+            "report it, and do not send this issue."
+        )
 
     if size > GMAIL_CLIP_BYTES:
         warnings.append(

@@ -44,6 +44,7 @@ import re
 from bs4 import BeautifulSoup, NavigableString
 
 from scripts.html_utils import parse_html, remove_hidden_elements
+from scripts.text_utils import SAFE_URL_SCHEMES, is_safe_url_scheme
 
 
 _BLOCK_TAGS: frozenset[str] = frozenset({
@@ -58,12 +59,12 @@ _DROP_TAGS: frozenset[str] = frozenset({
     "script", "style", "head", "meta", "link",
 })
 
-# URL schemes safe to surface to plaintext readers. Anything outside
-# this set is dropped (the link's label survives, the URL doesn't) so
-# `javascript:` / `data:` / `file:` / `tel:` / `vbscript:` / etc.
-# can't be smuggled. The check is case-INsensitive so `HTTPS://...` is
-# accepted even though `_SAFE_URL_SCHEMES` is lowercase.
-_SAFE_URL_SCHEMES: tuple[str, ...] = ("http://", "https://", "mailto:")
+# The scheme allowlist now lives in `scripts.text_utils` so the HTML
+# part and the plaintext part cannot diverge. They did: this module
+# stripped `file://` while the HTML sibling shipped it, which meant a
+# plaintext client, an archive review and a DLP scan all saw a clean
+# message while the rendered one carried the hostile target.
+_SAFE_URL_SCHEMES = SAFE_URL_SCHEMES
 
 # Heading + sub-heading markers chosen to read well in plaintext AND to
 # clearly look heading-shaped to spam-filter heuristics that score
@@ -116,14 +117,15 @@ def _to_crlf(s: str) -> str:
 
 
 def _is_safe_scheme(href: str) -> bool:
-    """Case-insensitive scheme allowlist check (round-10 security M3).
+    """Thin delegate to `scripts.text_utils.is_safe_url_scheme`.
 
-    Lowercases the href once before matching against the lowercased
-    scheme tuple so `HTTPS://example.com` is accepted as legitimate
-    while `Javascript:alert(1)` and friends still get dropped. Uses
-    `_SAFE_URL_SCHEMES` lowercase as the source of truth.
+    Kept as a name because this module's tests reference it. The shared
+    implementation is strictly stronger than the one that lived here: it
+    normalizes (NFKC), strips invisibles and control characters, and
+    then compares, so `java<ZWSP>script:` and `javascript:` are
+    rejected where a bare `.lower().startswith()` accepted them.
     """
-    return href.lower().startswith(_SAFE_URL_SCHEMES)
+    return is_safe_url_scheme(href)
 
 
 def _rewrite_headings(soup: BeautifulSoup) -> None:

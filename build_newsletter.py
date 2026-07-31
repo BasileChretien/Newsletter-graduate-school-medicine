@@ -289,7 +289,33 @@ def _build_pipeline(input_path: Path, issue: int, *,
     out_html = dist_dir / f"issue-{issue}.html"
 
     # 1) Parse DOCX
-    newsletter = parse(input_path)
+    #
+    # Anything a DOCX can be wrong about surfaces here, and this is the
+    # last place it can be turned into a sentence an editor can act on.
+    # Unguarded, the launcher printed raw `lxml` / `docx.oxml`
+    # tracebacks -- for a malformed archive, a broken internal
+    # relationship, an entity-expansion refusal, a deeply merged table,
+    # even an ordinary single-column first table. The browser build
+    # already caught this (`scripts/webapp.py`); the CLI did not, which
+    # is the path every current editor actually uses.
+    #
+    # `_delete_stale_html` matters as much as the message: without it a
+    # crash leaves LAST quarter's `dist/issue-N.html` on disk, and the
+    # obvious next move for a confused editor is to double-click it.
+    try:
+        newsletter = parse(input_path)
+    except Exception as e:  # noqa: BLE001 -- any parse failure is editorial
+        log.debug("parse(%s) failed", input_path, exc_info=True)
+        click.echo(click.style(
+            "ERROR: your Word file could not be read. This usually means "
+            "the file is damaged, password-protected, still downloading, "
+            "or was saved in a format the toolkit can't read (a renamed "
+            ".doc, for example). Open it in Microsoft Word, use "
+            "File > Save As to save a fresh .docx, and try again.\n"
+            f"Technical detail for the maintainer: {type(e).__name__}: {e}",
+            fg="red"))
+        _delete_stale_html(out_html)
+        return BuildResult(1, "", out_html)
     log.info("Parsed %d sections", len(newsletter.sections))
 
     # Round-17 production bug: if the parser produced ZERO sections
