@@ -1,10 +1,13 @@
 """The CLI must not claim a BCC list was loaded when it was not.
 
 `ClipboardMailtoBackend` builds `mailto:?subject=...` and never reads
-`draft.bcc` -- a `mailto:` URL cannot carry 50 addresses (Windows caps
-the URI around 2 KB, and handlers vary in what they honour). But the CLI
-printed "BCC pre-filled with N recipient(s)" whenever `recipients.txt`
-was non-empty, regardless of backend. That is the default path for every
+`draft.bcc`, so BCC does not arrive on that path at all. RFC 6068 does
+permit a `Bcc` field in a `mailto:` URI (RFC 2368 was the version that
+prohibited it), but it is not a *reliable* carrier for ~50 addresses:
+Windows caps the URI around 2 KB, handlers differ in what they honour,
+and RFC 6068 itself warns the addresses may leak to other recipients.
+The CLI nonetheless printed "BCC pre-filled with N recipient(s)"
+whenever `recipients.txt` was non-empty, regardless of backend. That is the default path for every
 macOS, Linux, Thunderbird and webmail editor.
 
 The recovery an editor reaches for when they find BCC empty is the
