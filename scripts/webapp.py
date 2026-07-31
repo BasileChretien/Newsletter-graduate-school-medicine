@@ -29,7 +29,6 @@ mechanism changes.
 
 from __future__ import annotations
 
-import base64
 import logging
 import re
 import shutil
@@ -43,7 +42,7 @@ from scripts.docx_parser import ImageRef, parse
 from scripts.html_utils import parse_html
 from scripts.image_handler import (
     DEFAULT_IMAGE_QUALITY, DEFAULT_MAX_IMAGE_PX,
-    extension_to_mime, extract_embedded, ingest_drop_folder, issue_dir,
+    extract_embedded, ingest_drop_folder, issue_dir,
     to_raw_url,
 )
 from scripts.inliner import inline
@@ -54,6 +53,7 @@ from scripts.mail.cid import (
 from scripts.mail.eml import build_eml
 from scripts.recipients import sanitize_addresses
 from scripts.renderer import attach_image_urls, render
+from scripts.standalone import to_standalone_html
 from scripts.subject import subject_from_masthead
 from scripts.validator import ValidationResult, report, validate
 
@@ -127,18 +127,6 @@ _EMPTY_DOCX_ERROR = (
     "there's actual text or tables in the body (not just the header "
     "or footer), save, and try again."
 )
-
-
-def _data_uri(path: Path) -> str:
-    """`data:` URI for a local image, for the in-browser preview.
-
-    The preview cannot use the `raw.githubusercontent.com` URLs the
-    renderer emits: for a brand-new issue nothing has been pushed
-    there yet, so every photo would render as a broken-image icon and
-    the editor would reasonably conclude the toolkit was broken.
-    """
-    b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{extension_to_mime(path)};base64,{b64}"
 
 
 def _clean_addresses(
@@ -344,15 +332,10 @@ def _build_in(
     # can never disagree about which photos made it in.
     cid_html, inline_images = attach_inline_images(
         final_html, asset_dir, max_image_bytes=max_image_bytes)
-    standalone_html = final_html
-    for img in inline_images:
-        try:
-            standalone_html = standalone_html.replace(
-                img.original_url, _data_uri(img.path))
-        except OSError as e:
-            log.warning("Preview: could not embed %s (%s); it will show "
-                        "as a broken image in the preview only.",
-                        img.path, e)
+    # Shared with the CLI (`scripts/standalone.py`) so the file an editor
+    # downloads from the page and the one the desktop build writes are
+    # the same document, produced by the same code.
+    standalone_html = to_standalone_html(final_html, inline_images)
 
     # 9) Validate the URL HTML -- the same bytes the CLI validates.
     # `check_remote` is always False here: Pyodide has no synchronous

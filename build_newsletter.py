@@ -24,7 +24,9 @@ from scripts.mail import (
     ComposeOutcome, compose, detect_default_mail_handler, image_mode_key,
     resolve_image_mode, select_backend,
 )
+from scripts.mail.cid import attach_inline_images
 from scripts.publisher import publish_assets
+from scripts.standalone import to_standalone_html
 from scripts.recipients import load_recipients
 from scripts.config import (
     ASSETS_DIR, DIST_DIR, DROP_DIR, MERIDIAN_TEMPLATE,
@@ -319,6 +321,7 @@ def _build_pipeline(input_path: Path, issue: int, *,
         dist_dir = DIST_DIR
         assets_dir = ASSETS_DIR
     out_html = dist_dir / f"issue-{issue}.html"
+    out_standalone = dist_dir / f"issue-{issue}.preview.html"
 
     # 1) Parse DOCX
     #
@@ -347,6 +350,7 @@ def _build_pipeline(input_path: Path, issue: int, *,
             f"Technical detail for the maintainer: {type(e).__name__}: {e}",
             fg="red"))
         _delete_stale_html(out_html)
+        _delete_stale_html(out_standalone)
         return BuildResult(1, "", out_html)
     log.info("Parsed %d sections", len(newsletter.sections))
 
@@ -365,6 +369,13 @@ def _build_pipeline(input_path: Path, issue: int, *,
             "in Microsoft Word, confirm there's actual text/tables in "
             "the body (not just header/footer), save, and try again.",
             fg="red"))
+        # This was the one failure path that returned without clearing
+        # stale output. An editor whose DOCX came through empty was left
+        # with LAST quarter's HTML sitting in dist/ -- exactly the file
+        # `_delete_stale_html` exists to stop them double-clicking and
+        # sending. Found by the stale-file test for the new copy.
+        _delete_stale_html(out_html)
+        _delete_stale_html(out_standalone)
         return BuildResult(1, "", out_html)
 
     # 2) Extract embedded images + ingest drop folder
@@ -417,6 +428,7 @@ def _build_pipeline(input_path: Path, issue: int, *,
         # it thinking it's the new one. Validation failed, so there's
         # nothing fresh to leave on disk.
         _delete_stale_html(out_html)
+        _delete_stale_html(out_standalone)
         click.echo(click.style(
             "Validation failed -- no file written. Any older "
             f"{out_html.name} from a previous run was removed so you "
@@ -463,6 +475,32 @@ def _build_pipeline(input_path: Path, issue: int, *,
     dist_dir.mkdir(parents=True, exist_ok=True)
     out_html.write_text(final_html, encoding="utf-8")
     click.echo(f"Wrote: {out_html}")
+
+    # 8b) A second, SELF-CONTAINED copy for looking at.
+    #
+    # `issue-N.html` keeps its `raw.githubusercontent.com` URLs because
+    # `compose` reads it to build the message, and CID mode works by
+    # rewriting exactly those URLs into `cid:` references. It cannot
+    # carry `data:` URIs -- Outlook and Gmail strip them, so the email
+    # would lose every photo.
+    #
+    # But in CID mode nothing ever publishes those URLs, so opening
+    # `issue-N.html` shows a broken image for every photo. That is what
+    # `preview` did. The browser build hit the same thing from the other
+    # side (its download had the dead URLs), so both now write the same
+    # document, from the same code in `scripts/standalone.py`.
+    #
+    # Failure here is non-fatal: the mail artefact is already on disk and
+    # valid. Losing the viewing copy must not lose the build.
+    try:
+        _, inline_images = attach_inline_images(final_html, asset_dir)
+        out_standalone.write_text(
+            to_standalone_html(final_html, inline_images), encoding="utf-8")
+        click.echo(f"Wrote: {out_standalone}  (open this one to look at it)")
+    except OSError as e:
+        log.warning("Could not write %s: %s. The email is unaffected; "
+                    "`preview` will fall back to %s.",
+                    out_standalone.name, e, out_html.name)
 
     # 9) Manifest -- audit trail for what was published when. A manifest
     # write failure is non-fatal: the HTML is already on disk and
@@ -542,7 +580,14 @@ def preview_cmd(issue: int, output_dir: str | None):
     dist_dir = (
         Path(output_dir) / "dist" if output_dir else DIST_DIR
     )
-    out = dist_dir / f"issue-{issue}.html"
+    # Prefer the self-contained copy. `issue-N.html` is the mail
+    # artefact: in CID mode its photo URLs were never published, so
+    # opening it shows a broken image for every photo -- which is
+    # precisely the bug this preference fixes. Falling back to it keeps
+    # `preview` working for builds made before this change.
+    out = dist_dir / f"issue-{issue}.preview.html"
+    if not out.exists():
+        out = dist_dir / f"issue-{issue}.html"
     if not out.exists():
         click.echo(f"Not found: {out}", err=True)
         sys.exit(1)
