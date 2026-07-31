@@ -645,3 +645,55 @@ footer {
   .dropzone.is-over, button.primary:hover, a.primary:hover,
   a.secondary:hover { transform: none; }
 }
+
+/* ---------- preview views ---------- */
+
+/* A segmented control rather than three loose buttons: the three views
+ * are one question ("seen how?"), and the grouping says so. */
+.view-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  margin: 0.5rem 0 0.25rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+}
+.view-switch button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+.view-switch button:hover { color: var(--ink); }
+.view-switch button.is-active {
+  background: var(--surface);
+  color: var(--nu-blue);
+  box-shadow: var(--shadow-1);
+}
+@media (prefers-color-scheme: dark) {
+  .view-switch button.is-active { color: var(--nu-blue-bright); }
+}
+
+/* Gold, matching the highlight drawn inside the preview, so the count
+ * and the marks it refers to read as one thing. */
+.flag-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.8rem;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-radius: var(--r-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.flag-note::before { content: "\26A0"; }

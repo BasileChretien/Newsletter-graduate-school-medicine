@@ -98,6 +98,11 @@ const STRINGS = {
     emlHint: "Double-click the .eml file: Outlook opens it as a ready-to-send draft, with the subject, the BCC list and the photos already in place. Add the To: address and press Send.",
     previewTitle: "Preview",
     previewHint: "This is what recipients will see.",
+    viewSwitchLabel: "How recipients see it",
+    viewNormal: "As sent",
+    viewNoImages: "Images blocked",
+    viewPlaintext: "Plain text",
+    flagCount: "{n} unfilled placeholder(s) highlighted below.",
     footer: "Your document never leaves this device. Nothing is sent anywhere.",
     provenance: "This tool will never ask you for a password. If a page that looks like this one does, close it. The only genuine address is:",
     sourceLink: "View the source code",
@@ -143,6 +148,11 @@ const STRINGS = {
     emlHint: ".emlファイルをダブルクリックしてください。Outlookが、件名・BCC・写真がすでに入った送信可能な下書きとして開きます。宛先（To）を入力して送信してください。",
     previewTitle: "プレビュー",
     previewHint: "受信者にはこのように表示されます。",
+    viewSwitchLabel: "受信者側の見え方",
+    viewNormal: "送信時の表示",
+    viewNoImages: "画像がブロックされた場合",
+    viewPlaintext: "テキスト形式",
+    flagCount: "未入力の項目を {n} 件ハイライトしています。",
     footer: "文書がこの端末から出ることはありません。データはどこにも送信されません。",
     provenance: "このツールがパスワードを尋ねることは決してありません。よく似た画面でパスワードを求められた場合は、閉じてください。正規のアドレスは次のとおりです：",
     sourceLink: "ソースコードを見る",
@@ -266,6 +276,22 @@ async function boot() {
 
     bootBox.hidden = true;
     $("builder").hidden = false;
+
+    /* Everything needed to run offline is now proven good and already on
+     * this machine. Ask the worker to copy the core runtime into its
+     * cache.
+     *
+     * It has to happen here rather than in the worker's `install`: those
+     * files are fetched by `loadPyodide` before a first-visit worker has
+     * taken control, so they miss the cache while the wheels loaded
+     * later land in it -- which would leave offline working only from
+     * the SECOND visit. Precaching them at install instead would block
+     * the worker on ~12 MB, on exactly the slow connection where that
+     * hurts most.
+     *
+     * Fire-and-forget: the editor is not waiting on it, and a failure
+     * just means the next visit fetches normally. */
+    navigator.serviceWorker?.controller?.postMessage({ type: "warm" });
   } catch (err) {
     bootBox.classList.add("verdict", "bad");
     // Stop the spinner: leaving it turning next to a failure message
@@ -335,6 +361,13 @@ def _web_build(js_bytes, issue, image_mode, bcc):
         "issue": int(issue),
         "subject": result.subject,
         "errors": list(result.errors),
+        # Drives the preview highlighting: each is a literal string the
+        # validator found still unfilled, so the page can mark exactly
+        # those runs of text rather than guessing from the message.
+        "placeholders": list(result.placeholders),
+        # The text/plain part of the .eml, so the "plain text" view shows
+        # the bytes recipients get rather than a second conversion.
+        "plaintext": result.plaintext,
         "warnings": list(result.warnings),
         "section_count": result.section_count,
         "photo_count": result.photo_count,
@@ -567,6 +600,172 @@ function clearPreview() {
   $("preview-block").hidden = true;
 }
 
+/* ---------------------------------------------------------------------
+ * Preview views
+ *
+ * The result screen lists what is wrong ("VOL. XX still unfilled") and
+ * shows the newsletter, but leaves the editor to map one onto the other.
+ * These views close that loop, and each answers a question an editor
+ * actually has before pressing Send:
+ *
+ *   normal    -- what does it look like?
+ *   noimages  -- what does it look like to someone whose client blocks
+ *                images? Outlook does this by default on external mail,
+ *                and a newsletter that only makes sense with photos
+ *                reads as blank to those recipients.
+ *   plaintext -- what does the text/plain part say? Digest modes, some
+ *                mobile clients and most screen readers use it, and
+ *                until now nobody could see it without opening the .eml.
+ *
+ * All of this happens on a copy. The downloaded file and the .eml are
+ * never touched -- adding highlight markup to the artefact an editor
+ * sends would be a far worse bug than the one this fixes.
+ * ------------------------------------------------------------------ */
+
+let lastPreview = null;
+let previewView = "normal";
+
+/* Style injected into the previewed copy only. The iframe runs under
+ * `sandbox=""` so it executes nothing; a <style> element is inert and
+ * is all these views need. */
+const PREVIEW_STYLE = `
+  .meridian-flag {
+    background: #FDF6E6;
+    outline: 2px solid #A8864B;
+    outline-offset: 1px;
+    border-radius: 2px;
+    color: inherit;
+  }
+  .meridian-blocked {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 2.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px dashed #9AA1AA;
+    border-radius: 4px;
+    background: #F1F3F5;
+    color: #5A5F66;
+    font: italic 13px/1.4 sans-serif;
+    text-align: center;
+  }
+`;
+
+/* Wrap every occurrence of each placeholder in a <mark>.
+ *
+ * Walks text nodes through the DOM rather than running a string replace
+ * over the HTML. A replace would also hit attribute values -- `alt`
+ * text legitimately contains bracketed words -- and injecting a tag
+ * into an attribute produces broken markup, which for a document the
+ * editor is inspecting for correctness is the worst possible failure. */
+function flagPlaceholders(doc, placeholders) {
+  const terms = (placeholders || []).filter(Boolean);
+  if (!terms.length) return 0;
+
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const targets = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (terms.some((t) => n.nodeValue.includes(t))) targets.push(n);
+  }
+
+  let flagged = 0;
+  for (const node of targets) {
+    const frag = doc.createDocumentFragment();
+    let rest = node.nodeValue;
+    while (rest) {
+      // Longest match first, so "[Author(s)]" is not split by a shorter
+      // term that happens to be a prefix of it.
+      let best = null;
+      for (const t of terms) {
+        const i = rest.indexOf(t);
+        if (i === -1) continue;
+        if (!best || i < best.i || (i === best.i && t.length > best.t.length)) {
+          best = { i, t };
+        }
+      }
+      if (!best) { frag.append(doc.createTextNode(rest)); break; }
+      if (best.i) frag.append(doc.createTextNode(rest.slice(0, best.i)));
+      const mark = doc.createElement("mark");
+      mark.className = "meridian-flag";
+      mark.textContent = best.t;
+      frag.append(mark);
+      flagged += 1;
+      rest = rest.slice(best.i + best.t.length);
+    }
+    node.parentNode.replaceChild(frag, node);
+  }
+  return flagged;
+}
+
+/* Replace each photo with the box a client shows when it blocks images.
+ * The alt text is carried across, because that is exactly what those
+ * recipients are left reading. */
+function blockImages(doc) {
+  for (const img of [...doc.images]) {
+    const box = doc.createElement("span");
+    box.className = "meridian-blocked";
+    const alt = (img.getAttribute("alt") || "").trim();
+    box.textContent = alt ? `[image: ${alt}]` : "[image blocked]";
+    const w = parseInt(img.getAttribute("width"), 10);
+    if (w > 0) box.style.width = `${w}px`;
+    img.replaceWith(box);
+  }
+}
+
+function renderPreview() {
+  const frame = $("preview");
+  if (!lastPreview) { clearPreview(); return; }
+
+  if (previewView === "plaintext") {
+    // Built as a document rather than assigned as markup: the plaintext
+    // is derived from the editor's DOCX, so it is escaped by
+    // `textContent` and never parsed as HTML.
+    const doc = document.implementation.createHTMLDocument("");
+    const pre = doc.createElement("pre");
+    pre.style.cssText =
+      "white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 " +
+      "ui-monospace,Consolas,monospace;padding:1.25rem;margin:0;color:#1C1C1E";
+    pre.textContent = lastPreview.plaintext ||
+      "(no plain-text alternative was produced)";
+    doc.body.append(pre);
+    doc.body.style.background = "#fff";
+    frame.removeAttribute("src");
+    frame.srcdoc = doc.documentElement.outerHTML;
+    updateFlagCount(0);
+    return;
+  }
+
+  const doc = new DOMParser().parseFromString(lastPreview.html, "text/html");
+  const flagged = flagPlaceholders(doc, lastPreview.placeholders);
+  if (previewView === "noimages") blockImages(doc);
+
+  const style = doc.createElement("style");
+  style.textContent = PREVIEW_STYLE;
+  doc.head.append(style);
+
+  frame.removeAttribute("src");
+  frame.srcdoc = doc.documentElement.outerHTML;
+  updateFlagCount(flagged);
+}
+
+function updateFlagCount(n) {
+  const el = $("flag-count");
+  if (!el) return;
+  el.hidden = !n;
+  if (n) el.textContent = t("flagCount").replace("{n}", n);
+}
+
+function setPreviewView(view) {
+  previewView = view;
+  for (const b of document.querySelectorAll("[data-view]")) {
+    const on = b.dataset.view === view;
+    b.classList.toggle("is-active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  renderPreview();
+}
+
 function focusResults() {
   const h = $("results-heading");
   h.scrollIntoView({
@@ -630,15 +829,19 @@ function renderResult(res, { focus = true } = {}) {
   }
 
   if (res.paths.preview) {
-    // `srcdoc` rather than a blob URL: it renders under `sandbox=""`
-    // without depending on how a given browser version scopes blob URLs
-    // to the creating origin, and it leaves one less object URL alive.
-    // The photos are `data:` URIs, so nothing else needs fetching.
-    $("preview").removeAttribute("src");
-    $("preview").srcdoc = pyodide.FS.readFile(res.paths.preview,
-                                              { encoding: "utf8" });
+    // Keep the clean document and the flagged one apart. The file on
+    // disk is what the editor downloads and what recipients would see;
+    // the marks below exist only for looking at, so they are applied to
+    // a copy in memory and never written back.
+    lastPreview = {
+      html: pyodide.FS.readFile(res.paths.preview, { encoding: "utf8" }),
+      plaintext: res.plaintext || "",
+      placeholders: res.placeholders || [],
+    };
+    renderPreview();
     $("preview-block").hidden = false;
   } else {
+    lastPreview = null;
     clearPreview();
   }
   if (focus) focusResults();
@@ -655,6 +858,27 @@ function message(kind, text) {
 
 for (const btn of document.querySelectorAll(".lang-switch button")) {
   btn.addEventListener("click", () => { lang = btn.dataset.lang; applyLanguage(); });
+}
+
+/* Offline support. Registered last and entirely best-effort: if it
+ * fails -- unsupported browser, `file://`, a policy that blocks workers
+ * -- the page works exactly as before, just without the cache. It is
+ * never on the critical path to a build.
+ *
+ * Deliberately NOT registered when the page is framed or served from a
+ * non-canonical host: a clone that registers a worker gets to persist
+ * itself on the editor's machine after the tab is closed, which turns a
+ * phishing page into a resident one. */
+if ("serviceWorker" in navigator &&
+    window.isSecureContext &&
+    window.top === window.self) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+
+for (const btn of document.querySelectorAll("[data-view]")) {
+  btn.addEventListener("click", () => setPreviewView(btn.dataset.view));
 }
 
 applyLanguage();

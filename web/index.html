@@ -25,7 +25,7 @@
   connect-src 'self';
   img-src 'self' data: blob:;
   frame-src blob:;
-  worker-src blob:;
+  worker-src 'self' blob:;
   base-uri 'none';
   form-action 'none'">
 <link rel="stylesheet" href="style.css">
@@ -120,6 +120,17 @@
     <div id="preview-block" hidden>
       <h3 data-i18n="previewTitle">Preview</h3>
       <p class="hint" data-i18n="previewHint">This is what recipients will see.</p>
+      <div class="view-switch" role="group"
+           data-i18n-attr="aria-label:viewSwitchLabel"
+           aria-label="How recipients see it">
+        <button type="button" data-view="normal" class="is-active"
+                aria-pressed="true" data-i18n="viewNormal">As sent</button>
+        <button type="button" data-view="noimages" aria-pressed="false"
+                data-i18n="viewNoImages">Images blocked</button>
+        <button type="button" data-view="plaintext" aria-pressed="false"
+                data-i18n="viewPlaintext">Plain text</button>
+      </div>
+      <p id="flag-count" class="flag-note" role="status" hidden></p>
       <iframe id="preview" data-i18n-attr="title:previewTitle"
               title="Newsletter preview" sandbox></iframe>
     </div>

@@ -50,7 +50,7 @@ from scripts.mail.base import DraftEmail
 from scripts.mail.cid import (
     DEFAULT_MAX_IMAGE_BYTES, attach_inline_images, count_remote_images,
 )
-from scripts.mail.eml import build_eml
+from scripts.mail.eml import _plaintext_alternative, build_eml
 from scripts.recipients import sanitize_addresses
 from scripts.renderer import attach_image_urls, render
 from scripts.standalone import to_standalone_html
@@ -93,6 +93,10 @@ class WebBuildResult:
                        because it always uses CID. So treat this as the
                        bytes to validate and to hand the mail backend,
                        never as a file to give an editor.
+    `plaintext`     -- the text/plain alternative that travels inside the
+                       `.eml`. Exposed so the page can show an editor
+                       what a plain-text client renders -- the same
+                       bytes, not a second conversion.
     `eml`           -- RFC 5322 draft bytes, or None when `ok` is False.
     `errors`        -- hard blocks. Non-empty means `ok` is False.
     `warnings`      -- advisory only (size, subject length, placeholders).
@@ -104,6 +108,7 @@ class WebBuildResult:
     subject: str
     standalone_html: str
     html: str
+    plaintext: str
     eml: bytes | None
     errors: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -156,6 +161,7 @@ def _failed(subject: str, result: ValidationResult | None, *,
         subject=subject,
         standalone_html=standalone_html,
         html=html,
+        plaintext="",
         eml=None,
         errors=tuple(getattr(result, "errors", ()) or ()),
         warnings=tuple(getattr(result, "warnings", ()) or ()),
@@ -290,7 +296,7 @@ def _build_in(
         log.warning("Could not parse %s: %s", docx_path.name, e)
         return WebBuildResult(
             ok=False, subject=f"{TITLE} — Issue {issue}",
-            standalone_html="", html="", eml=None,
+            standalone_html="", html="", plaintext="", eml=None,
             errors=(_EMPTY_DOCX_ERROR,),
             report_text=_EMPTY_DOCX_ERROR,
             image_mode=image_mode,
@@ -298,7 +304,7 @@ def _build_in(
     if not newsletter.sections:
         return WebBuildResult(
             ok=False, subject=f"{TITLE} — Issue {issue}",
-            standalone_html="", html="", eml=None,
+            standalone_html="", html="", plaintext="", eml=None,
             errors=(_EMPTY_DOCX_ERROR,),
             report_text=_EMPTY_DOCX_ERROR,
             image_mode=image_mode,
@@ -408,6 +414,10 @@ def _build_in(
         subject=subject,
         standalone_html=standalone_html,
         html=final_html,
+        # The SAME converter the `.eml` uses, so what the page shows in
+        # its plain-text view is the text recipients actually get rather
+        # than a lookalike produced by a second code path.
+        plaintext=_plaintext_alternative(final_html),
         eml=eml_bytes,
         warnings=tuple(warnings),
         placeholders=tuple(result.placeholders or ()),

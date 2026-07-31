@@ -69,6 +69,21 @@ jobs:
       # live site stays on the last good version.
       - name: Vendor the Pyodide runtime (hash-verified)
         run: python web/vendor_pyodide.py
+      # Stamp the service worker with this commit. The bytes of sw.js
+      # change on every deploy, so the browser installs the new worker
+      # and `activate` drops every previous cache -- which is what stops
+      # a stale `meridian-bundle.zip` outliving a release.
+      - name: Version the service worker
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("web/sw.js")
+          s = p.read_text(encoding="utf-8")
+          assert "__MERIDIAN_VERSION__" in s, "sw.js version placeholder is gone"
+          p.write_text(s.replace("__MERIDIAN_VERSION__", "${{ github.sha }}"),
+                       encoding="utf-8")
+          print("sw.js stamped with ${{ github.sha }}")
+          PY
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

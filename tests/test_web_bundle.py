@@ -422,3 +422,118 @@ def test_the_mail_html_is_never_offered_as_a_download():
 
     assert not re.search(r"write_text\(\s*result\.html", glue), (
         "result.html is being written to a file the editor can download")
+
+
+# ---------- preview views + offline support ---------------------------
+
+def test_the_page_exposes_what_the_preview_views_need():
+    """The three views are driven by data the build already produces --
+    `placeholders` to highlight, `plaintext` for the text/plain view --
+    so nothing is recomputed in JavaScript where it could drift from
+    what the `.eml` actually carries."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    block = re.search(r"def _web_build\(.*?\n_web_build", app_js, re.S)
+    assert block, "the _web_build glue was not found"
+    for field in ('"placeholders": list(result.placeholders)',
+                  '"plaintext": result.plaintext'):
+        assert field in block.group(0), f"missing from the payload: {field}"
+
+
+def test_the_plaintext_view_shows_the_bytes_the_eml_carries():
+    """`scripts.webapp` must take the plain-text alternative from the
+    same converter `scripts.mail.eml` uses. A second conversion would
+    let the page show an editor something recipients never receive."""
+    webapp = (REPO_ROOT / "scripts" / "webapp.py").read_text(encoding="utf-8")
+    assert "_plaintext_alternative(final_html)" in webapp
+    assert "from scripts.mail.eml import _plaintext_alternative" in webapp
+
+
+def test_preview_marks_are_never_written_to_the_downloaded_file():
+    """The highlight markup exists to be looked at. Writing it into the
+    artefact an editor sends would be far worse than the problem it
+    solves, so the marking happens on a parsed copy in memory."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    assert "new DOMParser().parseFromString(lastPreview.html" in app_js, (
+        "the preview should be marked on a parsed copy")
+    # The Python glue must still write the clean document to disk.
+    assert "p.write_text(result.standalone_html" in app_js
+    glue = re.search(r"def _web_build\(.*?\n    return json\.dumps",
+                     app_js, re.S).group(0)
+    assert "meridian-flag" not in glue, (
+        "highlight markup is reaching the file that gets downloaded")
+
+
+def test_placeholder_marking_walks_text_nodes_not_raw_html():
+    """A string replace over the HTML would also hit attribute values --
+    `alt` text legitimately contains bracketed words -- and injecting a
+    tag into an attribute produces broken markup, in the very document
+    an editor is inspecting for correctness."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    fn = re.search(r"function flagPlaceholders\(.*?\n\}", app_js, re.S)
+    assert fn, "flagPlaceholders not found"
+    assert "createTreeWalker" in fn.group(0)
+    assert "NodeFilter.SHOW_TEXT" in fn.group(0)
+
+
+def test_the_service_worker_never_serves_a_stale_bundle():
+    """`meridian-bundle.zip` is a copy of the real `scripts/` package.
+    Cache-first on that file would mean the page silently runs last
+    release's parser -- the exact failure the drift test exists to
+    prevent, reintroduced by another route. Only the Pyodide runtime,
+    which is version-pinned and hash-verified, may be cache-first."""
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+
+    cache_first = re.search(r"if \(isRuntimeAsset\(url\)\).*?\n    return;",
+                            sw, re.S)
+    assert cache_first, "the cache-first branch was not found"
+    assert "meridian-bundle" not in cache_first.group(0)
+
+    guard = re.search(r"function isRuntimeAsset\(url\) \{.*?\n\}", sw, re.S)
+    assert guard and "/pyodide/" in guard.group(0)
+
+
+def test_the_service_worker_is_same_origin_only():
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+    assert "url.origin !== self.location.origin" in sw
+    assert 'request.method !== "GET"' in sw
+
+
+def test_a_new_deploy_invalidates_every_previous_cache():
+    """Without this a released fix could sit behind a cache indefinitely.
+    The deploy stamps the commit SHA into sw.js, so its bytes change,
+    the browser installs the new worker, and activate drops the rest."""
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+    wf = (REPO_ROOT / ".github" / "workflows" / "deploy-web.yml").read_text(
+        encoding="utf-8")
+
+    assert "__MERIDIAN_VERSION__" in sw, "the version placeholder is gone"
+    assert "__MERIDIAN_VERSION__" in wf, "the deploy no longer stamps it"
+    assert "github.sha" in wf
+    assert re.search(r"caches\.delete", sw), "old caches are never dropped"
+    assert wf.index("__MERIDIAN_VERSION__") < wf.index("upload-pages-artifact")
+
+
+def test_the_csp_allows_the_worker_it_registers():
+    """`worker-src` governs the service worker script. Registering one
+    the policy forbids fails silently in the console -- the page still
+    works, so the regression would go unnoticed until someone needed
+    offline."""
+    html = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    csp = re.search(r'Content-Security-Policy"\s+content="([^"]+)"', html)
+    worker = re.search(r"worker-src ([^;]+)", csp.group(1))
+    assert worker and "'self'" in worker.group(1)
+
+
+def test_the_worker_is_not_registered_on_a_cloned_page():
+    """A clone that registers a worker persists itself on the editor's
+    machine after the tab closes, turning a phishing page into a
+    resident one."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    reg = re.search(r'if \("serviceWorker" in navigator.*?\n\}', app_js, re.S)
+    assert reg, "the registration block was not found"
+    # `isSecureContext` rather than a protocol check: it is true for
+    # https AND for localhost, so the worker is also exercised during
+    # local development instead of only ever in production.
+    assert "window.isSecureContext" in reg.group(0)
+    assert "window.top === window.self" in reg.group(0)
