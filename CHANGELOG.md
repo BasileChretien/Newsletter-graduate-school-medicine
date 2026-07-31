@@ -47,9 +47,10 @@ Windows.**
   and verifies every byte against SHA-256 hashes in the committed
   `web/pyodide-assets.json`. A mismatch fails the deploy and the live
   site stays on the last good version. The ~16 MB payload is **not**
-  committed: against a 5.5 MB repository whose README tells editors to
-  download it as a ZIP, that would nearly triple the download for the
-  desktop workflow to benefit the browser one.
+  committed: that is nearly three times the size of the 5.5 MB
+  repository on its own, and the README tells editors to download that
+  repository as a ZIP — so committing it would roughly *quadruple* what
+  the desktop workflow downloads, to benefit the browser one.
 - CSP narrows to `default-src 'none'`, `script-src 'self'
   'wasm-unsafe-eval'`, `connect-src 'self'`, `form-action 'none'`.
   micropip — which reached PyPI on every cold load — is gone entirely.
@@ -86,16 +87,23 @@ Windows.**
   joined with `"; "`, and under `policy.SMTP` a semicolon terminates an
   RFC 5322 group — so 49 people silently did not receive the newsletter.
   Found by a 50-recipient test, not by inspection.
-- **Long `Content-ID` headers were RFC 2047 encoded-word wrapped**,
+- **Long `Content-ID` headers were RFC 2047 encoded-word encoded**,
   breaking the CID reference so the photo did not display. A `Content-ID`
-  is a `msg-id` and must never be wrapped; the production logo filename
-  was long enough to trigger it.
+  carries `msg-id` syntax: folding it is legal, but an encoded-word
+  inside the identifier is not, and destroys the match against the
+  `cid:` reference in the HTML. The production logo filename was long
+  enough to trigger it. Fixed by mapping the header to `MessageIDHeader`.
 
 ### Changed — honesty about what each backend can do
-- `ClipboardMailtoBackend` never reads `draft.bcc` (a `mailto:` URL
-  cannot carry 50 addresses), but the CLI printed "BCC pre-filled with N
-  recipient(s)" regardless of backend — the default path for every macOS,
-  Linux, Thunderbird and webmail editor. The recovery an editor reaches
+- `ClipboardMailtoBackend` never reads `draft.bcc`, so BCC simply does
+  not arrive on that path. (RFC 6068 does permit a `Bcc` field in a
+  `mailto:` URI — RFC 2368 was the version that prohibited it — but it is
+  not a *reliable* carrier for ~50 addresses: Windows caps the URI around
+  2 KB, handlers differ in what they honour, and RFC 6068 itself warns
+  the addresses may leak to other recipients.) The CLI nonetheless
+  printed "BCC pre-filled with N recipient(s)" regardless of backend —
+  the default path for every macOS, Linux, Thunderbird and webmail
+  editor. The recovery an editor reaches
   for on finding BCC empty is the dangerous one: pasting the list into
   To:/Cc:, disclosing ~50 institutional addresses to every recipient and
   every forward. Backends now declare `supports_bcc`, and the message
