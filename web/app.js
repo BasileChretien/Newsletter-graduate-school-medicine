@@ -26,6 +26,7 @@ const PY_PACKAGES = [
   "python-docx==1.2.0",     // NOT in the lockfile -- fetched from PyPI
   "jinja2",
   "beautifulsoup4",
+  "pillow",                 // resizes photos; in the lockfile
 ];
 
 const REPO_MOUNT = "/repo";

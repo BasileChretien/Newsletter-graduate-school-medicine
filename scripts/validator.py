@@ -16,6 +16,11 @@ log = logging.getLogger(__name__)
 
 # Early-warn threshold -- 80 KB leaves ~22 KB headroom before Gmail clips.
 _GMAIL_EARLY_WARN_BYTES = 80_000
+# Whole-message ceilings, photos included. Exchange Online defaults to
+# 35 MB and many on-premises institutional servers to 10-25 MB, so 15
+# is a fair 'you are getting close' and 30 is 'this will not arrive'.
+_MAIL_SERVER_WARN_BYTES = 15_000_000
+_MAIL_SERVER_HARD_BYTES = 30_000_000
 _HEAD_WORKERS = 8
 _HEAD_TIMEOUT = 3.0
 
@@ -141,7 +146,8 @@ def _scan_placeholders(html: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
+def validate(html: str, *, check_remote: bool = True,
+             attachment_bytes: int = 0) -> ValidationResult:
     # Drop hidden elements before scanning images/anchors. Round-10
     # security LOW 5: a malicious DOCX hyperlink that the renderer
     # leaves wrapped in `[hidden]` would otherwise be HEAD-checked
@@ -176,6 +182,12 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         broken_anchors = _check_urls_parallel(anchor_urls)
 
     size = len(html.encode("utf-8"))
+    # Total message size, not just the HTML. Base64 inflates an
+    # attachment by ~37%, and until now nothing measured the photos at
+    # all -- a 24 MB newsletter passed validation silently and then
+    # bounced off the recipients' mail servers, which an editor
+    # discovers hours later as a pile of NDRs.
+    total_size = size + int(attachment_bytes * 1.37)
     placeholders = _scan_placeholders(html)
 
     warnings: list[str] = []
@@ -202,6 +214,24 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
             f"({', '.join(u[:60] for u in unsafe_anchors[:3])}). This is "
             "a bug in the toolkit rather than something you did -- please "
             "report it, and do not send this issue."
+        )
+
+    if total_size > _MAIL_SERVER_HARD_BYTES:
+        errors.append(
+            f"This email is {total_size // 1_000_000} MB, which is over "
+            f"the {_MAIL_SERVER_HARD_BYTES // 1_000_000} MB that most "
+            "university mail servers accept -- it would very likely "
+            "bounce for every recipient. Reduce the number of photos, "
+            "or shrink them in Word (right-click a photo -> Compress "
+            "Pictures), then run this again."
+        )
+    elif total_size > _MAIL_SERVER_WARN_BYTES:
+        warnings.append(
+            f"This email is about {total_size // 1_000_000} MB with its "
+            "photos. That will usually send, but some mail servers and "
+            "full mailboxes reject attachments this large. If any "
+            "recipient reports not receiving it, this is the first "
+            "thing to check."
         )
 
     if size > GMAIL_CLIP_BYTES:

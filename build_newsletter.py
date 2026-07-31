@@ -33,6 +33,7 @@ from scripts.config import (
 )
 from scripts.docx_parser import ImageRef, Masthead, parse
 from scripts.image_handler import (
+    DEFAULT_IMAGE_QUALITY, DEFAULT_MAX_IMAGE_PX,
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
 )
 from scripts.inliner import inline
@@ -265,7 +266,10 @@ def _delete_stale_html(out_html: Path) -> None:
 
 def _build_pipeline(input_path: Path, issue: int, *,
                     validate_remote: bool,
-                    output_dir: Path | None = None) -> BuildResult:
+                    output_dir: Path | None = None,
+                    max_image_px: int | None = DEFAULT_MAX_IMAGE_PX,
+                    image_quality: int = DEFAULT_IMAGE_QUALITY,
+                    ) -> BuildResult:
     """Run the build pipeline. Returns a `BuildResult`.
 
     `output_dir`, if given, replaces `DIST_DIR` for the rendered HTML
@@ -337,7 +341,9 @@ def _build_pipeline(input_path: Path, issue: int, *,
 
     # 2) Extract embedded images + ingest drop folder
     asset_dir = issue_dir(assets_dir, issue)
-    embedded = extract_embedded(input_path, asset_dir)
+    embedded = extract_embedded(input_path, asset_dir,
+                                max_image_px=max_image_px,
+                                image_quality=image_quality)
     drops = ingest_drop_folder(DROP_DIR, asset_dir)
     log.info("Embedded images: %d, drop-folder images: %d",
              len(embedded), len(drops))
@@ -368,7 +374,15 @@ def _build_pipeline(input_path: Path, issue: int, *,
     # masthead `VOL. XX`) must NOT leave a stale openable HTML on disk
     # that the editor double-clicks and pastes into Outlook. So we
     # validate the in-memory HTML before persisting anything.
-    result = validate(final_html, check_remote=validate_remote)
+    # The photos are what make a newsletter too big to send, and
+    # nothing measured them before -- `validate` only ever saw the
+    # HTML. Sum what actually landed in assets/ so the size warning
+    # is about the message the recipient receives.
+    media_bytes = sum(
+        p.stat().st_size for p in asset_dir.glob('*') if p.is_file()
+        and p.suffix.lower() != '.json')
+    result = validate(final_html, check_remote=validate_remote,
+                      attachment_bytes=media_bytes)
     click.echo(report(result))
     if not result.ok:
         # Remove last issue's HTML so the editor doesn't double-click
@@ -453,14 +467,26 @@ def _build_pipeline(input_path: Path, issue: int, *,
                     "if the toolkit folder is read-only (macOS "
                     "Downloads sandbox) or you want outputs elsewhere "
                     "(e.g. ~/Documents/Meridian-Newsletter)."))
+@click.option("--max-image-px", default=DEFAULT_MAX_IMAGE_PX, type=int,
+              help="Resize photos wider than this before sending. The "
+                   "email displays them at 560px, so the default of "
+                   f"{DEFAULT_MAX_IMAGE_PX}px is already 2x for sharp "
+                   "screens. Use 0 to send photos untouched.")
+@click.option("--image-quality", default=DEFAULT_IMAGE_QUALITY, type=int,
+              help="JPEG quality when a photo is resized (1-95). Only "
+                   "applies to photos that were already JPEG; a PNG "
+                   "diagram is resized without re-encoding.")
 def build_cmd(input_path: str, issue: int, no_remote_check: bool,
-              output_dir: str | None):
+              output_dir: str | None, max_image_px: int,
+              image_quality: int):
     """Convert a filled DOCX into a polished HTML email."""
     out_dir = _resolve_output_dir(output_dir)
     result = _build_pipeline(
         Path(input_path), issue,
         validate_remote=not no_remote_check,
         output_dir=out_dir,
+        max_image_px=max_image_px or None,
+        image_quality=image_quality,
     )
     sys.exit(result.exit_code)
 
@@ -659,8 +685,18 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
                     "if the toolkit folder is read-only (macOS "
                     "Downloads sandbox). Pass an explicit path to "
                     "override."))
+@click.option("--max-image-px", default=DEFAULT_MAX_IMAGE_PX, type=int,
+              help="Resize photos wider than this before sending. The "
+                   "email displays them at 560px, so the default of "
+                   f"{DEFAULT_MAX_IMAGE_PX}px is already 2x for sharp "
+                   "screens. Use 0 to send photos untouched.")
+@click.option("--image-quality", default=DEFAULT_IMAGE_QUALITY, type=int,
+              help="JPEG quality when a photo is resized (1-95). Only "
+                   "applies to photos that were already JPEG; a PNG "
+                   "diagram is resized without re-encoding.")
 def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
-            image_mode: str, output_dir: str | None):
+            image_mode: str, output_dir: str | None, max_image_px: int,
+            image_quality: int):
     """Run the full pipeline: build -> publish -> compose draft email."""
     # Round-17: resolve the output dir up-front. Either explicit
     # (--output-dir), or auto-fallback to ~/Documents/Meridian-Newsletter
@@ -730,6 +766,8 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     result = _build_pipeline(
         Path(input_path), issue, validate_remote=False,
         output_dir=out_dir_override,
+        max_image_px=max_image_px or None,
+        image_quality=image_quality,
     )
     if result.exit_code != 0:
         sys.exit(result.exit_code)

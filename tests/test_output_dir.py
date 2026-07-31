@@ -171,7 +171,10 @@ def test_build_cmd_accepts_output_dir(tmp_path):
 
     captured = {}
 
-    def fake_pipeline(input_path, issue, *, validate_remote, output_dir):
+    # `**_` so this stub keeps testing what it is about -- that
+    # `--output-dir` reaches the pipeline -- without needing an edit
+    # every time an unrelated option is added to the command.
+    def fake_pipeline(input_path, issue, *, validate_remote, output_dir, **_):
         captured["output_dir"] = output_dir
         return bn.BuildResult(0, "Test", out_dir / "dist" / "issue-1.html")
 
