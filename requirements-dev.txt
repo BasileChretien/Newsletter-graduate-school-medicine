@@ -1,0 +1,6 @@
+# Development only. Editors never install this -- the launcher uses
+# requirements.txt, and shipping test tooling to a non-technical user's
+# global Python is surface for no benefit.
+-r requirements.txt
+pytest>=9.0.3
+pytest-cov>=5.0.0

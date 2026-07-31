@@ -365,3 +365,21 @@ footer {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* Provenance. An editor has no way to distinguish a rehosted clone from
+ * the real page -- both are the same static file with the same
+ * assurances -- so the only usable defence is telling them the one
+ * address that is genuine, and that the tool never asks for a
+ * password. */
+.provenance {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.provenance code {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.15em 0.45em;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}

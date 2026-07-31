@@ -10,12 +10,17 @@ from pathlib import Path
 
 from scripts.config import GMAIL_CLIP_BYTES
 from scripts.html_utils import parse_html, remove_hidden_elements
-from scripts.text_utils import normalize_for_match
+from scripts.text_utils import is_safe_url_scheme, normalize_for_match
 
 log = logging.getLogger(__name__)
 
 # Early-warn threshold -- 80 KB leaves ~22 KB headroom before Gmail clips.
 _GMAIL_EARLY_WARN_BYTES = 80_000
+# Whole-message ceilings, photos included. Exchange Online defaults to
+# 35 MB and many on-premises institutional servers to 10-25 MB, so 15
+# is a fair 'you are getting close' and 30 is 'this will not arrive'.
+_MAIL_SERVER_WARN_BYTES = 15_000_000
+_MAIL_SERVER_HARD_BYTES = 30_000_000
 _HEAD_WORKERS = 8
 _HEAD_TIMEOUT = 3.0
 
@@ -141,7 +146,8 @@ def _scan_placeholders(html: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
+def validate(html: str, *, check_remote: bool = True,
+             attachment_bytes: int = 0) -> ValidationResult:
     # Drop hidden elements before scanning images/anchors. Round-10
     # security LOW 5: a malicious DOCX hyperlink that the renderer
     # leaves wrapped in `[hidden]` would otherwise be HEAD-checked
@@ -152,10 +158,20 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
     img_urls = tuple(
         img["src"] for img in soup.find_all("img") if img.get("src")
     )
-    anchor_urls = tuple(
-        a["href"] for a in soup.find_all("a")
-        if a.get("href", "").startswith(("http://", "https://"))
+    # Every anchor, not just the http(s) ones. Filtering here was a
+    # blind spot rather than a filter: a DOCX carrying six links with
+    # `javascript:` / `file://` / `data:` targets produced a report
+    # reading "Links: 1 (0 broken)", and the manifest recorded the same
+    # count -- so the audit trail actively asserted the message was
+    # clean. The renderer now drops unsafe schemes, and this reports
+    # what it dropped so the editor learns their document contained
+    # one instead of silently losing a link they meant to keep.
+    all_anchors = tuple(
+        a["href"] for a in soup.find_all("a") if a.get("href")
     )
+    anchor_urls = tuple(u for u in all_anchors if is_safe_url_scheme(u))
+    unsafe_anchors = tuple(u for u in all_anchors if not is_safe_url_scheme(u))
+    dropped_links = soup.select("span.meridian-dropped-link")
 
     broken_images: list[str] = []
     broken_anchors: list[str] = []
@@ -166,10 +182,57 @@ def validate(html: str, *, check_remote: bool = True) -> ValidationResult:
         broken_anchors = _check_urls_parallel(anchor_urls)
 
     size = len(html.encode("utf-8"))
+    # Total message size, not just the HTML. Base64 inflates an
+    # attachment by ~37%, and until now nothing measured the photos at
+    # all -- a 24 MB newsletter passed validation silently and then
+    # bounced off the recipients' mail servers, which an editor
+    # discovers hours later as a pile of NDRs.
+    total_size = size + int(attachment_bytes * 1.37)
     placeholders = _scan_placeholders(html)
 
     warnings: list[str] = []
     errors: list[str] = []
+
+    if dropped_links:
+        warnings.append(
+            f"{len(dropped_links)} link(s) in your Word file pointed "
+            "somewhere this toolkit will not send to recipients, so the "
+            "wording was kept but the link itself was removed. Only web "
+            "addresses (http, https) and email addresses (mailto) are "
+            "sent. The addresses that were removed are listed above in "
+            "this window, on the lines starting \"Dropped a link\". If "
+            "one of them was genuine, re-add it in Word as a normal web "
+            "address."
+        )
+    if unsafe_anchors:
+        # Belt and braces: if an unsafe scheme ever reaches the rendered
+        # HTML despite the renderer's guard, block the send rather than
+        # warn. This is the last gate before ~50 institutional mailboxes.
+        errors.append(
+            f"{len(unsafe_anchors)} link(s) in the built email point to "
+            f"an address type that is not safe to send "
+            f"({', '.join(u[:60] for u in unsafe_anchors[:3])}). This is "
+            "a bug in the toolkit rather than something you did -- please "
+            "report it, and do not send this issue."
+        )
+
+    if total_size > _MAIL_SERVER_HARD_BYTES:
+        errors.append(
+            f"This email is {total_size // 1_000_000} MB, which is over "
+            f"the {_MAIL_SERVER_HARD_BYTES // 1_000_000} MB that most "
+            "university mail servers accept -- it would very likely "
+            "bounce for every recipient. Reduce the number of photos, "
+            "or shrink them in Word (right-click a photo -> Compress "
+            "Pictures), then run this again."
+        )
+    elif total_size > _MAIL_SERVER_WARN_BYTES:
+        warnings.append(
+            f"This email is about {total_size // 1_000_000} MB with its "
+            "photos. That will usually send, but some mail servers and "
+            "full mailboxes reject attachments this large. If any "
+            "recipient reports not receiving it, this is the first "
+            "thing to check."
+        )
 
     if size > GMAIL_CLIP_BYTES:
         warnings.append(

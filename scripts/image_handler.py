@@ -106,18 +106,102 @@ def issue_dir(assets_dir: Path, issue: int) -> Path:
 
 # Per-member ceiling on an extracted image, and the compression ratio
 # above which a member is treated as a decompression bomb rather than a
-# photograph. A real institutional photo is well under 2 MB and
-# compresses barely at all inside the DOCX zip (JPEG/PNG are already
-# compressed), so a 100:1 ratio is not something legitimate content
-# reaches. Without these, `word/media/x.jpg` holding 400 MB of zeroes
+# photograph. Without these, `word/media/x.jpg` holding 400 MB of zeroes
 # expands from a 400 KB DOCX -- on the CLI that fills the editor's disk
 # and can wedge `publish-images` against GitHub's push limit; in the
 # browser it inflates Pyodide's in-memory filesystem until the tab dies.
-_MAX_EMBEDDED_BYTES = 2_000_000
+#
+# 25 MB, NOT the 2 MB CID attachment cap. Those are two different limits
+# and conflating them was a regression: at 2 MB a photo straight off a
+# camera (commonly 3-8 MB) was refused by `extract_embedded` outright,
+# so it never reached `url_map`, its `media://` sentinel never resolved,
+# and the picture vanished from the newsletter with only a log line.
+# The CID cap is about how big an EMAIL should be and correctly leaves
+# an oversized photo as a hosted URL; this one is about refusing a
+# decompression bomb, and belongs far above any real photograph.
+# Compression ratio does the actual bomb detection -- JPEG and PNG are
+# already compressed, so legitimate media never approaches 100:1.
+_MAX_EMBEDDED_BYTES = 25_000_000
 _MAX_COMPRESSION_RATIO = 100
 # Ceiling on the total extracted across one DOCX, so a hundred
 # individually-legal members cannot add up to the same problem.
 _MAX_EMBEDDED_TOTAL_BYTES = 50_000_000
+
+# Photos are resized to fit the email before anything else sees them.
+#
+# The rendered newsletter displays images at MAX_IMG_PX = 560 px wide.
+# A photo straight off a camera or a phone is 1500-6000 px, so every
+# recipient's mail client is already downscaling it -- we were shipping
+# several times more bytes than anyone could see, and paying for it in
+# message size, in mailbox quota, and in load time on a slow connection.
+# On the reported production document this turns 1.6 MB of media into
+# ~470 KB with no visible difference.
+#
+# 1200 px is 2x the display width, so the result is still sharp on a
+# retina screen. The format is PRESERVED -- a PNG stays a PNG. Resizing
+# a diagram is safe (it is displayed at 560 px regardless), but
+# re-encoding one as JPEG would introduce ringing around fine text, so
+# `quality` applies only to images that were already JPEG.
+DEFAULT_MAX_IMAGE_PX = 1200
+DEFAULT_IMAGE_QUALITY = 82
+
+
+def optimize_image(path: Path, *, max_px: int = DEFAULT_MAX_IMAGE_PX,
+                   quality: int = DEFAULT_IMAGE_QUALITY) -> tuple[bool, int]:
+    """Resize `path` in place to fit `max_px`. Returns (changed, new_size).
+
+    Best-effort by design: if Pillow is missing or the file cannot be
+    decoded, the original is left exactly as it was and the caller
+    carries on. A newsletter that ships slightly-too-large photos is a
+    far better outcome than one that fails to build.
+
+    Two useful side effects of the round-trip, both deliberate:
+
+    * `exif_transpose` bakes in the orientation flag, so a photo taken
+      on a phone held sideways is no longer rotated in clients that
+      ignore EXIF.
+    * EXIF is not carried into the output, which strips GPS coordinates.
+      A staff photo taken on a phone routinely carries the exact
+      location it was taken; that should not travel to ~50 recipients
+      and, in URL mode, onto a public GitHub path.
+    """
+    before = path.stat().st_size
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        log.debug("Pillow not installed; leaving %s at full size.", path.name)
+        return False, before
+
+    try:
+        with Image.open(path) as im:
+            fmt = im.format
+            if fmt not in ("JPEG", "PNG"):
+                return False, before
+            im = ImageOps.exif_transpose(im)
+            original_width = im.width
+            if original_width <= max_px:
+                return False, before
+
+            ratio = max_px / original_width
+            resized = im.resize(
+                (max_px, max(1, round(im.height * ratio))), Image.LANCZOS)
+
+            if fmt == "JPEG":
+                resized.convert("RGB").save(
+                    path, "JPEG", quality=quality, optimize=True)
+            else:
+                resized.save(path, "PNG", optimize=True)
+    except Exception as e:  # noqa: BLE001 -- optimisation is best-effort
+        log.warning(
+            "Could not resize %s (%s); sending it at full size.",
+            path.name, e)
+        return False, path.stat().st_size if path.exists() else before
+
+    after = path.stat().st_size
+    log.info(
+        "Resized %s: %d -> %d px wide, %s -> %s bytes.",
+        path.name, original_width, max_px, f"{before:,}", f"{after:,}")
+    return True, after
 
 
 def _copy_capped(z: zipfile.ZipFile, name: str, target: Path,
@@ -148,7 +232,10 @@ def _copy_capped(z: zipfile.ZipFile, name: str, target: Path,
             dst.write(chunk)
 
 
-def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
+def extract_embedded(docx_path: Path, dest_dir: Path, *,
+                     max_image_px: int | None = DEFAULT_MAX_IMAGE_PX,
+                     image_quality: int = DEFAULT_IMAGE_QUALITY,
+                     ) -> dict[str, Path]:
     """Extract images from word/media/ into dest_dir. Return {basename: path}.
 
     Three independent gates, because each one alone has been shown to be
@@ -248,7 +335,17 @@ def extract_embedded(docx_path: Path, dest_dir: Path) -> dict[str, Path]:
                 )
                 target.unlink(missing_ok=True)
                 continue
-            total += target.stat().st_size
+            # Resize to fit the email before anything downstream sees
+            # the file. Doing it HERE means every consumer benefits --
+            # the CID attachment, the hosted-URL copy pushed to GitHub,
+            # the browser preview's data URI -- without any of them
+            # needing to know about it.
+            if max_image_px:
+                _, new_size = optimize_image(
+                    target, max_px=max_image_px, quality=image_quality)
+                total += new_size
+            else:
+                total += target.stat().st_size
             out[base] = target
     return out
 

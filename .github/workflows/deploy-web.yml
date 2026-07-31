@@ -58,6 +58,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The Pyodide runtime is served from our own origin so the page's
+      # CSP can be `script-src 'self'` -- see web/vendor_pyodide.py for
+      # why that matters. ~16 MB, so it is fetched here rather than
+      # committed, and every byte is checked against the SHA-256 hashes
+      # in web/pyodide-assets.json. A mismatch fails the deploy and the
+      # live site stays on the last good version.
+      - name: Vendor the Pyodide runtime (hash-verified)
+        run: python web/vendor_pyodide.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

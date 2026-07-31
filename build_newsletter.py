@@ -33,6 +33,7 @@ from scripts.config import (
 )
 from scripts.docx_parser import ImageRef, Masthead, parse
 from scripts.image_handler import (
+    DEFAULT_IMAGE_QUALITY, DEFAULT_MAX_IMAGE_PX,
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
 )
 from scripts.inliner import inline
@@ -124,6 +125,34 @@ def _friendly_used(used: ComposeOutcome) -> str:
                 "The newsletter is on your clipboard -- press Ctrl+V "
                 "in the message body.")
     return f"Email draft opened via: {used}"
+
+
+def _bcc_blurb(used: ComposeOutcome, count: int) -> str:
+    """Tell the editor what actually happened to the recipient list.
+
+    This used to claim "BCC pre-filled with N recipient(s)" whenever
+    `recipients.txt` was non-empty -- regardless of whether the backend
+    could carry it. On the clipboard/mailto path (the default for every
+    macOS, Linux, Thunderbird and webmail editor) the list is silently
+    discarded, so the message was simply false.
+
+    The recovery an editor reaches for when they find BCC empty is the
+    dangerous one: pasting `recipients.txt` into To: or Cc:, which
+    discloses ~50 institutional addresses -- external collaborators
+    included -- to every recipient and every forward. Saying so plainly,
+    and naming the field, is the whole point of this function.
+    """
+    if used.bcc_delivered:
+        return (f"BCC pre-filled with {count} recipient(s) "
+                "from recipients.txt")
+    return click.style(
+        f"IMPORTANT: your email app cannot be pre-filled with the "
+        f"recipient list, so the draft's BCC field is EMPTY. Open "
+        f"recipients.txt and paste the {count} addresses into the "
+        f"BCC field -- not To: or Cc:, or every recipient will see the "
+        f"whole list. Alternatively, re-run with --backend=eml, which "
+        f"produces a draft file with the BCC already filled in.",
+        fg="yellow")
 
 
 def _resolve_output_dir(user_choice: str | None) -> Path | None:
@@ -265,7 +294,10 @@ def _delete_stale_html(out_html: Path) -> None:
 
 def _build_pipeline(input_path: Path, issue: int, *,
                     validate_remote: bool,
-                    output_dir: Path | None = None) -> BuildResult:
+                    output_dir: Path | None = None,
+                    max_image_px: int | None = DEFAULT_MAX_IMAGE_PX,
+                    image_quality: int = DEFAULT_IMAGE_QUALITY,
+                    ) -> BuildResult:
     """Run the build pipeline. Returns a `BuildResult`.
 
     `output_dir`, if given, replaces `DIST_DIR` for the rendered HTML
@@ -289,7 +321,33 @@ def _build_pipeline(input_path: Path, issue: int, *,
     out_html = dist_dir / f"issue-{issue}.html"
 
     # 1) Parse DOCX
-    newsletter = parse(input_path)
+    #
+    # Anything a DOCX can be wrong about surfaces here, and this is the
+    # last place it can be turned into a sentence an editor can act on.
+    # Unguarded, the launcher printed raw `lxml` / `docx.oxml`
+    # tracebacks -- for a malformed archive, a broken internal
+    # relationship, an entity-expansion refusal, a deeply merged table,
+    # even an ordinary single-column first table. The browser build
+    # already caught this (`scripts/webapp.py`); the CLI did not, which
+    # is the path every current editor actually uses.
+    #
+    # `_delete_stale_html` matters as much as the message: without it a
+    # crash leaves LAST quarter's `dist/issue-N.html` on disk, and the
+    # obvious next move for a confused editor is to double-click it.
+    try:
+        newsletter = parse(input_path)
+    except Exception as e:  # noqa: BLE001 -- any parse failure is editorial
+        log.debug("parse(%s) failed", input_path, exc_info=True)
+        click.echo(click.style(
+            "ERROR: your Word file could not be read. This usually means "
+            "the file is damaged, password-protected, still downloading, "
+            "or was saved in a format the toolkit can't read (a renamed "
+            ".doc, for example). Open it in Microsoft Word, use "
+            "File > Save As to save a fresh .docx, and try again.\n"
+            f"Technical detail for the maintainer: {type(e).__name__}: {e}",
+            fg="red"))
+        _delete_stale_html(out_html)
+        return BuildResult(1, "", out_html)
     log.info("Parsed %d sections", len(newsletter.sections))
 
     # Round-17 production bug: if the parser produced ZERO sections
@@ -311,7 +369,9 @@ def _build_pipeline(input_path: Path, issue: int, *,
 
     # 2) Extract embedded images + ingest drop folder
     asset_dir = issue_dir(assets_dir, issue)
-    embedded = extract_embedded(input_path, asset_dir)
+    embedded = extract_embedded(input_path, asset_dir,
+                                max_image_px=max_image_px,
+                                image_quality=image_quality)
     drops = ingest_drop_folder(DROP_DIR, asset_dir)
     log.info("Embedded images: %d, drop-folder images: %d",
              len(embedded), len(drops))
@@ -342,7 +402,15 @@ def _build_pipeline(input_path: Path, issue: int, *,
     # masthead `VOL. XX`) must NOT leave a stale openable HTML on disk
     # that the editor double-clicks and pastes into Outlook. So we
     # validate the in-memory HTML before persisting anything.
-    result = validate(final_html, check_remote=validate_remote)
+    # The photos are what make a newsletter too big to send, and
+    # nothing measured them before -- `validate` only ever saw the
+    # HTML. Sum what actually landed in assets/ so the size warning
+    # is about the message the recipient receives.
+    media_bytes = sum(
+        p.stat().st_size for p in asset_dir.glob('*') if p.is_file()
+        and p.suffix.lower() != '.json')
+    result = validate(final_html, check_remote=validate_remote,
+                      attachment_bytes=media_bytes)
     click.echo(report(result))
     if not result.ok:
         # Remove last issue's HTML so the editor doesn't double-click
@@ -427,14 +495,26 @@ def _build_pipeline(input_path: Path, issue: int, *,
                     "if the toolkit folder is read-only (macOS "
                     "Downloads sandbox) or you want outputs elsewhere "
                     "(e.g. ~/Documents/Meridian-Newsletter)."))
+@click.option("--max-image-px", default=DEFAULT_MAX_IMAGE_PX, type=int,
+              help="Resize photos wider than this before sending. The "
+                   "email displays them at 560px, so the default of "
+                   f"{DEFAULT_MAX_IMAGE_PX}px is already 2x for sharp "
+                   "screens. Use 0 to send photos untouched.")
+@click.option("--image-quality", default=DEFAULT_IMAGE_QUALITY, type=int,
+              help="JPEG quality when a photo is resized (1-95). Only "
+                   "applies to photos that were already JPEG; a PNG "
+                   "diagram is resized without re-encoding.")
 def build_cmd(input_path: str, issue: int, no_remote_check: bool,
-              output_dir: str | None):
+              output_dir: str | None, max_image_px: int,
+              image_quality: int):
     """Convert a filled DOCX into a polished HTML email."""
     out_dir = _resolve_output_dir(output_dir)
     result = _build_pipeline(
         Path(input_path), issue,
         validate_remote=not no_remote_check,
         output_dir=out_dir,
+        max_image_px=max_image_px or None,
+        image_quality=image_quality,
     )
     sys.exit(result.exit_code)
 
@@ -598,10 +678,7 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     if warn is not None:
         click.echo(click.style(warn, fg="yellow"))
     if recipients:
-        click.echo(
-            f"BCC pre-filled with {len(recipients)} recipient(s) "
-            "from recipients.txt"
-        )
+        click.echo(_bcc_blurb(used, len(recipients)))
 
 
 @cli.command("all")
@@ -633,8 +710,18 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
                     "if the toolkit folder is read-only (macOS "
                     "Downloads sandbox). Pass an explicit path to "
                     "override."))
+@click.option("--max-image-px", default=DEFAULT_MAX_IMAGE_PX, type=int,
+              help="Resize photos wider than this before sending. The "
+                   "email displays them at 560px, so the default of "
+                   f"{DEFAULT_MAX_IMAGE_PX}px is already 2x for sharp "
+                   "screens. Use 0 to send photos untouched.")
+@click.option("--image-quality", default=DEFAULT_IMAGE_QUALITY, type=int,
+              help="JPEG quality when a photo is resized (1-95). Only "
+                   "applies to photos that were already JPEG; a PNG "
+                   "diagram is resized without re-encoding.")
 def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
-            image_mode: str, output_dir: str | None):
+            image_mode: str, output_dir: str | None, max_image_px: int,
+            image_quality: int):
     """Run the full pipeline: build -> publish -> compose draft email."""
     # Round-17: resolve the output dir up-front. Either explicit
     # (--output-dir), or auto-fallback to ~/Documents/Meridian-Newsletter
@@ -704,6 +791,8 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
     result = _build_pipeline(
         Path(input_path), issue, validate_remote=False,
         output_dir=out_dir_override,
+        max_image_px=max_image_px or None,
+        image_quality=image_quality,
     )
     if result.exit_code != 0:
         sys.exit(result.exit_code)
@@ -787,10 +876,7 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         if warn is not None:
             click.echo(click.style(warn, fg="yellow"))
         if recipients:
-            click.echo(
-                f"BCC pre-filled with {len(recipients)} recipient(s) "
-                "from recipients.txt"
-            )
+            click.echo(_bcc_blurb(used, len(recipients)))
     except Exception as e:
         click.echo(f"Could not open email draft ({e}). Opening preview instead.",
                    err=True)

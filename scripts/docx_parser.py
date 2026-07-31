@@ -18,8 +18,10 @@ from docx.document import Document as DocxDocument
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from scripts.config import SUBHEAD_TEXTS  # known sub-headings (canonical template)
+from scripts.text_utils import is_safe_url_scheme
 
 log = logging.getLogger(__name__)
 
@@ -200,7 +202,10 @@ def _drawing_to_img(drawing, part) -> str:
 def _hyperlinks(paragraph: Paragraph) -> dict[str, str]:
     """Map relationship ids to URLs for hyperlinks in this paragraph."""
     out = {}
-    for hl in paragraph._p.findall(qn("w:hyperlink")):
+    # `.//` rather than direct children: a link added with Track
+    # Changes on sits inside `<w:ins>`, and the direct search missed
+    # it, so the URL map came back empty and the anchor lost its href.
+    for hl in paragraph._p.findall(".//" + qn("w:hyperlink")):
         rid = hl.get(qn("r:id"))
         if not rid:
             continue
@@ -210,12 +215,68 @@ def _hyperlinks(paragraph: Paragraph) -> dict[str, str]:
     return out
 
 
+def _iter_content_children(element):
+    """Yield a paragraph's content children, resolving tracked changes.
+
+    Word wraps edits made with Track Changes turned on:
+
+      * `<w:ins>`      -- inserted content. It IS in the document as the
+                          author sees it, so we descend into it.
+      * `<w:moveTo>`   -- the destination of moved content. Also present.
+      * `<w:del>`      -- deleted content. Its text lives in `<w:delText>`
+                          and must NEVER be published: someone struck a
+                          sentence out, and printing it in a newsletter
+                          that goes to ~50 people would be worse than
+                          dropping it.
+      * `<w:moveFrom>` -- the origin of moved content; same reasoning.
+
+    Only `w:r` children were handled before, so anything inside `w:ins`
+    was silently dropped -- the run was not a direct child, so the loop
+    never saw it. In the reported document that cost the dean's photo
+    and a large section photo, both of which had been added with Track
+    Changes on and never accepted. Text inserted the same way would have
+    vanished just as quietly, which is the more dangerous version of
+    this bug: a missing photo is visible, a missing sentence is not.
+
+    Deletions are excluded here deliberately and explicitly. They were
+    excluded before too, but only as a side effect of the tag check --
+    which means nobody had decided it, and the next person to widen the
+    traversal could easily have started publishing struck-out text.
+    """
+    # Iterative rather than recursive, on an explicit stack. Nested
+    # wrappers are bounded today -- libxml2 refuses documents deeper than
+    # 256 elements and python-docx does not pass `XML_PARSE_HUGE`, so the
+    # deepest `w:ins` chain that can reach this function is 254, measured
+    # -- but that bound is an undocumented default of a transitive
+    # dependency, not a decision this file made. Growing on the heap
+    # instead of the C call stack means it stays correct if anyone ever
+    # sets `huge_tree`.
+    #
+    # Note this is NOT the same situation as `_row_cells`: that recursion
+    # (`_tc_above`) scales with the number of sibling ROWS, which no
+    # nesting cap bounds, which is why a ~3000-row `w:vMerge` chain really
+    # did raise `RecursionError`.
+    stack = [element.iterchildren()]
+    while stack:
+        child = next(stack[-1], None)
+        if child is None:
+            stack.pop()
+            continue
+        tag = child.tag
+        if tag in (qn("w:ins"), qn("w:moveTo")):
+            stack.append(child.iterchildren())
+        elif tag in (qn("w:del"), qn("w:moveFrom")):
+            continue
+        else:
+            yield child
+
+
 def paragraph_to_html(paragraph: Paragraph) -> str:
     """Convert a paragraph's runs (and hyperlinks) into safe HTML."""
     rid_to_url = _hyperlinks(paragraph)
 
     parts: list[str] = []
-    for child in paragraph._p.iterchildren():
+    for child in _iter_content_children(paragraph._p):
         tag = child.tag
         if tag == qn("w:r"):
             # Inline drawing inside this run? Emit an <img> tag.
@@ -225,10 +286,11 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
                 if img:
                     parts.append(img)
                     continue
-            for r in paragraph.runs:
-                if r._r is child:
-                    parts.append(_run_to_html(r))
-                    break
+            # Build the Run directly rather than looking it up in
+            # `paragraph.runs`: that property lists only DIRECT `w:r`
+            # children, so a run inside `<w:ins>` would never match and
+            # its text would still be lost after the traversal fix.
+            parts.append(_run_to_html(Run(child, paragraph)))
         elif tag == qn("w:hyperlink"):
             url = rid_to_url.get(child.get(qn("r:id")), "")
             inner_runs = []
@@ -238,8 +300,36 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
                 texts = [t.text or "" for t in r_el.findall(qn("w:t"))]
                 inner_runs.append(escape("".join(texts)))
             label = "".join(inner_runs) or escape(url)
-            if url:
+            if url and is_safe_url_scheme(url):
                 parts.append(f'<a href="{escape(url, quote=True)}">{label}</a>')
+            elif url:
+                # Unsafe scheme: keep the words, drop the target. Escaping
+                # alone was never enough here -- it stops an attribute
+                # breakout but says nothing about WHERE the link goes, and
+                # this anchor is what ~50 recipients click in a mail that
+                # passes SPF/DKIM/DMARC because it came from the editor's
+                # own mailbox. `file://host/share/x` is a UNC path in
+                # Outlook: one click authenticates the recipient's machine
+                # to the attacker over SMB.
+                #
+                # The label is preserved rather than deleted so the
+                # sentence still reads, and `validator.py` reports the
+                # dropped target so the editor learns their document
+                # contained one instead of silently losing a link they
+                # meant to include.
+                log.warning(
+                    "Dropped a link with an unsupported address type: %r "
+                    "(only http, https and mailto are sent to recipients).",
+                    url[:120],
+                )
+                # The marker carries NO href. An early version put the
+                # rejected URL in a `data-` attribute so the validator
+                # could name it -- which would have shipped the
+                # attacker's string into ~50 mailboxes as inert text, for
+                # no benefit to the person who needs it. The editor gets
+                # the URL on the console via the warning above; the
+                # message itself carries only a count.
+                parts.append(f'{label}<span class="meridian-dropped-link"></span>')
             else:
                 parts.append(label)
     return "".join(parts).strip()
@@ -248,6 +338,14 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
 # ---------- helpers ----------
 def _is_list_paragraph(p: Paragraph) -> bool:
     return (p.style.name or "").startswith("List Paragraph")
+
+
+# A real section number is one or two digits. The cap exists because
+# CPython 3.11+ raises `ValueError: Exceeds the limit (4300 digits) for
+# integer string conversion`, so a paragraph of 5000 digits followed by
+# ". Boom" crashed the parse with a traceback the editor could not act
+# on -- and a 4000-digit one succeeded, rendering a 4000-digit number.
+_MAX_SECTION_DIGITS = 4
 
 
 def _detect_section(text: str) -> tuple[int, str] | None:
@@ -259,6 +357,8 @@ def _detect_section(text: str) -> tuple[int, str] | None:
     """
     m = NUMBERED_HEAD_RE.match(text)
     if m:
+        if len(m.group(1)) > _MAX_SECTION_DIGITS:
+            return None
         return int(m.group(1)), m.group(2).strip()
     m = LEGACY_HEAD_RE.match(text)
     if m:
@@ -266,6 +366,8 @@ def _detect_section(text: str) -> tuple[int, str] | None:
         title = (m.group("en_title") or m.group("jp_title")
                  or m.group("title") or "")
         if num and title.strip():
+            if len(num) > _MAX_SECTION_DIGITS:
+                return None
             return int(num), title.strip()
     return None
 
@@ -329,18 +431,60 @@ def is_subheading_paragraph(p: Paragraph, text: str | None = None) -> bool:
     return True
 
 
+# ---------- table geometry limits ----------
+#
+# python-docx's `_Row.cells` expands `w:gridSpan` eagerly -- it yields the
+# same cell `grid_span` times -- and `grid_span` is an unbounded Python
+# int straight out of attacker-controlled XML. A 1.4 KB DOCX declaring
+# `w:gridSpan w:val="50000000"` costs minutes of CPU and hundreds of MB
+# before anything is rendered. `_Row.cells` also walks `_tc_above`
+# recursively for every `w:vMerge="continue"` row, which is quadratic in
+# the run length and ends in `RecursionError`.
+#
+# Both are reached from `_extract_masthead`, which runs on EVERY document
+# before any parsing decision -- so the payload needs nothing but a first
+# table. In the browser build this pins the only worker thread and the
+# tab simply stops responding.
+#
+# `_row_cells` sidesteps both by reading the row's own `tc` elements
+# directly: no span expansion, no vertical-merge recursion. A merged cell
+# is emitted once rather than N times, which is what an HTML email wants
+# anyway -- the 600 px layout cannot render 64 columns, let alone 50
+# million.
+MAX_TABLE_COLS = 64
+MAX_TABLE_ROWS = 500
+MAX_TABLE_CELLS_TOTAL = 20_000
+
+
+def _row_cells(row) -> list:
+    """Cells of `row` without `gridSpan` expansion or merge recursion."""
+    from docx.table import _Cell
+
+    tcs = row._tr.tc_lst[:MAX_TABLE_COLS]
+    return [_Cell(tc, row.table) for tc in tcs]
+
+
 # ---------- table → block ----------
 def _table_to_block(table: Table) -> TableBlock:
     rows_out: list[tuple[str, ...]] = []
-    for row in table.rows:
+    # The row and column caps bound each dimension separately, so on
+    # their own they still admit 500 x 64 = 32,000 cells -- more than the
+    # 20,000 total this file declares. The total is the one that matters:
+    # cost is per cell (each runs `paragraph_to_html` over its
+    # paragraphs), not per row or per column.
+    budget = MAX_TABLE_CELLS_TOTAL
+    for row in table.rows[:MAX_TABLE_ROWS]:
+        if budget <= 0:
+            break
         cells = []
-        for cell in row.cells:
+        for cell in _row_cells(row)[:budget]:
             cell_html_parts = []
             for p in cell.paragraphs:
                 ph = paragraph_to_html(p)
                 if ph:
                     cell_html_parts.append(ph)
             cells.append("<br>".join(cell_html_parts))
+        budget -= len(cells)
         rows_out.append(tuple(cells))
     # First row is header if all cells are short labels (heuristic: <= 30 chars
     # and bold dominant) — for safety we say it's a header.
@@ -353,7 +497,19 @@ def _extract_masthead(doc: DocxDocument) -> Masthead:
     """Pull title/tagline/subtitle/issue line from the first table."""
     if not doc.tables:
         return Masthead("", "", "", "")
-    cell = doc.tables[0].rows[0].cells[1]
+    # The template's masthead is a 2-column table, but this runs on EVERY
+    # document before the strict/lenient decision -- so an ordinary Word
+    # file whose first table is a one-column layout box (very common)
+    # raised `IndexError: tuple index out of range` and the editor got a
+    # bare traceback. That defeated the whole point of v1.1.2's lenient
+    # parse, which exists to accept arbitrary documents.
+    rows = doc.tables[0].rows
+    if not rows:
+        return Masthead("", "", "", "")
+    cells = _row_cells(rows[0])
+    if len(cells) < 2:
+        return Masthead("", "", "", "")
+    cell = cells[1]
     paragraphs = [p.text.strip() for p in cell.paragraphs if p.text.strip()]
     title = paragraphs[0] if paragraphs else ""
     tagline = paragraphs[1] if len(paragraphs) > 1 else ""
@@ -589,7 +745,7 @@ def _looks_like_masthead(t: Table) -> bool:
     # Masthead has at most a handful of short text cells; a real
     # data table typically has more rows or longer cell content.
     total_chars = sum(
-        len(cell.text) for row in t.rows for cell in row.cells
+        len(cell.text) for row in t.rows for cell in _row_cells(row)
     )
     return total_chars < 400
 

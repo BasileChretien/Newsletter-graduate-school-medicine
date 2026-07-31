@@ -42,6 +42,7 @@ from scripts.config import TITLE, get_default_repo
 from scripts.docx_parser import ImageRef, parse
 from scripts.html_utils import parse_html
 from scripts.image_handler import (
+    DEFAULT_IMAGE_QUALITY, DEFAULT_MAX_IMAGE_PX,
     extension_to_mime, extract_embedded, ingest_drop_folder, issue_dir,
     to_raw_url,
 )
@@ -175,6 +176,8 @@ def build_from_bytes(
     drop_dir: Path | None = None,
     workdir: Path | None = None,
     max_image_bytes: int = DEFAULT_MAX_IMAGE_BYTES,
+    max_image_px: int | None = DEFAULT_MAX_IMAGE_PX,
+    image_quality: int = DEFAULT_IMAGE_QUALITY,
 ) -> WebBuildResult:
     """Run the full pipeline over an in-memory DOCX.
 
@@ -230,14 +233,16 @@ def build_from_bytes(
         return _build_in(
             Path(workdir), docx_bytes, issue=issue, image_mode=image_mode,
             bcc=bcc, to=to, drop_dir=drop_dir,
-            max_image_bytes=max_image_bytes)
+            max_image_bytes=max_image_bytes,
+            max_image_px=max_image_px, image_quality=image_quality)
 
     scratch = Path(tempfile.mkdtemp(prefix="meridian-web-"))
     try:
         return _build_in(
             scratch, docx_bytes, issue=issue, image_mode=image_mode,
             bcc=bcc, to=to, drop_dir=drop_dir,
-            max_image_bytes=max_image_bytes)
+            max_image_bytes=max_image_bytes,
+            max_image_px=max_image_px, image_quality=image_quality)
     finally:
         # `ignore_errors`: a failed cleanup of a temp directory must not
         # turn a successful build into an exception.
@@ -254,6 +259,8 @@ def _build_in(
     to: str | None,
     drop_dir: Path | None,
     max_image_bytes: int,
+    max_image_px: int | None,
+    image_quality: int,
 ) -> WebBuildResult:
     """The pipeline itself, rooted at an already-chosen directory.
 
@@ -299,7 +306,9 @@ def _build_in(
 
     # 2) Extract photos out of the DOCX (and an optional drop folder).
     asset_dir = issue_dir(root / "assets", issue)
-    embedded = extract_embedded(docx_path, asset_dir)
+    embedded = extract_embedded(docx_path, asset_dir,
+                                max_image_px=max_image_px,
+                                image_quality=image_quality)
     drops = ingest_drop_folder(drop_dir, asset_dir) if drop_dir else []
     repo = get_default_repo()
 
@@ -336,7 +345,10 @@ def _build_in(
     # `check_remote` is always False here: Pyodide has no synchronous
     # HTTP, and a browser build has no business making 30 blocking
     # HEAD requests to GitHub on the editor's behalf anyway.
-    result = validate(final_html, check_remote=False)
+    media_bytes = sum(p.stat().st_size for p in asset_dir.glob('*')
+                      if p.is_file() and p.suffix.lower() != '.json')
+    result = validate(final_html, check_remote=False,
+                      attachment_bytes=media_bytes)
     if not result.ok:
         return _failed(subject, result, preview_html=preview_html,
                        html=final_html,

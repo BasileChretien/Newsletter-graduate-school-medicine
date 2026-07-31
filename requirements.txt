@@ -1,12 +1,22 @@
-python-docx==1.1.2
-Jinja2==3.1.4
+# Kept in step with web/app.js's PY_PACKAGES pin -- the desktop and
+# browser builds must parse the editor's document with the SAME
+# library version, or the two paths can disagree about what the
+# newsletter contains. A test asserts they match.
+python-docx==1.2.0
+# sandbox escapes; not reachable here
+Jinja2>=3.1.6
 css-inline==0.14.1
 beautifulsoup4==4.12.3
-requests==2.32.3
-click==8.1.7
-lxml==5.3.0
-pytest==8.3.3
-pytest-cov==5.0.0
+# CVE-2024-47081: .netrc credentials leaked via crafted URLs -- and validator.py issues HEAD requests to URLs taken from the DOCX
+requests>=2.33.0
+# CVE-2026-7246 in click.edit(); unused
+click>=8.3.3
+# CVE-2026-41066: iterparse/ETCompatXMLParser default to resolve_entities=True (XXE). Not reached today, but it parses attacker-supplied documents
+lxml>=6.1.0
+# Resizes newsletter photos to fit the email (see image_handler).
+# Optional at runtime -- if it is missing the toolkit still builds,
+# it just sends full-resolution photos.
+Pillow==11.3.0
 
 # Backport for Python 3.10 -- 3.11+ ships tomllib in the stdlib.
 tomli>=2.0.1; python_version < "3.11"

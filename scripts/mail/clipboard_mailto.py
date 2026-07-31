@@ -48,6 +48,11 @@ class ClipboardMailtoBackend:
     # A clipboard payload and a `mailto:` URL have nowhere to put a
     # MIME attachment, so CID mode is impossible here.
     supports_inline_images = False
+    # A `mailto:` URL cannot carry a 50-address BCC list: Windows
+    # caps the URI around 2 KB and handlers vary wildly in what they
+    # honour. The list is simply not delivered on this path -- which
+    # the CLI used to claim it was.
+    supports_bcc = False
 
     def is_available(self) -> bool:
         return True

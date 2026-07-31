@@ -101,7 +101,52 @@ def sanitize_subject(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+# URL schemes allowed to reach a recipient. Everything else -- `file:`,
+# `javascript:`, `data:`, `vbscript:`, `ms-msdt:`, `search-ms:` and every
+# other registered protocol handler -- is dropped.
+#
+# This lives here, not in `scripts/mail/plaintext.py` where it started,
+# because the plaintext part was the ONLY place it was applied. The HTML
+# part -- the one recipients actually render -- shipped whatever scheme
+# the DOCX contained. `file://host/share/x` is the sharp end: clicked in
+# Outlook on a domain-joined Windows machine it is a UNC path, so the
+# recipient's workstation authenticates to the attacker over SMB and
+# leaks a NetNTLMv2 hash. The mail comes from the editor's own mailbox,
+# so it passes SPF/DKIM/DMARC and reads as trusted internal post.
+#
+# Worse, the two MIME alternatives disagreed: the plaintext part stripped
+# the hostile target while the HTML part kept it, so a plaintext client,
+# an archive review or a DLP scan all saw clean prose.
+SAFE_URL_SCHEMES: tuple[str, ...] = ("http://", "https://", "mailto:")
+
+
+def is_safe_url_scheme(href: str) -> bool:
+    """True when `href` may be shown to a recipient as a live link.
+
+    Normalizes before deciding, because the raw string is
+    attacker-controlled: NFKC folds fullwidth variants, invisible
+    characters are stripped (`java<ZWSP>script:`), leading control
+    characters and whitespace are removed (`\\x01javascript:`), and the
+    comparison is case-insensitive. Each of those is a documented filter
+    bypass, so the check has to run on the normalized form rather than
+    on what the document claims to contain.
+
+    A relative or anchor-only href (`#section`, `/page`) has no scheme
+    and is treated as unsafe: nothing in this toolkit emits one, and in
+    an email there is no base URL for it to resolve against.
+    """
+    cleaned = strip_invisibles(normalize_compatibility(href or ""))
+    # Control characters are ignored by URL parsers but not by a naive
+    # prefix check, so drop them rather than merely trimming whitespace.
+    cleaned = "".join(
+        c for c in cleaned if unicodedata.category(c) not in ("Cc", "Cf")
+    ).strip().lower()
+    return cleaned.startswith(SAFE_URL_SCHEMES)
+
+
 __all__ = [
+    "SAFE_URL_SCHEMES",
+    "is_safe_url_scheme",
     "strip_invisibles",
     "normalize_compatibility",
     "normalize_for_match",
