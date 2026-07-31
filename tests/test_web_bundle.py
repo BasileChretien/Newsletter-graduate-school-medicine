@@ -374,3 +374,51 @@ def test_vendor_script_refuses_filenames_that_escape_the_vendor_dir():
         (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
     for name in assets["files"]:
         assert vendor_pyodide._safe_name(name) == name
+
+
+def test_the_downloadable_html_is_the_self_contained_document():
+    """Reported from the field: "the preview is working perfectly, but
+    when downloading the html the images are gone. They are present when
+    I download the email draft though."
+
+    `WebBuildResult` carries two documents. `standalone_html` has the
+    photos as `data:` URIs; `html` has them as
+    `raw.githubusercontent.com` URLs. The page is hardcoded to CID mode
+    and never runs `publish-images`, so those URLs point at files that
+    were never uploaded -- every one 404s. The download was wired to
+    `html`, which is why the preview looked perfect and the downloaded
+    file did not.
+
+    This asserts the wiring in the embedded Python, since that is where
+    the mistake was and no unit test of `webapp` could have caught it.
+    """
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    block = re.search(r"def _web_build\(.*?\n    return json\.dumps",
+                      app_js, re.S)
+    assert block, "the _web_build glue was not found in app.js"
+    glue = block.group(0)
+
+    write = re.search(
+        r'p = out / f"issue-\{int\(issue\)\}\.html"\s*\n\s*'
+        r'p\.write_text\((result\.\w+)', glue)
+    assert write, "could not find where the .html download is written"
+    assert write.group(1) == "result.standalone_html", (
+        f"the .html download is written from {write.group(1)}; it must be "
+        f"result.standalone_html, or the downloaded file points at photos "
+        f"that were never published"
+    )
+
+
+def test_the_mail_html_is_never_offered_as_a_download():
+    """The stronger form of the check above: `result.html` must not
+    reach the virtual filesystem at all. It is the bytes to validate and
+    to hand the mail backend -- handing it to an editor gives them a
+    file whose every photo is a dead GitHub URL."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    block = re.search(r"def _web_build\(.*?\n    return json\.dumps",
+                      app_js, re.S)
+    glue = re.sub(r"#[^\n]*", "", block.group(0))   # drop comments
+
+    assert not re.search(r"write_text\(\s*result\.html", glue), (
+        "result.html is being written to a file the editor can download")

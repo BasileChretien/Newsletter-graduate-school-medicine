@@ -133,11 +133,11 @@ def test_preview_embeds_photos_as_data_uris(built):
     """A brand-new issue has nothing on raw.githubusercontent.com yet,
     so a preview using those URLs would show broken images and read as
     'the toolkit is broken'."""
-    assert "data:image/" in built.preview_html
+    assert "data:image/" in built.standalone_html
     # >= rather than ==: the logo is referenced twice (masthead and
     # footer), and both references get the same data URI.
-    assert built.preview_html.count("data:image/") >= built.photo_count
-    assert "raw.githubusercontent.com" not in built.preview_html
+    assert built.standalone_html.count("data:image/") >= built.photo_count
+    assert "raw.githubusercontent.com" not in built.standalone_html
 
 
 def test_wire_html_keeps_the_public_urls(built):
@@ -160,7 +160,7 @@ def test_unfilled_masthead_is_rejected_without_an_eml(unfilled_docx, tmp_path):
     assert any("VOL. XX" in e or "placeholder" in e.lower()
                for e in res.errors), res.errors
     # The editor still needs to SEE what is wrong.
-    assert res.preview_html
+    assert res.standalone_html
 
 
 def test_an_empty_document_is_rejected_with_readable_advice(tmp_path):

@@ -316,13 +316,19 @@ def _web_build(js_bytes, issue, image_mode, bcc):
         p = out / f"issue-{int(issue)}.eml"
         p.write_bytes(result.eml)
         paths["eml"] = str(p)
-    if result.html:
+    # The downloadable .html and the on-page preview are the SAME
+    # self-contained document, written once and referenced twice.
+    #
+    # This used to write \`result.html\` here, which carries
+    # \`raw.githubusercontent.com\` URLs. The browser build always uses
+    # CID and never runs \`publish-images\`, so those URLs point at files
+    # that were never uploaded: the preview looked perfect and every
+    # downloaded file had missing photos. Reported from the field
+    # exactly that way.
+    if result.standalone_html:
         p = out / f"issue-{int(issue)}.html"
-        p.write_text(result.html, encoding="utf-8")
+        p.write_text(result.standalone_html, encoding="utf-8")
         paths["html"] = str(p)
-    if result.preview_html:
-        p = out / "preview.html"
-        p.write_text(result.preview_html, encoding="utf-8")
         paths["preview"] = str(p)
     return json.dumps({
         "ok": result.ok,
