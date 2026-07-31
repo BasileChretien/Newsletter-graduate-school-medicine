@@ -228,39 +228,75 @@ def test_nested_tracked_changes_do_not_grow_the_call_stack():
 
     The review flagged this as a `RecursionError` of the same shape as
     the `w:vMerge` chain. It is not, and the difference is worth
-    recording: libxml2 refuses documents nested deeper than 256 elements
-    and python-docx does not pass `XML_PARSE_HUGE`, so the deepest
-    `w:ins` chain that can reach this function is 254 -- well inside
-    Python's limit. `_tc_above` recursion, by contrast, scales with the
-    number of sibling ROWS, which no nesting cap bounds at all.
+    recording: libxml2 refuses documents nested beyond ~256 elements and
+    python-docx does not pass `XML_PARSE_HUGE`, so a `w:ins` chain that
+    arrives *through the parser* is bounded well inside Python's limit.
+    `_tc_above` recursion, by contrast, scales with the number of
+    sibling ROWS, which no nesting cap bounds at all -- which is why a
+    ~3000-row chain really did raise `RecursionError`.
 
-    So this pins the property rather than a crash: the traversal must
-    survive far more nesting than the parser can currently deliver, so
-    that the guarantee does not silently depend on an undocumented
-    default of a transitive dependency.
+    So this pins the property, not a crash. The tree is built with the
+    lxml API rather than parsed, because the parser cap is exactly the
+    external default the rewrite exists not to depend on -- and because
+    that cap turns out to differ by one between libxml2 builds, which a
+    hardcoded depth discovered the hard way on the Linux and macOS
+    runners.
     """
-    from docx.oxml.parser import parse_xml
+    from lxml import etree
 
     from scripts.docx_parser import _iter_content_children
 
-    ns = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
-    depth = 254  # the deepest python-docx will actually parse, measured
-    xml = (f"<w:p {ns}>" + "<w:ins>" * depth
-           + "<w:r><w:t>payload</w:t></w:r>"
-           + "</w:ins>" * depth + "</w:p>")
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    depth = 5000  # far beyond anything the parser would admit
 
-    children = list(_iter_content_children(parse_xml(xml)))
-    assert len(children) == 1
+    root = etree.Element(f"{{{W}}}p", nsmap={"w": W})
+    node = root
+    for _ in range(depth):
+        node = etree.SubElement(node, f"{{{W}}}ins")
+    run = etree.SubElement(node, f"{{{W}}}r")
+    etree.SubElement(run, f"{{{W}}}t").text = "payload"
 
-    # And the same walk with a recursion limit far below the nesting
-    # depth: a recursive implementation cannot pass this, an iterative
-    # one does not notice.
+    # A recursive implementation cannot pass this at any sane limit; an
+    # iterative one does not notice the depth at all.
     limit = sys.getrecursionlimit()
     try:
-        sys.setrecursionlimit(60)
-        assert len(list(_iter_content_children(parse_xml(xml)))) == 1
+        sys.setrecursionlimit(100)
+        children = list(_iter_content_children(root))
     finally:
         sys.setrecursionlimit(limit)
+
+    assert len(children) == 1
+    assert children[0].tag == f"{{{W}}}r"
+
+
+def test_deletions_stay_excluded_however_deeply_they_are_nested():
+    """The traversal rewrite must not start publishing struck-out text.
+
+    `w:del` content is the one thing here that would be actively harmful
+    to emit: someone deleted a sentence, and printing it in a newsletter
+    going to ~50 people is worse than dropping it.
+    """
+    from lxml import etree
+
+    from scripts.docx_parser import _iter_content_children
+
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    root = etree.Element(f"{{{W}}}p", nsmap={"w": W})
+
+    node = root
+    for _ in range(50):
+        node = etree.SubElement(node, f"{{{W}}}ins")
+    kept = etree.SubElement(node, f"{{{W}}}r")
+
+    # A deletion buried inside the same insertion chain, and a moveFrom
+    # at the top level.
+    dropped = etree.SubElement(node, f"{{{W}}}del")
+    etree.SubElement(dropped, f"{{{W}}}r")
+    moved_away = etree.SubElement(root, f"{{{W}}}moveFrom")
+    etree.SubElement(moved_away, f"{{{W}}}r")
+
+    children = list(_iter_content_children(root))
+    assert children == [kept]
 
 
 def test_total_cell_budget_is_actually_enforced():
