@@ -337,6 +337,38 @@ def eml_path_for(draft: DraftEmail) -> Path:
     return Path(draft.preview_path).with_suffix(".eml")
 
 
+def _restrict_to_owner(path: Path) -> None:
+    """Make `path` readable only by the current user.
+
+    `Path.touch(mode=0o600)` is a no-op for permissions on Windows -- it
+    toggles the read-only bit and nothing else, so the file inherits the
+    directory ACL. Measured: `st_mode` came back `0o666`. That is the
+    editors' primary platform, and this file holds ~50 real institutional
+    addresses in cleartext, sitting in a folder that may be on a shared
+    drive, a redirected profile, or (on the macOS fallback path)
+    inside an iCloud-synced Documents directory.
+
+    `icacls /inheritance:r /grant:r <user>:F` is the Windows equivalent
+    of chmod 600. Best-effort: a failure is logged, never fatal -- the
+    draft itself is already written and the editor needs it.
+    """
+    if platform.system() != "Windows":
+        return
+    user = os.environ.get("USERNAME")
+    if not user:
+        return
+    try:
+        subprocess.run(
+            ["icacls", str(path), "/inheritance:r",
+             "/grant:r", f"{user}:F"],
+            capture_output=True, check=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning(
+            "Could not restrict permissions on %s (%s). It contains the "
+            "full recipient list -- delete it once the newsletter is sent.",
+            path.name, e)
+
+
 def write_eml(draft: DraftEmail, path: Path | None = None) -> Path:
     """Build the message and write it to disk. Returns the path written."""
     out = Path(path) if path is not None else eml_path_for(draft)
@@ -354,6 +386,7 @@ def write_eml(draft: DraftEmail, path: Path | None = None) -> Path:
     except OSError as e:  # pragma: no cover -- exotic filesystems
         log.debug("Could not pre-create %s with 0600 (%s).", out, e)
     out.write_bytes(build_eml(draft).as_bytes())
+    _restrict_to_owner(out)
     log.info("Wrote %s (%d bytes)", out, out.stat().st_size)
     return out
 
@@ -404,6 +437,7 @@ class EmlBackend:
     # "outlook"` at the call sites) is what stops the two paths from
     # drifting apart -- the exact divergence the round-15 audit found.
     supports_inline_images = True
+    supports_bcc = True          # written as a real Bcc: header
 
     def is_available(self) -> bool:
         # Pure stdlib: no COM, no clipboard, no external binary.

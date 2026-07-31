@@ -1,5 +1,11 @@
 name: tests
 
+# Declared in the FILE, not left to the repository setting: a fork
+# inherits this workflow but not the org's default-token policy, and
+# this job runs untrusted pull-request code.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -31,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Run pytest
         run: python -m pytest --tb=short

@@ -216,3 +216,20 @@ def test_hidden_elements_are_not_defeated_by_a_display_rule():
             "global `[hidden] { display: none !important }` they stay "
             "visible even when hidden is set."
         )
+
+
+def test_desktop_and_browser_parse_with_the_same_python_docx():
+    """The two builds must parse the editor's document with the same
+    library version. They had silently diverged (desktop 1.1.2, browser
+    1.2.0), which undercuts the "no parallel implementation to drift"
+    guarantee the bundle exists to provide -- the .eml a browser editor
+    sends would not have come from the same stack as a desktop one."""
+    reqs = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    desktop = re.search(r"^python-docx==([\d.]+)", reqs, re.M)
+    browser = re.search(r'"python-docx==([\d.]+)"', app_js)
+    assert desktop and browser, "could not find both pins"
+    assert desktop.group(1) == browser.group(1), (
+        f"requirements.txt pins {desktop.group(1)} but web/app.js pins "
+        f"{browser.group(1)}")

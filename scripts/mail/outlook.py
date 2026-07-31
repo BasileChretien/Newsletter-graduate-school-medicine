@@ -260,6 +260,7 @@ class OutlookBackend:
     # COM `Attachments.Add` + `PR_ATTACH_CONTENT_ID` -- see
     # `_attach_inline_image` above.
     supports_inline_images = True
+    supports_bcc = True          # set on the COM MailItem
 
     def is_available(self) -> bool:
         return is_available()

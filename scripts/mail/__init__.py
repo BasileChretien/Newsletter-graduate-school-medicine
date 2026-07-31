@@ -97,6 +97,9 @@ class ComposeOutcome:
     # CLI had the identical hazard and only a `log.warning` deep in
     # `cid.py`, so the count is surfaced here for both.
     unembedded_images: int = 0
+    # False when the chosen backend could not carry the BCC
+    # list, so the caller can tell the editor the truth.
+    bcc_delivered: bool = True
 
     @property
     def is_fallback(self) -> bool:
@@ -401,6 +404,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
             # backend cannot attach files (CID needs Outlook COM), and
             # we hand it the original_url_html above.
             image_mode="url",
+            bcc_delivered=bool(fallback.supports_bcc or not bcc),
         )
 
     return ComposeOutcome(
@@ -408,6 +412,7 @@ def compose(html: str, *, subject: str, backend: str = "auto",
         handler_kind=handler.kind,
         image_mode=image_mode,
         unembedded_images=unembedded,
+        bcc_delivered=bool(chosen.supports_bcc or not bcc),
     )
 
 

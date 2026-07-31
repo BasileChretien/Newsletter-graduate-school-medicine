@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -72,19 +73,67 @@ def _included_files() -> list[Path]:
     could be packed in two different orders.
     """
     out: list[Path] = []
+    for path in _candidate_files():
+        if not path.is_file():
+            continue
+        # Symlinks are excluded explicitly. `is_file()` and `read_bytes()`
+        # BOTH follow them, and the name/suffix filters below never look
+        # at the link itself -- so a PR adding `scripts/_compat.py` as a
+        # symlink to `~/.ssh/id_ed25519` would have had its TARGET packed
+        # into a zip that is then published to a public URL. CI would even
+        # have prompted it: the bundle-drift check fails, and its message
+        # tells the maintainer to re-run this script.
+        if path.is_symlink():
+            log_skip(path, "symlink")
+            continue
+        if EXCLUDE_PARTS & set(path.parts):
+            continue
+        if path.suffix in EXCLUDE_SUFFIXES or path.name in EXCLUDE_NAMES:
+            continue
+        resolved = path.resolve()
+        if not resolved.is_relative_to(REPO_ROOT.resolve()):
+            log_skip(path, "resolves outside the repository")
+            continue
+        out.append(path)
+    return sorted(out, key=_archive_name)
+
+
+def log_skip(path: Path, why: str) -> None:
+    print(f"  skipped {path.relative_to(REPO_ROOT)}: {why}", file=sys.stderr)
+
+
+def _candidate_files() -> list[Path]:
+    """Files to consider, preferring what git actually tracks.
+
+    `rglob` walked the WORKING TREE, so anything a maintainer happened to
+    leave in `scripts/`, `templates/`, `locales/` or `images/` was packed
+    into a zip served from a public URL -- a scratch export, a `.env`, a
+    contacts note. `.gitignore` protects the repo root but places no
+    constraint inside those four directories, and `--verify` could not
+    catch it either, because it compares the bundle against the same
+    working-tree walk, so both sides agreed.
+
+    Falling back to the walk keeps the builder usable outside a git
+    checkout (an extracted ZIP, say), but says so loudly.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "-z", *INCLUDE_DIRS],
+            capture_output=True, check=True, timeout=30)
+        tracked = [REPO_ROOT / p.decode() for p in result.stdout.split(b"\0") if p]
+        if tracked:
+            return tracked
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"WARNING: could not list tracked files ({e}); falling back to "
+              "a filesystem walk, which may pick up untracked files.",
+              file=sys.stderr)
+    out: list[Path] = []
     for rel in INCLUDE_DIRS:
         base = REPO_ROOT / rel
         if not base.is_dir():
             raise FileNotFoundError(f"Missing directory: {base}")
-        for path in base.rglob("*"):
-            if not path.is_file():
-                continue
-            if EXCLUDE_PARTS & set(path.parts):
-                continue
-            if path.suffix in EXCLUDE_SUFFIXES or path.name in EXCLUDE_NAMES:
-                continue
-            out.append(path)
-    return sorted(out, key=_archive_name)
+        out.extend(base.rglob("*"))
+    return out
 
 
 def _payload(path: Path) -> bytes:

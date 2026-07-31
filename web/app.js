@@ -21,6 +21,14 @@
  * the tab holding an unpublished newsletter and ~50 recipient
  * addresses. The rest come from Pyodide's lockfile and are named
  * without versions so the runtime picks its own matching builds. */
+// The one address that is legitimate. Shown in the footer and used by
+// the frame-buster, so an editor always has something to compare the
+// address bar against.
+const CANONICAL_URL =
+  "https://basilechretien.github.io/Newsletter-graduate-school-medicine/";
+const SOURCE_URL =
+  "https://github.com/BasileChretien/Newsletter-graduate-school-medicine";
+
 const PY_PACKAGES = [
   "css_inline",             // the load-bearing one (Rust; in the lockfile)
   "python-docx==1.2.0",     // NOT in the lockfile -- fetched from PyPI
@@ -28,6 +36,23 @@ const PY_PACKAGES = [
   "beautifulsoup4",
   "pillow",                 // resizes photos; in the lockfile
 ];
+
+/* The page can be framed by anyone: GitHub Pages sends no
+ * X-Frame-Options, and `frame-ancestors` is specified as ignored inside
+ * a <meta> tag, so no CSP on this host can stop it. That matters more
+ * than a typical clickjacking risk, because a clone reproduces every
+ * trust claim on this page verbatim -- it IS the same static file -- and
+ * the page's whole job is to persuade an editor to hand over an
+ * unpublished document and ~50 institutional addresses. Framing the real
+ * tool inside a hostile wrapper is the cheapest version of that attack:
+ * everything works, so nothing feels wrong. */
+if (window.top !== window.self) {
+  document.documentElement.textContent =
+    "This page must be opened directly, not inside another site. " +
+    "The only genuine address is " + CANONICAL_URL;
+  try { window.top.location = window.self.location; } catch { /* opaque */ }
+  throw new Error("refusing to run inside a frame");
+}
 
 const REPO_MOUNT = "/repo";
 const OUTPUT_DIR = "/output";
@@ -63,6 +88,8 @@ const STRINGS = {
     previewTitle: "Preview",
     previewHint: "This is what recipients will see.",
     footer: "Your document never leaves this device. Nothing is sent anywhere.",
+    provenance: "This tool will never ask you for a password. If a page that looks like this one does, close it. The only genuine address is:",
+    sourceLink: "View the source code",
     verdictOk: "Ready to send.",
     verdictBad: "Not ready — please fix the points below in Word and build again.",
     tooBig: "That file is too large for the browser version (over 40 MB). In Word, use File → Compress Pictures, save, and try again — or use the desktop launcher, which has no size limit.",
@@ -106,6 +133,8 @@ const STRINGS = {
     previewTitle: "プレビュー",
     previewHint: "受信者にはこのように表示されます。",
     footer: "文書がこの端末から出ることはありません。データはどこにも送信されません。",
+    provenance: "このツールがパスワードを尋ねることは決してありません。よく似た画面でパスワードを求められた場合は、閉じてください。正規のアドレスは次のとおりです：",
+    sourceLink: "ソースコードを見る",
     verdictOk: "送信できます。",
     verdictBad: "まだ送信できません。以下の点をWordで修正して、もう一度作成してください。",
     tooBig: "このファイルはブラウザ版には大きすぎます（40MB超）。Word の「ファイル → 図の圧縮」で小さくして保存し直すか、サイズ制限のないデスクトップ版ランチャーをご利用ください。",
@@ -151,6 +180,10 @@ function applyLanguage() {
     const [attr, key] = el.dataset.i18nAttr.split(":");
     el.setAttribute(attr, t(key));
   }
+  const canon = document.getElementById("canonical-url");
+  if (canon) canon.textContent = CANONICAL_URL;
+  const srcLink = document.getElementById("source-link");
+  if (srcLink) srcLink.href = SOURCE_URL;
   for (const btn of document.querySelectorAll(".lang-switch button")) {
     const active = btn.dataset.lang === lang;
     btn.classList.toggle("is-active", active);

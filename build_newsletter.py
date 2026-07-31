@@ -127,6 +127,34 @@ def _friendly_used(used: ComposeOutcome) -> str:
     return f"Email draft opened via: {used}"
 
 
+def _bcc_blurb(used: ComposeOutcome, count: int) -> str:
+    """Tell the editor what actually happened to the recipient list.
+
+    This used to claim "BCC pre-filled with N recipient(s)" whenever
+    `recipients.txt` was non-empty -- regardless of whether the backend
+    could carry it. On the clipboard/mailto path (the default for every
+    macOS, Linux, Thunderbird and webmail editor) the list is silently
+    discarded, so the message was simply false.
+
+    The recovery an editor reaches for when they find BCC empty is the
+    dangerous one: pasting `recipients.txt` into To: or Cc:, which
+    discloses ~50 institutional addresses -- external collaborators
+    included -- to every recipient and every forward. Saying so plainly,
+    and naming the field, is the whole point of this function.
+    """
+    if used.bcc_delivered:
+        return (f"BCC pre-filled with {count} recipient(s) "
+                "from recipients.txt")
+    return click.style(
+        f"IMPORTANT: your email app cannot be pre-filled with the "
+        f"recipient list, so the draft's BCC field is EMPTY. Open "
+        f"recipients.txt and paste the {count} addresses into the "
+        f"BCC field -- not To: or Cc:, or every recipient will see the "
+        f"whole list. Alternatively, re-run with --backend=eml, which "
+        f"produces a draft file with the BCC already filled in.",
+        fg="yellow")
+
+
 def _resolve_output_dir(user_choice: str | None) -> Path | None:
     """Resolve where to write `dist/` and `assets/` for this run.
 
@@ -650,10 +678,7 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     if warn is not None:
         click.echo(click.style(warn, fg="yellow"))
     if recipients:
-        click.echo(
-            f"BCC pre-filled with {len(recipients)} recipient(s) "
-            "from recipients.txt"
-        )
+        click.echo(_bcc_blurb(used, len(recipients)))
 
 
 @cli.command("all")
@@ -851,10 +876,7 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
         if warn is not None:
             click.echo(click.style(warn, fg="yellow"))
         if recipients:
-            click.echo(
-                f"BCC pre-filled with {len(recipients)} recipient(s) "
-                "from recipients.txt"
-            )
+            click.echo(_bcc_blurb(used, len(recipients)))
     except Exception as e:
         click.echo(f"Could not open email draft ({e}). Opening preview instead.",
                    err=True)

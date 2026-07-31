@@ -78,6 +78,15 @@ class MailBackend(Protocol):
     # surfacing only after the build and the GitHub push had already
     # run. A backend that answers this question about itself can't drift.
     supports_inline_images: bool
+    # Whether `DraftEmail.bcc` actually reaches the draft. The
+    # clipboard/mailto path silently discards it, and the CLI
+    # printed "BCC pre-filled with N recipients" regardless --
+    # so a macOS or Linux editor was told the list was loaded
+    # when it was not. The recovery they then reach for is the
+    # dangerous one: pasting recipients.txt into To: or Cc:,
+    # which discloses ~50 institutional addresses, including
+    # external collaborators, to everyone and every forward.
+    supports_bcc: bool
 
     def is_available(self) -> bool: ...
 
