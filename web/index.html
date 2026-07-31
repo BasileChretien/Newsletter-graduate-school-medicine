@@ -5,21 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MERIDIAN — Newsletter Builder</title>
 <meta name="description" content="Turn a MERIDIAN Word file into a ready-to-send email draft. Runs entirely in your browser.">
-<!-- The page promises that the editor's document is never uploaded. That
-     promise is currently kept by *intent* -- nothing in the code sends it
-     anywhere. This CSP makes it structural: `connect-src` lists the only
-     hosts any script may talk to (the Pyodide runtime and the Python
-     wheels), so even a backdoored dependency has nowhere to POST a DOCX
-     or a recipient list. `form-action 'none'` means the page cannot
-     submit anywhere at all.
-     Self-hosting the runtime would let this collapse to 'self'; until
-     then these three hosts are the trust anchor, and that is the honest
-     description of the guarantee. -->
+<!-- Everything this page executes is served from its own origin: the
+     Pyodide runtime and every wheel are vendored at deploy time by
+     `web/vendor_pyodide.py` and verified against the SHA-256 hashes in
+     `web/pyodide-assets.json`.
+     That is what lets `script-src` and `connect-src` be `'self'`. The
+     previous policy allowed `https://cdn.jsdelivr.net`, which is an open
+     CDN serving `/npm/<any-package>` and `/gh/<any-user>/<any-repo>` --
+     verified live, an arbitrary npm package and an arbitrary GitHub repo
+     both loaded and executed here.
+     Note what a CSP still cannot do: it has no `navigate-to` directive,
+     so `window.open` and `location` remain outside it. The local-only
+     guarantee rests on the code and its dependencies; this policy is
+     defence in depth on top of that, not a proof. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
-  script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+  script-src 'self' 'wasm-unsafe-eval';
   style-src 'self' 'unsafe-inline';
-  connect-src 'self' https://cdn.jsdelivr.net https://pypi.org https://files.pythonhosted.org;
+  connect-src 'self';
   img-src 'self' data: blob:;
   frame-src blob:;
   worker-src blob:;
@@ -134,15 +137,11 @@
   </p>
 </footer>
 
-<!-- Subresource Integrity on the loader: this page reads unpublished
-     institutional documents, so a compromised or swapped CDN file would
-     be reading them too. The hash pins the exact bytes of pyodide.js
-     v0.29.4. Note the runtime assets it then fetches (wasm, wheels) are
-     not covered by SRI -- this narrows the attack surface, it does not
-     eliminate it. Regenerate the hash if the version changes. -->
-<script src="https://cdn.jsdelivr.net/pyodide/v0.29.4/full/pyodide.js"
-        integrity="sha384-wkkA2EvfjhI/Ka1xso+9XYjVf5am63bStLbKX4X5gkFcHcfY5QLUMsFf7AsnoXCU"
-        crossorigin="anonymous"></script>
+<!-- Local loader. SRI is no longer the integrity mechanism: every byte
+     is verified against `pyodide-assets.json` at deploy time, which
+     covers the whole runtime rather than the 18.5 KB loader that SRI
+     reached. -->
+<script src="./pyodide/pyodide.js"></script>
 <script src="app.js" type="module"></script>
 </body>
 </html>

@@ -13,6 +13,7 @@ three platforms without a bespoke workflow step.
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -117,25 +118,133 @@ def test_pyodide_version_is_pinned_to_a_css_inline_capable_line():
     distribution; the 314.x line moved to ABI `2026_0` and has no
     build yet, so an unreviewed version bump breaks the page at
     install time with a message that points at micropip, not at us."""
-    html = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
-
-    assert "cdn.jsdelivr.net/pyodide/v0.29." in html, (
+    src = (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(encoding="utf-8")
+    assert re.search(r'PYODIDE_VERSION = "0\.29\.\d+"', src), (
         "Pyodide must stay pinned to the 0.29.x line until css_inline "
         "publishes a build for the newer ABI."
     )
-    # The version pin and the integrity hash must travel together. A
-    # bump that KEEPS a stale hash fails safe -- the page simply will not
-    # boot -- but a bump that DROPS the attribute silently removes the
-    # only check on the code that reads the editor's document.
-    tag = re.search(
-        r"<script[^>]*pyodide/v0\.29\.\d+/full/pyodide\.js[^>]*>", html, re.S)
-    assert tag, "Pyodide <script> tag not found"
-    assert re.search(r'integrity="sha384-[A-Za-z0-9+/=]{60,}"', tag.group(0)), (
-        "the Pyodide <script> tag must carry a sha384 integrity hash"
+    # The script and the hash file must agree, or the deploy fetches one
+    # version and checks it against another. That fails closed, but only
+    # after someone has already pushed to main.
+    assets = json.loads(
+        (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
+    pinned = re.search(r'PYODIDE_VERSION = "([^"]+)"', src).group(1)
+    assert assets["pyodide_version"] == pinned
+
+
+def test_the_runtime_is_served_from_this_origin():
+    """Every executed byte comes from our own host. The previous
+    arrangement loaded ~10 MB from `cdn.jsdelivr.net`, which also serves
+    `/npm/<any-package>` and `/gh/<any-user>/<any-repo>` -- verified
+    live, an arbitrary npm package executed on this page. And SRI covered
+    only the 18.5 KB loader: the wasm, the stdlib and every wheel it then
+    fetched were unchecked, about 99.8% of the executed bytes.
+
+    This asserts the CDN's *absence* as well as the local path's
+    presence. Adding `./pyodide/` while leaving a CDN <script> in place
+    would satisfy a presence-only check and change nothing.
+    """
+    html = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+
+    tags = re.findall(r'<script[^>]*\ssrc="([^"]+)"', html)
+    assert tags, "no <script src> found"
+    for src in tags:
+        assert not re.match(r"(https?:)?//", src), (
+            f"{src} is loaded from a third-party host; `script-src "
+            f"'self'` exists precisely to forbid that"
+        )
+    assert "./pyodide/pyodide.js" in tags
+
+    # Without an explicit indexURL the loader falls back to the CDN for
+    # the wasm, the stdlib and every wheel -- the <script> tag alone
+    # moves only 18.5 KB of the 16 MB.
+    assert "loadPyodide({ indexURL: PYODIDE_INDEX_URL })" in app_js
+    assert re.search(r'PYODIDE_INDEX_URL = "\./pyodide/"', app_js)
+
+
+def test_no_package_is_resolved_over_the_network_at_runtime():
+    """micropip reaches PyPI on every cold load. Vendoring removes the
+    need for it, and `connect-src 'self'` would block it anyway -- so a
+    re-introduced micropip call is a page that boots on a developer's
+    machine and hangs on the live one."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", app_js, flags=re.S)
+    assert "micropip" not in code, "micropip needs network access"
+
+    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
+    assert packages, "PY_PACKAGES list not found"
+    entries = re.findall(r'"([^"]+)"', packages.group(1))
+
+    # `lxml` has to be named explicitly: python-docx is loaded by PATH,
+    # so the lockfile resolver never sees its requirements and pulls
+    # nothing in for it. Omitting it produced a page that reported every
+    # package loaded and then died on `from lxml import etree` -- caught
+    # in the browser, not by the suite, which is why it is pinned here.
+    assert "lxml" in entries, (
+        "python-docx is loaded by path, so its dependencies are not "
+        "resolved for it -- lxml must be requested by name"
     )
-    assert 'crossorigin="anonymous"' in tag.group(0), (
-        "SRI is silently inert without crossorigin=anonymous"
+
+    for entry in entries:
+        assert not re.match(r"(https?:)?//", entry), entry
+        # A bare name resolves out of the vendored lockfile; a wheel must
+        # be a local path. Neither may carry a `==` requirement spec,
+        # which only micropip understands.
+        assert "==" not in entry, (
+            f"{entry} is a PyPI requirement spec -- loadPackage takes a "
+            f"lockfile name or a path to a vendored wheel"
+        )
+        if entry.endswith(".whl"):
+            assert entry.startswith("./pyodide/"), entry
+
+
+def test_every_vendored_file_has_a_committed_hash():
+    """`pyodide-assets.json` is the only thing standing between the
+    deploy and whatever the CDN happens to serve that morning, because
+    the bytes themselves are deliberately not in git history."""
+    assets = json.loads(
+        (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
+    files = assets["files"]
+
+    for required in ("pyodide.js", "pyodide.asm.wasm", "python_stdlib.zip",
+                     "pyodide-lock.json"):
+        assert required in files, f"{required} is unverified"
+    for name, digest in files.items():
+        assert re.fullmatch(r"[0-9a-f]{64}", digest), f"{name}: {digest!r}"
+
+    # `lxml` is the one that is easy to lose: it is a dependency of
+    # python-docx, which is absent from the lockfile, so resolution never
+    # reaches it. Omitting it produced a vendor directory that looked
+    # complete and then failed at `import docx` in the browser.
+    joined = " ".join(files)
+    for wheel in ("css_inline", "python_docx", "lxml"):
+        assert wheel in joined, f"no {wheel} wheel is vendored"
+
+
+def test_the_vendored_runtime_is_not_committed():
+    """~16 MB against a 5.5 MB repo -- and the README tells editors to
+    download that repo as a ZIP, so committing it would nearly triple the
+    download for the desktop workflow to benefit the browser one."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "web/pyodide"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=True)
+    assert tracked.stdout.strip() == "", (
+        "web/pyodide/ is fetched at deploy time and must stay untracked:\n"
+        + tracked.stdout
     )
+
+
+def test_the_deploy_workflow_vendors_before_it_publishes():
+    """Without this step the published site has no `./pyodide/` at all
+    and the page 404s on its own loader."""
+    wf = (REPO_ROOT / ".github" / "workflows" / "deploy-web.yml").read_text(
+        encoding="utf-8")
+    assert "web/vendor_pyodide.py" in wf
+    assert wf.index("web/vendor_pyodide.py") < wf.index("upload-pages-artifact")
+    # Verify mode, not `--write-hashes`: a deploy that rewrote the hashes
+    # would rubber-stamp whatever it had just downloaded.
+    assert "--write-hashes" not in wf
 
 
 def test_the_page_declares_a_content_security_policy():
@@ -149,25 +258,18 @@ def test_the_page_declares_a_content_security_policy():
     assert "form-action 'none'" in html
     csp = re.search(r'Content-Security-Policy"\s+content="([^"]+)"', html)
     assert csp, "CSP must be a single quoted content attribute"
-    connect = re.search(r"connect-src ([^;]+);", csp.group(1))
-    assert connect, "CSP must constrain connect-src"
-    # Whatever hosts are allowed, a wildcard would defeat the point.
-    assert "*" not in connect.group(1)
-
-
-def test_python_dependencies_fetched_from_pypi_are_version_pinned():
-    """Packages absent from Pyodide's own lockfile resolve against PyPI
-    at every cold load. Unpinned, that executes whatever was released
-    this morning inside the tab holding an unpublished newsletter and
-    the recipient list."""
-    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
-    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
-    assert packages, "PY_PACKAGES list not found"
-
-    assert re.search(r'"python-docx==\d+\.\d+', packages.group(1)), (
-        "python-docx is not in Pyodide's distribution, so it comes from "
-        "PyPI and must carry an exact version pin."
-    )
+    policy = csp.group(1)
+    for directive in ("script-src", "connect-src"):
+        found = re.search(rf"{directive} ([^;]+)", policy)
+        assert found, f"CSP must constrain {directive}"
+        sources = found.group(1).split()
+        # Now that the runtime is vendored, neither needs a host at all.
+        # `'wasm-unsafe-eval'` is unavoidable -- Pyodide IS a wasm
+        # runtime -- but it grants no network reach.
+        assert set(sources) <= {"'self'", "'wasm-unsafe-eval'"}, (
+            f"{directive} allows {sources}; everything is served from "
+            f"this origin, so nothing external needs permitting"
+        )
 
 
 def test_hidden_elements_are_not_defeated_by_a_display_rule():
@@ -226,10 +328,19 @@ def test_desktop_and_browser_parse_with_the_same_python_docx():
     sends would not have come from the same stack as a desktop one."""
     reqs = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
     app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    vendor = (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(
+        encoding="utf-8")
 
     desktop = re.search(r"^python-docx==([\d.]+)", reqs, re.M)
-    browser = re.search(r'"python-docx==([\d.]+)"', app_js)
-    assert desktop and browser, "could not find both pins"
-    assert desktop.group(1) == browser.group(1), (
-        f"requirements.txt pins {desktop.group(1)} but web/app.js pins "
-        f"{browser.group(1)}")
+    # The browser version now lives in a vendored wheel filename rather
+    # than a micropip requirement spec. Three places have to agree: the
+    # wheel the deploy fetches, the path the page loads, and the desktop
+    # pin. A mismatch between the first two is a 404 at boot; a mismatch
+    # with the third is the silent divergence this test exists for.
+    fetched = re.search(r'"python_docx-([\d.]+)-py3-none-any\.whl"', vendor)
+    browser = re.search(
+        r'"\./pyodide/python_docx-([\d.]+)-py3-none-any\.whl"', app_js)
+    assert desktop and browser and fetched, "could not find all three pins"
+    assert desktop.group(1) == browser.group(1) == fetched.group(1), (
+        f"requirements.txt pins {desktop.group(1)}, web/app.js loads "
+        f"{browser.group(1)}, vendor_pyodide.py fetches {fetched.group(1)}")

@@ -53,31 +53,57 @@ requirement is an HTTP origin, because the page `fetch`es its bundle and
 `file://` will not do. Nothing needs configuring and there is no secret
 to store.
 
-**What the page fetches, precisely** — the earlier claim of "exactly two
-requests" was wrong, and this section is the one place that has to be
-accurate:
+**What the page fetches, precisely** — an earlier version of this
+section claimed "exactly two requests" and was wrong, so this is the one
+place that has to stay accurate:
 
-- `cdn.jsdelivr.net` — the Pyodide loader (pinned with Subresource
-  Integrity), plus the assets it then pulls itself: `pyodide.asm.js`,
-  `pyodide.asm.wasm`, `python_stdlib.zip`, `pyodide-lock.json`, and the
-  wheels for `css_inline`, `jinja2`, `beautifulsoup4` and `lxml`.
-- `pypi.org` and `files.pythonhosted.org` — `python-docx` only, which is
-  not in Pyodide's distribution. It carries an exact version pin.
-- Your own origin — `meridian-bundle.zip`.
+- **Your own origin, and nothing else.** `index.html`, `app.js`,
+  `style.css`, `meridian-bundle.zip`, and `./pyodide/` — the whole
+  runtime: `pyodide.js`, `pyodide.asm.js`, `pyodide.asm.wasm`,
+  `python_stdlib.zip`, `pyodide-lock.json`, and the wheels for
+  `css_inline`, `jinja2`, `beautifulsoup4`, `lxml`, `pillow` and
+  `python-docx`.
 
-A `Content-Security-Policy` in `index.html` restricts `connect-src` to
-exactly those hosts and sets `form-action 'none'`. Be precise about what
-that buys: the application has **no upload endpoint** and every step runs
-locally, and the CSP narrows where any script *could* send data. It is
-defence-in-depth on top of a local-only design — not a proof that no
-exfiltration path exists, since the allowlist still contains three
-third-party hosts.
-The trust anchor is jsDelivr: SRI pins the loader, but the loader
-fetches four further files from the same origin, so a compromise of
-jsDelivr is not something the hash defends against. Vendoring the
-Pyodide distribution next to `web/` and pointing `loadPyodide` at
-`./pyodide/` would move that anchor onto your own host, and is the right
-next step for an institution that wants the guarantee to be absolute.
+No CDN, no PyPI, no third party. That is what lets the
+`Content-Security-Policy` in `index.html` set `script-src 'self'
+'wasm-unsafe-eval'` and `connect-src 'self'`, alongside `form-action
+'none'` and `default-src 'none'`.
+
+It used to be otherwise, and the reason for the change is worth
+recording. The page loaded ~10 MB from `cdn.jsdelivr.net`, which serves
+`/npm/<any-package>` and `/gh/<any-user>/<any-repo>` from that same
+host — so `script-src https://cdn.jsdelivr.net` admitted any JavaScript
+an attacker could publish to npm or tag on GitHub. That was verified
+against the live site: an arbitrary npm package and an arbitrary GitHub
+repository both loaded and executed. Subresource Integrity did not close
+it either, because SRI covered only the 18.5 KB loader; the wasm, the
+stdlib and every wheel it then fetched were unchecked — roughly 99.8% of
+the executed bytes, on a page that reads unpublished institutional
+documents.
+
+Be precise about what the current policy buys, all the same: the
+application has **no upload endpoint** and every step runs locally, and
+the CSP narrows where any script *could* send data. CSP has no
+`navigate-to` directive in shipping browsers, so `window.open` and
+`location` remain outside it. The local-only guarantee rests on the code
+and its dependencies; the policy is defence-in-depth on top of that, not
+a proof.
+
+**The runtime is fetched at deploy time, not committed.** ~16 MB against
+a 5.5 MB repository — and the README tells editors to download that
+repository as a ZIP, so committing it would nearly triple the download
+for the desktop workflow in order to benefit the browser one. Instead
+`.github/workflows/deploy-web.yml` runs `python web/vendor_pyodide.py`
+before publishing, which downloads every file and checks it against the
+SHA-256 hashes in `web/pyodide-assets.json`. That file **is** committed
+and reviewable, so tampering is detectable even though the payload is
+not in git history; a mismatch fails the deploy and the live site stays
+on the last good version. To run the page locally, run the same script
+once, then serve `web/` over HTTP.
+
+Serving from your own origin has a second benefit worth noting for a
+hospital: the page works on institutional networks that block public
+CDNs outright.
 
 The DOCX itself is never sent anywhere — there is no endpoint to send it
 to. After the first load the runtime is browser-cached; note there is no
@@ -98,8 +124,11 @@ Python, so it only works where a WebAssembly build exists. It ships in
 Pyodide's **0.29.x** distribution. The 314.x line moved to ABI `2026_0`
 and has no `css_inline` build yet, and the wheel PyPI publishes is
 tagged for the older ABI — so bumping the version in `index.html`
-breaks the page at install time, with an error that points at micropip
-rather than at us. A test pins the version for this reason.
+breaks the page at install time, with an error that points at the
+loader rather than at us. Bump `PYODIDE_VERSION` in
+`web/vendor_pyodide.py`, re-run it with `--write-hashes`, and commit
+the new `pyodide-assets.json` — tests pin the version and check that
+the script and the hash file agree.
 
 ## Deliberate limits
 

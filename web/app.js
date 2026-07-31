@@ -15,12 +15,6 @@
  * checking will break the page at install time.
  */
 
-/* Versions are pinned. Only `python-docx` is absent from Pyodide's own
- * distribution, so it resolves against PyPI at every cold load — an
- * unpinned spec would execute whatever was released this morning inside
- * the tab holding an unpublished newsletter and ~50 recipient
- * addresses. The rest come from Pyodide's lockfile and are named
- * without versions so the runtime picks its own matching builds. */
 // The one address that is legitimate. Shown in the footer and used by
 // the frame-buster, so an editor always has something to compare the
 // address bar against.
@@ -29,12 +23,29 @@ const CANONICAL_URL =
 const SOURCE_URL =
   "https://github.com/BasileChretien/Newsletter-graduate-school-medicine";
 
+/* Everything below is served from this origin — see
+ * `web/vendor_pyodide.py`. Nothing is fetched from a CDN or from PyPI at
+ * runtime, which is what lets the CSP narrow to `'self'`.
+ *
+ * These load via `pyodide.loadPackage`, not micropip: with a local
+ * `indexURL` the runtime resolves them straight out of the vendored
+ * lockfile, so micropip and its network access are not needed at all.
+ * `python-docx` is the exception — absent from Pyodide's lockfile, so it
+ * is vendored as a wheel and loaded by path. */
+const PYODIDE_INDEX_URL = "./pyodide/";
+
 const PY_PACKAGES = [
-  "css_inline",             // the load-bearing one (Rust; in the lockfile)
-  "python-docx==1.2.0",     // NOT in the lockfile -- fetched from PyPI
+  "css_inline",             // the load-bearing one (Rust)
   "jinja2",
   "beautifulsoup4",
-  "pillow",                 // resizes photos; in the lockfile
+  "pillow",                 // resizes photos before they are sent
+  // python-docx's own dependency. It has to be named here because
+  // python-docx is loaded BY PATH below, so the lockfile resolver never
+  // sees its requirements and pulls nothing in for it. Omitting it gets
+  // you a page that loads every package successfully and then dies on
+  // `from lxml import etree`.
+  "lxml",
+  "./pyodide/python_docx-1.2.0-py3-none-any.whl",
 ];
 
 /* The page can be framed by anyone: GitHub Pages sends no
@@ -228,17 +239,13 @@ function setBoot(key, detail = "") {
 async function boot() {
   try {
     setBoot("bootStarting");
-    pyodide = await loadPyodide();
+    pyodide = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
 
     setBoot("bootPackages");
-    await pyodide.loadPackage("micropip");
-    const micropip = pyodide.pyimport("micropip");
-    // One call with the whole list, not one per package: micropip's
-    // transaction model expects to resolve the full set at once, and
-    // these share dependencies (jinja2/MarkupSafe, beautifulsoup4/
-    // soupsieve). Concurrent installs resolve against one shared
-    // site-packages independently.
-    await micropip.install(PY_PACKAGES);
+    // One call with the whole list so the runtime resolves shared
+    // dependencies once (jinja2/MarkupSafe, beautifulsoup4/soupsieve,
+    // python-docx/lxml).
+    await pyodide.loadPackage(PY_PACKAGES);
 
     setBoot("bootBundle");
     const res = await fetch("meridian-bundle.zip");

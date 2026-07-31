@@ -50,3 +50,9 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Pyodide runtime -- fetched at deploy time by
+# web/vendor_pyodide.py and verified against pyodide-assets.json.
+# Not committed: ~16 MB against a 5.5 MB repo would nearly triple
+# the ZIP editors download for a browser-only feature.
+web/pyodide/
