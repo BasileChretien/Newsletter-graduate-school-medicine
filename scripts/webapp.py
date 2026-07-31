@@ -21,7 +21,7 @@ Validation semantics differ from the CLI in one deliberate way. The
 CLI *deletes* `dist/issue-N.html` when validation hard-blocks, so the
 editor cannot double-click a stale file and send it. In the browser
 there is no file on disk to re-open, so a rejected build still returns
-`preview_html` (the editor needs to SEE what is wrong) but returns
+`standalone_html` (the editor needs to SEE what is wrong) but returns
 `eml=None` and `ok=False`. Nothing sendable is ever produced from a
 build that failed validation -- the invariant is preserved, only the
 mechanism changes.
@@ -75,11 +75,24 @@ class WebBuildResult:
 
     `ok`            -- validation passed; `eml` is populated.
     `subject`       -- sanitized subject line.
-    `preview_html`  -- HTML with photos rewritten to `data:` URIs so a
-                       browser preview shows the real images even
-                       though nothing has been published to GitHub yet.
-    `html`          -- the HTML as the CLI would have written it
-                       (photos as `raw.githubusercontent.com` URLs).
+    `standalone_html`
+                    -- the newsletter as a SELF-CONTAINED document:
+                       photos rewritten to `data:` URIs, nothing left to
+                       fetch. This is what the browser build previews
+                       *and* what it offers for download.
+
+                       It was called `preview_html`, and that name
+                       caused a reported bug: the download link was
+                       wired to `html` instead, so every downloaded file
+                       had missing photos. Nothing about this document
+                       is preview-only.
+    `html`          -- the MAIL html, with photos as
+                       `raw.githubusercontent.com` URLs. Those URLs are
+                       correct only after `publish-images` has pushed
+                       the photos -- which the browser build NEVER does,
+                       because it always uses CID. So treat this as the
+                       bytes to validate and to hand the mail backend,
+                       never as a file to give an editor.
     `eml`           -- RFC 5322 draft bytes, or None when `ok` is False.
     `errors`        -- hard blocks. Non-empty means `ok` is False.
     `warnings`      -- advisory only (size, subject length, placeholders).
@@ -89,7 +102,7 @@ class WebBuildResult:
 
     ok: bool
     subject: str
-    preview_html: str
+    standalone_html: str
     html: str
     eml: bytes | None
     errors: tuple[str, ...] = ()
@@ -146,14 +159,14 @@ def _clean_addresses(
 
 
 def _failed(subject: str, result: ValidationResult | None, *,
-            preview_html: str = "",
+            standalone_html: str = "",
             html: str = "", section_count: int = 0,
             image_mode: str = "cid") -> WebBuildResult:
     """Build a rejected result -- never carries a `.eml`."""
     return WebBuildResult(
         ok=False,
         subject=subject,
-        preview_html=preview_html,
+        standalone_html=standalone_html,
         html=html,
         eml=None,
         errors=tuple(getattr(result, "errors", ()) or ()),
@@ -289,7 +302,7 @@ def _build_in(
         log.warning("Could not parse %s: %s", docx_path.name, e)
         return WebBuildResult(
             ok=False, subject=f"{TITLE} — Issue {issue}",
-            preview_html="", html="", eml=None,
+            standalone_html="", html="", eml=None,
             errors=(_EMPTY_DOCX_ERROR,),
             report_text=_EMPTY_DOCX_ERROR,
             image_mode=image_mode,
@@ -297,7 +310,7 @@ def _build_in(
     if not newsletter.sections:
         return WebBuildResult(
             ok=False, subject=f"{TITLE} — Issue {issue}",
-            preview_html="", html="", eml=None,
+            standalone_html="", html="", eml=None,
             errors=(_EMPTY_DOCX_ERROR,),
             report_text=_EMPTY_DOCX_ERROR,
             image_mode=image_mode,
@@ -331,10 +344,10 @@ def _build_in(
     # can never disagree about which photos made it in.
     cid_html, inline_images = attach_inline_images(
         final_html, asset_dir, max_image_bytes=max_image_bytes)
-    preview_html = final_html
+    standalone_html = final_html
     for img in inline_images:
         try:
-            preview_html = preview_html.replace(
+            standalone_html = standalone_html.replace(
                 img.original_url, _data_uri(img.path))
         except OSError as e:
             log.warning("Preview: could not embed %s (%s); it will show "
@@ -350,7 +363,7 @@ def _build_in(
     result = validate(final_html, check_remote=False,
                       attachment_bytes=media_bytes)
     if not result.ok:
-        return _failed(subject, result, preview_html=preview_html,
+        return _failed(subject, result, standalone_html=standalone_html,
                        html=final_html,
                        section_count=len(newsletter.sections),
                        image_mode=image_mode)
@@ -410,7 +423,7 @@ def _build_in(
     return WebBuildResult(
         ok=True,
         subject=subject,
-        preview_html=preview_html,
+        standalone_html=standalone_html,
         html=final_html,
         eml=eml_bytes,
         warnings=tuple(warnings),
