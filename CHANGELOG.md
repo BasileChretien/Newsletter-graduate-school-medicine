@@ -9,8 +9,8 @@ is preserved in `git log` for archaeology.
 ## [v1.2.0] — `.eml` export, browser build, self-hosted runtime (2026-07-31)
 
 Two new capabilities, the field-trial photo bug, and the fixes that fell
-out of six specialist reviews (security ×2, Python, architecture,
-frontend, code) and four CodeRabbit passes.
+out of five specialist reviews (security ×2, Python, architecture,
+frontend) and four CodeRabbit passes.
 **+140 regression tests — 430 passed, 2 skipped, on Linux, macOS and
 Windows.**
 
