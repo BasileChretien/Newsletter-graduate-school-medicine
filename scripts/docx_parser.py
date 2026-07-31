@@ -18,6 +18,7 @@ from docx.document import Document as DocxDocument
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from scripts.config import SUBHEAD_TEXTS  # known sub-headings (canonical template)
 from scripts.text_utils import is_safe_url_scheme
@@ -201,7 +202,10 @@ def _drawing_to_img(drawing, part) -> str:
 def _hyperlinks(paragraph: Paragraph) -> dict[str, str]:
     """Map relationship ids to URLs for hyperlinks in this paragraph."""
     out = {}
-    for hl in paragraph._p.findall(qn("w:hyperlink")):
+    # `.//` rather than direct children: a link added with Track
+    # Changes on sits inside `<w:ins>`, and the direct search missed
+    # it, so the URL map came back empty and the anchor lost its href.
+    for hl in paragraph._p.findall(".//" + qn("w:hyperlink")):
         rid = hl.get(qn("r:id"))
         if not rid:
             continue
@@ -211,12 +215,50 @@ def _hyperlinks(paragraph: Paragraph) -> dict[str, str]:
     return out
 
 
+def _iter_content_children(element):
+    """Yield a paragraph's content children, resolving tracked changes.
+
+    Word wraps edits made with Track Changes turned on:
+
+      * `<w:ins>`      -- inserted content. It IS in the document as the
+                          author sees it, so we descend into it.
+      * `<w:moveTo>`   -- the destination of moved content. Also present.
+      * `<w:del>`      -- deleted content. Its text lives in `<w:delText>`
+                          and must NEVER be published: someone struck a
+                          sentence out, and printing it in a newsletter
+                          that goes to ~50 people would be worse than
+                          dropping it.
+      * `<w:moveFrom>` -- the origin of moved content; same reasoning.
+
+    Only `w:r` children were handled before, so anything inside `w:ins`
+    was silently dropped -- the run was not a direct child, so the loop
+    never saw it. In the reported document that cost the dean's photo
+    and a large section photo, both of which had been added with Track
+    Changes on and never accepted. Text inserted the same way would have
+    vanished just as quietly, which is the more dangerous version of
+    this bug: a missing photo is visible, a missing sentence is not.
+
+    Deletions are excluded here deliberately and explicitly. They were
+    excluded before too, but only as a side effect of the tag check --
+    which means nobody had decided it, and the next person to widen the
+    traversal could easily have started publishing struck-out text.
+    """
+    for child in element.iterchildren():
+        tag = child.tag
+        if tag in (qn("w:ins"), qn("w:moveTo")):
+            yield from _iter_content_children(child)
+        elif tag in (qn("w:del"), qn("w:moveFrom")):
+            continue
+        else:
+            yield child
+
+
 def paragraph_to_html(paragraph: Paragraph) -> str:
     """Convert a paragraph's runs (and hyperlinks) into safe HTML."""
     rid_to_url = _hyperlinks(paragraph)
 
     parts: list[str] = []
-    for child in paragraph._p.iterchildren():
+    for child in _iter_content_children(paragraph._p):
         tag = child.tag
         if tag == qn("w:r"):
             # Inline drawing inside this run? Emit an <img> tag.
@@ -226,10 +268,11 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
                 if img:
                     parts.append(img)
                     continue
-            for r in paragraph.runs:
-                if r._r is child:
-                    parts.append(_run_to_html(r))
-                    break
+            # Build the Run directly rather than looking it up in
+            # `paragraph.runs`: that property lists only DIRECT `w:r`
+            # children, so a run inside `<w:ins>` would never match and
+            # its text would still be lost after the traversal fix.
+            parts.append(_run_to_html(Run(child, paragraph)))
         elif tag == qn("w:hyperlink"):
             url = rid_to_url.get(child.get(qn("r:id")), "")
             inner_runs = []

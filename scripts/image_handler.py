@@ -106,14 +106,22 @@ def issue_dir(assets_dir: Path, issue: int) -> Path:
 
 # Per-member ceiling on an extracted image, and the compression ratio
 # above which a member is treated as a decompression bomb rather than a
-# photograph. A real institutional photo is well under 2 MB and
-# compresses barely at all inside the DOCX zip (JPEG/PNG are already
-# compressed), so a 100:1 ratio is not something legitimate content
-# reaches. Without these, `word/media/x.jpg` holding 400 MB of zeroes
+# photograph. Without these, `word/media/x.jpg` holding 400 MB of zeroes
 # expands from a 400 KB DOCX -- on the CLI that fills the editor's disk
 # and can wedge `publish-images` against GitHub's push limit; in the
 # browser it inflates Pyodide's in-memory filesystem until the tab dies.
-_MAX_EMBEDDED_BYTES = 2_000_000
+#
+# 25 MB, NOT the 2 MB CID attachment cap. Those are two different limits
+# and conflating them was a regression: at 2 MB a photo straight off a
+# camera (commonly 3-8 MB) was refused by `extract_embedded` outright,
+# so it never reached `url_map`, its `media://` sentinel never resolved,
+# and the picture vanished from the newsletter with only a log line.
+# The CID cap is about how big an EMAIL should be and correctly leaves
+# an oversized photo as a hosted URL; this one is about refusing a
+# decompression bomb, and belongs far above any real photograph.
+# Compression ratio does the actual bomb detection -- JPEG and PNG are
+# already compressed, so legitimate media never approaches 100:1.
+_MAX_EMBEDDED_BYTES = 25_000_000
 _MAX_COMPRESSION_RATIO = 100
 # Ceiling on the total extracted across one DOCX, so a hundred
 # individually-legal members cannot add up to the same problem.
