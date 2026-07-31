@@ -414,10 +414,15 @@ def _build_in(
         subject=subject,
         standalone_html=standalone_html,
         html=final_html,
-        # The SAME converter the `.eml` uses, so what the page shows in
-        # its plain-text view is the text recipients actually get rather
-        # than a lookalike produced by a second code path.
-        plaintext=_plaintext_alternative(final_html),
+        # The same converter AND the same input the `.eml` uses --
+        # `draft.html`, which is `cid_html` in the browser's default CID
+        # mode. Passing `final_html` produced byte-identical output here
+        # (measured), but only incidentally: the two differ in their
+        # `<img src>` values, and a converter that ever emitted an image
+        # URL would silently start showing the editor something
+        # recipients do not get. Taking it from the draft makes the
+        # guarantee structural instead of coincidental.
+        plaintext=_plaintext_alternative(draft.html),
         eml=eml_bytes,
         warnings=tuple(warnings),
         placeholders=tuple(result.placeholders or ()),

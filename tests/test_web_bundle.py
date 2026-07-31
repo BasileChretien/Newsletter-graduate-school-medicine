@@ -444,7 +444,9 @@ def test_the_plaintext_view_shows_the_bytes_the_eml_carries():
     same converter `scripts.mail.eml` uses. A second conversion would
     let the page show an editor something recipients never receive."""
     webapp = (REPO_ROOT / "scripts" / "webapp.py").read_text(encoding="utf-8")
-    assert "_plaintext_alternative(final_html)" in webapp
+    assert "_plaintext_alternative(draft.html)" in webapp, (
+        "the plain-text view must be derived from the same HTML the "
+        ".eml embeds, not merely the same converter")
     assert "from scripts.mail.eml import _plaintext_alternative" in webapp
 
 

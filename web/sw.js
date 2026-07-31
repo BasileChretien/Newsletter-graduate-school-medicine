@@ -54,11 +54,20 @@ const SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // Individually, not `addAll`: that rejects the whole install if any
-    // single request fails, which would leave the page with no worker
-    // at all because one file 404'd.
+    // Deliberately NOT swallowing failures here.
+    //
+    // An earlier version caught them, reasoning that one 404 should not
+    // deny the page a worker. But `activate` deletes the previous
+    // `meridian-*` cache, so a connection lost partway through an update
+    // would activate an INCOMPLETE worker and destroy the last complete
+    // offline copy in the same breath -- taking an editor from "works
+    // offline" to "works nowhere".
+    //
+    // Letting install reject leaves the existing worker and its intact
+    // cache in place, and the browser retries on a later visit. Failing
+    // to gain a new cache is recoverable; losing the working one is not.
     await Promise.all(SHELL.map((url) =>
-      cache.add(new Request(url, { cache: "reload" })).catch(() => {})));
+      cache.add(new Request(url, { cache: "reload" }))));
     await self.skipWaiting();
   })());
 });
