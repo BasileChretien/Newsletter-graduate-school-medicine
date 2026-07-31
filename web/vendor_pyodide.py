@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import sys
 import urllib.request
@@ -99,6 +100,33 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+_SAFE_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
+
+
+def _safe_name(name: str) -> str:
+    """Reject a filename that could escape `web/pyodide/`.
+
+    These names come out of `pyodide-lock.json`, which is fetched from
+    the CDN and is NOT yet hash-verified at the point they are used --
+    verification needs the full set, and the set is defined by this very
+    file. They then reach both a URL (`PYODIDE_BASE + name`) and a write
+    path (`VENDOR_DIR / name`).
+
+    In the deploy path a tampered name fails closed already, because a
+    file absent from `pyodide-assets.json` trips the "downloaded but not
+    in the hash file" check before anything is written. But
+    `--write-hashes` has no such backstop -- it trusts what it
+    downloads by definition -- so `"../../.github/workflows/x.yml"`
+    would be written outside the vendor directory on a maintainer's own
+    machine. Cheap to close, so closed.
+    """
+    if not _SAFE_FILENAME.match(name) or Path(name).name != name:
+        raise ValueError(
+            f"refusing a filename from the lockfile that is not a plain "
+            f"basename: {name!r}")
+    return name
+
+
 def _resolve_packages(lock: dict) -> list[str]:
     """Every wheel filename needed for `PACKAGES`, dependencies included."""
     entries = {k.lower(): v for k, v in lock["packages"].items()}
@@ -111,7 +139,7 @@ def _resolve_packages(lock: dict) -> list[str]:
             continue
         needed.add(name)
         queue.extend(d.lower() for d in entry.get("depends", []))
-    return sorted(entries[n]["file_name"] for n in needed)
+    return sorted(_safe_name(entries[n]["file_name"]) for n in needed)
 
 
 def collect() -> dict[str, bytes]:
@@ -190,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(VENDOR_DIR)
     VENDOR_DIR.mkdir(parents=True)
     for name, data in assets.items():
-        (VENDOR_DIR / name).write_bytes(data)
+        (VENDOR_DIR / _safe_name(name)).write_bytes(data)
     total = sum(len(d) for d in assets.values())
     print(f"Wrote {len(assets)} files to web/pyodide/ ({total:,} B)")
     return 0

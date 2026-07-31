@@ -344,3 +344,33 @@ def test_desktop_and_browser_parse_with_the_same_python_docx():
     assert desktop.group(1) == browser.group(1) == fetched.group(1), (
         f"requirements.txt pins {desktop.group(1)}, web/app.js loads "
         f"{browser.group(1)}, vendor_pyodide.py fetches {fetched.group(1)}")
+
+
+def test_vendor_script_refuses_filenames_that_escape_the_vendor_dir():
+    """Wheel filenames come out of `pyodide-lock.json`, which is fetched
+    from the CDN and is NOT yet hash-verified when they are used -- they
+    define the very set that verification then checks. They reach both a
+    URL and a write path.
+
+    The deploy path fails closed on its own (a file absent from
+    `pyodide-assets.json` trips the "downloaded but not in the hash
+    file" check before anything is written), but `--write-hashes` has no
+    such backstop by definition, so a tampered lockfile could write
+    outside `web/pyodide/` on a maintainer's machine.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "web"))
+    try:
+        import vendor_pyodide
+    finally:
+        sys.path.pop(0)
+
+    for hostile in ("../../.github/workflows/deploy-web.yml",
+                    "..\..\evil.py", "/etc/passwd", "a/b.whl", "..", ""):
+        with pytest.raises(ValueError):
+            vendor_pyodide._safe_name(hostile)
+
+    # And the real names must still pass, or the guard breaks the deploy.
+    assets = json.loads(
+        (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
+    for name in assets["files"]:
+        assert vendor_pyodide._safe_name(name) == name
