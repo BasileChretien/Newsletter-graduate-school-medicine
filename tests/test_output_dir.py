@@ -245,3 +245,56 @@ def test_build_pipeline_hard_fails_on_empty_docx(tmp_path):
     assert result.exit_code == 1
     # And no HTML was written.
     assert not (out_dir / "dist" / "issue-1.html").exists()
+
+
+def test_output_dir_survives_a_docx_containing_photos(tmp_path: Path):
+    """`--output-dir` crashed on any DOCX with an image.
+
+    `_build_pipeline` resolved photo URLs with
+    `to_raw_url(p, PROJECT_ROOT, ...)`, but `--output-dir` puts the
+    extracted photos beside that directory instead of in the repo, so
+    `to_raw_url` raised a bare ValueError traceback:
+
+        Asset .../out/assets/issue-3/image1.jpg
+        must be inside repo .../Newsletter-graduate-school-medicine
+
+    Every real newsletter has photos, and `--output-dir` exists for the
+    macOS case where the toolkit folder is unwritable -- where
+    `default_safe_output_dir()` redirects to
+    `~/Documents/Meridian-Newsletter` and hits exactly this path. So the
+    v1.1.2 fix for that production failure could not survive a photo.
+
+    Uses the shipped template, which carries the masthead logo and the
+    dean photo, so the assertion rests on real embedded images.
+    """
+    import docx as docx_lib
+
+    from scripts.config import MERIDIAN_TEMPLATE
+
+    d = docx_lib.Document(str(MERIDIAN_TEMPLATE))
+    for table in d.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for old, new in (("VOL. XX", "VOL. 4"),
+                                     ("ISSUE NO. XX", "ISSUE NO. 1"),
+                                     ("MONTH YEAR", "JUNE 2026")):
+                        if old in para.text:
+                            for run in para.runs:
+                                run.text = run.text.replace(old, new)
+
+    src = tmp_path / "issue-3.docx"
+    d.save(str(src))
+    out = tmp_path / "elsewhere"
+
+    result = bn._build_pipeline(src, issue=3, validate_remote=False,
+                                output_dir=out)
+
+    assert result.exit_code == 0, "build --output-dir failed on a DOCX with photos"
+    assert (out / "dist" / "issue-3.html").exists()
+    # The URLs stay repo-relative, so a redirected build still produces
+    # the same links a conventional one would.
+    html = (out / "dist" / "issue-3.html").read_text(encoding="utf-8")
+    assert "raw.githubusercontent.com" in html
+    assert str(out).replace("\\", "/") not in html, (
+        "a local filesystem path leaked into the published HTML")

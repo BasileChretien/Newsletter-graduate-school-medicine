@@ -387,9 +387,27 @@ def _build_pipeline(input_path: Path, issue: int, *,
     log.info("Embedded images: %d, drop-folder images: %d",
              len(embedded), len(drops))
 
-    # 3) Build URL map for embedded images (by basename)
+    # 3) Build URL map for embedded images (by basename).
+    #
+    # Resolve against the root the assets ACTUALLY live under. With
+    # `--output-dir` they sit beside it, not in the repo, and
+    # `to_raw_url` raised a bare `ValueError` traceback:
+    #
+    #   Asset .../meridian-out/assets/issue-8/image1.jpg
+    #   must be inside repo .../Newsletter-graduate-school-medicine
+    #
+    # That crashed `build --output-dir` for any DOCX containing a photo,
+    # which is every real newsletter -- and `--output-dir` exists
+    # precisely for the macOS case where the toolkit folder is
+    # unwritable, where `default_safe_output_dir()` redirects to
+    # `~/Documents/Meridian-Newsletter` and hits the same path. So the
+    # v1.1.2 fix for that failure could not survive a photo.
+    #
+    # Either root yields the same relative `assets/issue-N/photo.jpg`,
+    # so the URL is unchanged for the conventional layout.
+    url_root = output_dir if output_dir else PROJECT_ROOT
     url_map = {
-        name: to_raw_url(p, PROJECT_ROOT, get_default_repo())
+        name: to_raw_url(p, url_root, get_default_repo())
         for name, p in embedded.items()
     }
 
@@ -498,6 +516,12 @@ def _build_pipeline(input_path: Path, issue: int, *,
             to_standalone_html(final_html, inline_images), encoding="utf-8")
         click.echo(f"Wrote: {out_standalone}  (open this one to look at it)")
     except OSError as e:
+        # Clear it before falling back. `preview` PREFERS this file, so
+        # leaving a previous quarter's copy (or a half-written one) in
+        # place would show the editor last issue's newsletter as though
+        # it were this build -- worse than the broken photos this whole
+        # change is fixing, because it looks entirely correct.
+        _delete_stale_html(out_standalone)
         log.warning("Could not write %s: %s. The email is unaffected; "
                     "`preview` will fall back to %s.",
                     out_standalone.name, e, out_html.name)

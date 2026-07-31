@@ -102,15 +102,18 @@ def built(tmp_path_factory):
                             for run in para.runs:
                                 run.text = run.text.replace(old, new)
 
-    src = tmp_path_factory.mktemp("src") / "issue-91.docx"
+    root = tmp_path_factory.mktemp("build")
+    src = root / "issue-91.docx"
     d.save(str(src))
+    # `output_dir` rather than the repo's own dist/: these tests must not
+    # be able to overwrite or delete an editor's real issue-91, and the
+    # fixture would otherwise leave extracted photos in the shared
+    # assets/ directory.
     result = bn._build_pipeline(src, issue=91, validate_remote=False,
-                                output_dir=None)
-    mail = bn.DIST_DIR / "issue-91.html"
-    standalone = bn.DIST_DIR / "issue-91.preview.html"
-    yield result, mail, standalone
-    for f in (mail, standalone):
-        f.unlink(missing_ok=True)
+                                output_dir=root)
+    yield (result,
+           root / "dist" / "issue-91.html",
+           root / "dist" / "issue-91.preview.html")
 
 
 def test_the_build_writes_both_files(built):
@@ -208,21 +211,17 @@ def test_a_failed_build_removes_both_stale_files(tmp_path: Path):
     empty = tmp_path / "issue-92.docx"
     docx_lib.Document().save(str(empty))
 
-    dist = bn.DIST_DIR
+    dist = tmp_path / "dist"
     dist.mkdir(parents=True, exist_ok=True)
     mail = dist / "issue-92.html"
     standalone = dist / "issue-92.preview.html"
     mail.write_text("<html>last quarter</html>", encoding="utf-8")
     standalone.write_text("<html>last quarter</html>", encoding="utf-8")
 
-    try:
-        result = bn._build_pipeline(empty, issue=92, validate_remote=False,
-                                    output_dir=None)
-        assert result.exit_code == 1
-        assert not mail.exists(), "stale mail artefact survived"
-        assert not standalone.exists(), (
-            "stale viewable copy survived -- the editor is told to open "
-            "this one, so it is the more dangerous of the two to leave")
-    finally:
-        mail.unlink(missing_ok=True)
-        standalone.unlink(missing_ok=True)
+    result = bn._build_pipeline(empty, issue=92, validate_remote=False,
+                                output_dir=tmp_path)
+    assert result.exit_code == 1
+    assert not mail.exists(), "stale mail artefact survived"
+    assert not standalone.exists(), (
+        "stale viewable copy survived -- the editor is told to open this "
+        "one, so it is the more dangerous of the two to leave")
