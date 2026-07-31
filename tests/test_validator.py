@@ -308,3 +308,35 @@ def test_the_shipped_template_has_no_unreported_placeholders():
     # unfilled by definition.
     missed = {t for t in every_token if not PLACEHOLDER_RE.fullmatch(t)}
     assert not missed, f"unreported placeholders in the template: {sorted(missed)}"
+
+
+def test_the_masthead_check_stays_case_sensitive():
+    """Pins a deliberate limitation, so nobody relaxes it the way the
+    placeholder regex above was correctly relaxed.
+
+    The masthead tokens are searched across the WHOLE visible document,
+    not just the masthead. The shipped template's visitors table carries
+    the body placeholder `[Month-Month Year]`, which contains "Month
+    Year" in title case. A case-insensitive comparison collides with the
+    masthead's `MONTH YEAR` and hard-blocks a correctly filled
+    newsletter -- worse than the gap it closes, since this check aborts
+    the build rather than warning.
+
+    The real gap it leaves: an editor who retypes the issue line in
+    title case is not caught. Closing that properly means scoping the
+    search to the masthead element, not relaxing the match.
+    """
+    filled = ("<html><body><table><tr><td><p>MERIDIAN</p>"
+              "<p>VOL. 12 | ISSUE NO. 3 | MARCH 2026</p></td></tr></table>"
+              "<p>Visit: [Purpose] &middot; [Month–Month Year]</p>"
+              "</body></html>")
+    result = validate(filled, check_remote=False)
+    assert not any("masthead" in e.lower() for e in result.errors), (
+        "a filled masthead was blocked by body text containing "
+        f"'Month Year': {result.errors}")
+
+    unfilled = ("<html><body><table><tr><td><p>MERIDIAN</p>"
+                "<p>VOL. XX | ISSUE NO. XX | MONTH YEAR</p></td></tr>"
+                "</table><p>Body.</p></body></html>")
+    assert any("masthead" in e.lower()
+               for e in validate(unfilled, check_remote=False).errors)

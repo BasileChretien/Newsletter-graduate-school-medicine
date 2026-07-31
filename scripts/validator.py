@@ -320,6 +320,23 @@ def validate(html: str, *, check_remote: bool = True,
     remove_hidden_elements(visible_soup)
     visible_text = visible_soup.get_text(" ", strip=True)
     normalized_text = normalize_for_match(visible_text)
+    # CASE-SENSITIVE ON PURPOSE. Do not "fix" this to match the way the
+    # placeholder regex above was fixed -- I tried, and it hard-blocks
+    # the shipped template.
+    #
+    # These tokens are matched against the whole visible document, not
+    # just the masthead. The template's visitors table contains the body
+    # placeholder `[Month–Month Year]`, which contains "Month Year" in
+    # title case. Lowercasing both sides makes that collide with the
+    # masthead's `MONTH YEAR`, so a correctly filled newsletter fails
+    # validation with "the masthead's issue line still contains unfilled
+    # placeholder text" -- a hard block, on a build that is fine. Twenty
+    # tests caught it.
+    #
+    # The uppercase form is what gives this check its precision. An
+    # editor who retypes the issue line in title case does slip through,
+    # which is a real if unlikely gap; closing it properly means scoping
+    # the search to the masthead element rather than relaxing the match.
     leaked = [
         tok for tok in _UNFILLED_MASTHEAD_TOKENS if tok in normalized_text
     ]
