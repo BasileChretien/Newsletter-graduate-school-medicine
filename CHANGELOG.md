@@ -8,10 +8,12 @@ is preserved in `git log` for archaeology.
 
 ## [v1.3.0] — see it the way recipients will (2026-08-03)
 
-Everything here came out of one field report — "the preview is working
-perfectly, but when downloading the html the images are gone" — and the
-three improvements chosen after it. **468 tests passing** on Linux,
-macOS and Windows.
+Four HIGH fixes, three new preview capabilities, offline support and a
+restyled builder page. Two of the fixes came from field reports — "when
+downloading the html the images are gone" and "[date] is not highlighted
+in the preview"; the rest were found while investigating those, and the
+restyle was requested separately. **468 tests passing** on Linux, macOS
+and Windows.
 
 > **Note on v1.2.0.** It was written up but never tagged, so nothing was
 > ever released under that name. Both sections are real and separate;
@@ -446,8 +448,8 @@ for the full archaeology.
 
 ---
 
-[v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.3.0
-[v1.2.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.2.0
+[v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/commit/f67b228
+[v1.2.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/commit/b361a16
 [v1.1.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.2
 [v1.1.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.1
 [v1.1.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.0
@@ -466,8 +468,13 @@ unsigned.
 
 Both are still tag-able at the right commits:
 
-    git tag -a v1.2.0 b361a16 -m "v1.2.0 -- .eml export, browser build, self-hosted runtime"
-    git tag -a v1.3.0 HEAD    -m "v1.3.0 -- see it the way recipients will"
+    git tag -a v1.2.0 b361a16 -m "v1.2.0 -- .eml export, browser build"
+    git tag -a v1.3.0 f67b228 -m "v1.3.0 -- see it the way recipients will"
     git push origin v1.2.0 v1.3.0
+
+Both commits are pinned deliberately. `HEAD` would have been wrong by the
+time anyone ran this -- the commit adding these very lines lands after
+it. `f67b228` is the last code change in v1.3.0; this entry documents it
+from immediately afterwards.
 
 Add `--no-sign` to match the unsigned v1.1.x tags.
