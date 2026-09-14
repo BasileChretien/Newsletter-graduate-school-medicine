@@ -1,0 +1,78 @@
+name: update-check
+
+# Weekly look at everything Dependabot cannot bump by itself: the Pyodide
+# runtime the browser build is pinned to (and whether a newer one still
+# ships css-inline), the browser build's package versions against the
+# desktop requirements, the wheel vendored from PyPI, and Python's
+# end-of-life dates. See tools/check_updates.py.
+#
+# The result lives in ONE issue, labelled `dependencies`: opened or
+# updated while something needs attention, closed once everything is
+# current. A report nobody has to go looking for, and no pile of
+# duplicate issues.
+
+on:
+  schedule:
+    - cron: "0 0 * * 1"        # Mondays 00:00 UTC -- 09:00 in Japan
+  workflow_dispatch:
+
+# Reads the repository and writes one issue. Nothing else: this job fetches
+# JSON from third-party APIs, so it gets no power beyond what it needs.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: update-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Stdlib only -- no `pip install` needed.
+      - name: Check dependencies and runtimes
+        id: check
+        env:
+          # Lifts the GitHub API's anonymous rate limit for the release
+          # lookup; the token is sent to api.github.com only.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/check_updates.py --report update-report.md
+
+      - name: Keep the tracking issue current
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ATTENTION: ${{ steps.check.outputs.attention }}
+        run: |
+          title="Dependency and runtime update report"
+          gh label create dependencies --color 0366d6 \
+            --description "Dependency and runtime updates" --force
+          number=$(gh issue list --state open --label dependencies \
+            --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ "$ATTENTION" = "true" ]; then
+            if [ -n "$number" ]; then
+              gh issue edit "$number" --body-file update-report.md
+            else
+              gh issue create --title "$title" --label dependencies \
+                --body-file update-report.md
+            fi
+          elif [ "$ATTENTION" = "false" ] && [ -n "$number" ]; then
+            # Only an explicit all-clear closes the issue. An empty value
+            # means the check never reported, which is not good news.
+            gh issue close "$number" \
+              --comment "Everything is up to date as of $(date -u +%F)."
+          fi
+
+      - name: Show the report in the run summary
+        if: always()
+        run: |
+          if [ -f update-report.md ]; then
+            cat update-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi

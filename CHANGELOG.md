@@ -6,6 +6,36 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [Unreleased]
+
+### Added — dependencies and runtimes are checked automatically
+- **Dependabot** (`.github/dependabot.yml`) opens weekly, grouped pull
+  requests for `requirements*.txt` and for the GitHub Actions the
+  workflows use; CI tests each one on Linux, macOS and Windows. Coupled
+  pins fail on purpose: bumping `python-docx` alone fails the existing
+  browser-parity test, which says how to finish the job.
+- **A weekly report** (`.github/workflows/update-check.yml`, running
+  `tools/check_updates.py`) covers what Dependabot cannot see, and keeps
+  ONE issue labelled `dependencies` current — opened or updated while
+  something needs attention, closed once everything is current:
+  - the Pyodide runtime, and whether a newer release still ships every
+    package the page loads — `css-inline` above all;
+  - the browser build's package versions against `requirements.txt`;
+  - the wheel vendored straight from PyPI (`python-docx`);
+  - the `requires-python` floor and the CI Python against end-of-life.
+- Its first run found real drift: the browser build ships `lxml` 6.0.2,
+  below the desktop's 6.1.0 security floor, and different `css-inline`
+  and `beautifulsoup4` versions from the desktop; Python 3.10, the
+  `requires-python` floor, reaches end of life on 2026-10-31; and
+  Pyodide 314.0.7 still lacks `css-inline`, so the page stays on 0.29.4.
+- **The READMEs' test counts are checked in CI** (`tools/readme_figures.py`,
+  `tests/test_readme_figures.py`): a pull request that adds tests without
+  updating the badge and the "Under the hood" figures fails, and
+  `python tools/readme_figures.py --fix` rewrites them after a green run.
+  The check once read its own test ids as the summary (553 for a suite of
+  602); it now reads only the final summary line and refuses a
+  collection with errors.
+
 ## [v1.4.1] — README refresh (2026-09-14)
 
 Documentation only; no code changes. **551 tests passing** on Linux,
