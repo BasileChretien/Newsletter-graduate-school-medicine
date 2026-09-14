@@ -64,6 +64,9 @@ def publish_assets(issue: int, *, push: bool = True,
     Returns the commit SHA if a commit was created; None if there was
     nothing to commit.
 
+    Photos are only ever added or updated, never removed from the
+    repository: see the comment on `git add --ignore-removal` below.
+
     Issue numbers <= 0 are rejected: `issue-0` is the conventional
     sandbox / scratch directory used during development, and pushing
     its contents (test images, manifest.json with PII like dean name +
@@ -111,7 +114,17 @@ def publish_assets(issue: int, *, push: bool = True,
         log.info("No changes in %s — nothing to publish.", rel)
         return None
 
-    _run(["git", "add", rel], cwd=cwd)
+    # Add and update, never stage a removal. A rebuild removes the photos
+    # it did not produce from the issue folder, and raw GitHub URLs point
+    # at the branch tip: committing that removal would take the photo out
+    # of every email already sent, even when the build left it out for a
+    # reason the editor never chose (the size cap, say). Taking a published
+    # photo down stays a deliberate, manual step.
+    _run(["git", "add", "--ignore-removal", rel], cwd=cwd)
+    if not _run(["git", "diff", "--cached", "--name-only", "--", rel],
+                cwd=cwd):
+        log.info("Only removals in %s — nothing to publish.", rel)
+        return None
     _run([
         "git", "commit", "-m", f"chore: publish issue-{issue} assets",
     ], cwd=cwd)
