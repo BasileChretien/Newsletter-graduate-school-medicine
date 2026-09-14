@@ -5,11 +5,14 @@
 # to, the wheels vendored from PyPI, and Python's end-of-life dates -- is
 # covered by `.github/workflows/update-check.yml` instead.
 #
-# Coupled pins fail CI on purpose. `python-docx` must match
-# `web/app.js`'s PY_PACKAGES and the vendored wheel, so a bump of
-# `requirements.txt` alone fails `tests/test_web_bundle.py` with the
-# steps to finish it (bump the wheel in `web/vendor_pyodide.py`, re-run
-# it with `--write-hashes`, refresh `web/meridian-bundle.zip`).
+# Coupled pins fail CI on purpose. `python-docx`, `css-inline` and
+# `beautifulsoup4` must match the wheels the browser build vendors
+# (`PYPI_WHEELS` in `web/vendor_pyodide.py`, `PY_PACKAGES` in
+# `web/app.js`), so a bump of `requirements.txt` alone fails
+# `tests/test_web_bundle.py` with the steps to finish it: bump the wheel in
+# both files and re-run `python web/vendor_pyodide.py --write-hashes`. A
+# css-inline release is only usable once it ships a Pyodide wheel for the
+# page's ABI; the weekly update report says whether it does.
 version: 2
 updates:
   - package-ecosystem: pip

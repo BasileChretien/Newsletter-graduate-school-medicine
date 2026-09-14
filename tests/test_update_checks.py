@@ -64,6 +64,8 @@ def test_reads_the_pinned_runtime_from_the_vendor_script():
     assert pins.packages == ("css-inline", "jinja2", "beautifulsoup4",
                              "pillow", "lxml")
     assert pins.pypi_wheels == {"python-docx": "1.2.0"}
+    assert pins.pypi_wheel_files == {
+        "python-docx": "python_docx-1.2.0-py3-none-any.whl"}
 
 
 def test_the_real_vendor_script_still_parses():
@@ -72,8 +74,11 @@ def test_the_real_vendor_script_still_parses():
     pins = cu.read_vendor_pins(
         (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(encoding="utf-8"))
     assert cu.parse_version(pins.pyodide)
-    assert "css-inline" in pins.packages
+    # css-inline moved from the lockfile to a vendored PyPI wheel; either
+    # way the check has to see it.
+    assert "css-inline" in pins.packages or "css-inline" in pins.pypi_wheels
     assert "python-docx" in pins.pypi_wheels
+    assert all(name.endswith(".whl") for name in pins.pypi_wheel_files.values())
 
 
 def test_browser_versions_come_from_the_hash_file_wheel_names():
@@ -293,6 +298,56 @@ def test_report_never_renders_markup_or_mentions_from_fetched_text():
     report = cu.render_report([f], today=TODAY)
     assert "<img" not in report
     assert "@someone" not in report
+
+
+# ---------- compiled wheels vendored from PyPI ----------
+NATIVE = {"css-inline": "css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl"}
+
+
+def _pypi_release(latest, *filenames, releases=None):
+    return {"info": {"version": latest},
+            "urls": [{"filename": name} for name in filenames],
+            "releases": releases or {}}
+
+
+def test_a_newer_compiled_wheel_without_a_build_for_this_runtime_is_informational():
+    """css-inline publishes a Pyodide wheel per ABI. A release without one
+    for the page's ABI cannot be loaded, so it is not offered."""
+    (f,) = cu.check_pypi_wheels(
+        {"css-inline": "0.21.2"},
+        fetch_json=lambda url: _pypi_release(
+            "0.22.0", "css_inline-0.22.0-cp310-abi3-manylinux_2_17_x86_64.whl"),
+        files=NATIVE)
+    assert f.level == "info" and "pyemscripten_2025_0_wasm32" in f.title
+
+
+def test_a_newer_compiled_wheel_with_a_build_for_this_runtime_is_actionable():
+    (f,) = cu.check_pypi_wheels(
+        {"css-inline": "0.21.2"},
+        fetch_json=lambda url: _pypi_release(
+            "0.22.0", "css_inline-0.22.0-cp310-abi3-pyemscripten_2025_0_wasm32.whl"),
+        files=NATIVE)
+    assert f.level == "action" and "0.22.0" in f.title
+
+
+@pytest.mark.parametrize("published, level", [
+    (["css_inline-0.22.0-cp310-abi3-pyemscripten_2025_0_wasm32.whl"], "info"),
+    (["css_inline-0.22.0-cp314-abi3-pyemscripten_2026_0_wasm32.whl"], "action"),
+], ids=["only-the-old-abi", "new-abi-published"])
+def test_a_newer_pyodide_needs_each_compiled_wheel_built_for_its_abi(published, level):
+    """Pyodide's lockfile can hold every package and the page still not
+    run: css-inline is vendored from PyPI, and has to exist for the new ABI."""
+    lock = {"info": {"abi_version": "2026_0"},
+            "packages": {name: {} for name in NEEDED}}
+    pypi = _pypi_release(
+        "0.22.0", releases={"0.22.0": [{"filename": name} for name in published]})
+    (f,) = cu.check_pyodide(
+        "0.29.4", NEEDED, _releases("314.0.7", "0.29.4"),
+        fetch_lock=lambda tag: lock, native_wheels=NATIVE,
+        fetch_json=lambda url: pypi)
+    assert f.level == level
+    if level == "info":
+        assert "css-inline" in f.detail and "2026_0" in f.detail
 
 
 # ---------- robustness (review findings) ----------

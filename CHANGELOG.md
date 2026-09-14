@@ -36,6 +36,34 @@ is preserved in `git log` for archaeology.
 - **The `tomli` backport is gone** from `requirements.txt`: 3.11 ships
   `tomllib`, which `scripts/i18n.py` now imports directly.
 
+### Changed — the website is built to last
+- **The browser build renders with the desktop's library versions.** It
+  used Pyodide's own copies of css-inline (0.16.0) and beautifulsoup4
+  (4.13.3) while the desktop pinned 0.21.2 and 4.15.0. Both are now
+  vendored from PyPI -- css-inline publishes a wheel for this runtime's
+  ABI -- and a test keeps `requirements.txt`, `web/vendor_pyodide.py` and
+  `web/app.js` in step, as it already did for python-docx.
+- **The runtime can no longer disappear from under the site.** Every file
+  `web/vendor_pyodide.py` fetches has a second source: a permanent mirror,
+  published as the assets of a pre-release in this repository
+  (`pyodide-runtime-<version>`, `.github/workflows/mirror-runtime.yml`).
+  jsDelivr's Pyodide path carries no retention promise; the committed
+  hashes still decide which bytes are accepted, from either source.
+- **The website's real engine is tested.** `.github/workflows/web-engine.yml`
+  runs the vendored runtime, the packages the page loads and the committed
+  bundle under Node, and checks they build the same email as the desktop,
+  for the Word template and a fixture -- on every relevant change and
+  weekly, which also catches a runtime that can no longer be fetched.
+- **The weekly update report understands compiled wheels.** A newer
+  css-inline is offered only once it ships a wheel for the page's Pyodide
+  ABI, and a newer Pyodide is reported as usable only once every compiled
+  wheel exists for its ABI. css-inline has no Pyodide 314 build yet;
+  requested upstream in Stranger6667/css-inline#786.
+- Still open, and reported weekly: the browser build's lxml (6.0.2) stays
+  below the desktop's 6.1.3 floor until the site can move to Pyodide 314.
+  In the browser it parses only the editor's own Word file, in the
+  editor's own tab.
+
 ### Fixed — photos had meaningless alt text (MEDIUM)
 - **Photos went out with alt text like `Picture 122515128`**: what a
   recipient sees when images are blocked, and what a screen reader reads

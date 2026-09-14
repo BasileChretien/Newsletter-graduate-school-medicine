@@ -61,7 +61,8 @@ place that has to stay accurate:
   `style.css`, `meridian-bundle.zip`, and `./pyodide/` — the whole
   runtime: `pyodide.js`, `pyodide.asm.js`, `pyodide.asm.wasm`,
   `python_stdlib.zip`, `pyodide-lock.json`, and the wheels for
-  `css_inline`, `jinja2`, `beautifulsoup4`, `lxml`, `pillow` and
+  `css_inline`, `jinja2` (with `markupsafe`), `beautifulsoup4` (with
+  `soupsieve` and `typing-extensions`), `lxml`, `pillow` and
   `python-docx`.
 
 No CDN, no PyPI, no third party. That is what lets the
@@ -101,6 +102,17 @@ not in git history; a mismatch fails the deploy and the live site stays
 on the last good version. To run the page locally, run the same script
 once, then serve `web/` over HTTP.
 
+**Every file has two sources.** `vendor_pyodide.py` tries each file's
+upstream first -- jsDelivr for the runtime and the lockfile's wheels, PyPI
+for the wheels vendored from there -- and then a permanent mirror: the
+assets of this repository's pre-release `pyodide-runtime-<version>`,
+published by `.github/workflows/mirror-runtime.yml` whenever the hash file
+changes. jsDelivr's `/pyodide/` path carries no retention promise, and
+this runtime is meant to stay pinned for years; without the mirror, a file
+disappearing upstream would stop every deploy and freeze the live site.
+The hash file alone decides which bytes are accepted, from either source.
+A fork sets `MERIDIAN_RUNTIME_MIRROR` to its own copy.
+
 Serving from your own origin has a second benefit worth noting for a
 hospital: the page works on institutional networks that block public
 CDNs outright.
@@ -110,7 +122,7 @@ to. After the first load the runtime is cached by a service worker
 (`web/sw.js`), so the page also runs offline; see that file for why the
 runtime is cache-first but `meridian-bundle.zip` is network-first.
 
-## Two things that will bite you
+## Things that will bite you
 
 **Refresh the bundle after touching `scripts/`.** The zip is a committed
 copy of the toolkit. Edit `scripts/docx_parser.py`, forget to re-run
@@ -120,15 +132,42 @@ fails the suite when the two diverge — do not skip it.
 
 **Do not bump Pyodide without checking `css_inline`.** The entire email
 layout depends on `css_inline`, which is Rust-backed rather than pure
-Python, so it only works where a WebAssembly build exists. It ships in
-Pyodide's **0.29.x** distribution. The 314.x line moved to ABI `2026_0`
-and has no `css_inline` build yet, and the wheel PyPI publishes is
-tagged for the older ABI — so bumping the version in `index.html`
-breaks the page at install time, with an error that points at the
-loader rather than at us. Bump `PYODIDE_VERSION` in
-`web/vendor_pyodide.py`, re-run it with `--write-hashes`, and commit
-the new `pyodide-assets.json` — tests pin the version and check that
-the script and the hash file agree.
+Python, so it only works where a WebAssembly build exists for the
+runtime's ABI. The page vendors css-inline's own PyPI wheel for Pyodide
+**0.29.x** (ABI `pyemscripten_2025_0`). Pyodide now changes ABI about once
+a year -- the 314.x line moved to `2026_0` -- and css-inline has no build
+for it yet (requested upstream in Stranger6667/css-inline#786), so a
+version bump breaks the page at install time, with an error that points at
+the loader rather than at us. The weekly update report says when a newer
+Pyodide can run the page. Then: bump `PYODIDE_VERSION` in
+`web/vendor_pyodide.py`, switch the css-inline wheel to its build for the
+new ABI, re-run the script with `--write-hashes`, commit the new
+`pyodide-assets.json`, and let the `web-engine` workflow compare the
+result with the desktop build. Tests pin the version and check that the
+script and the hash file agree.
+
+**Keep the vendored wheels at the desktop's versions.** `css-inline`,
+`beautifulsoup4` and `python-docx` are each pinned in three places:
+`requirements.txt`, `PYPI_WHEELS` in `vendor_pyodide.py`, and
+`PY_PACKAGES` in `app.js`. A Dependabot bump of `requirements.txt` alone
+fails `tests/test_web_bundle.py` on purpose, with the steps to finish it.
+
+## Testing the real engine
+
+`tests/test_web_engine.py` runs this page's engine under Node -- the
+vendored runtime, the packages `app.js` loads and the committed bundle --
+and checks it builds the same email as the desktop toolkit, for the Word
+template and a small fixture. The `web-engine` workflow runs it on every
+relevant change and weekly, which also catches a runtime that can no
+longer be fetched before a deploy needs it. Locally:
+
+```bash
+python web/vendor_pyodide.py
+MERIDIAN_WEB_ENGINE=1 python -m pytest tests/test_web_engine.py
+```
+
+It compares against the Python you run it with, so install
+`requirements.txt` first: an older desktop css-inline is a real mismatch.
 
 ## Deliberate limits
 

@@ -1,0 +1,58 @@
+name: mirror-runtime
+
+# Keeps a permanent copy of the browser runtime: every file
+# web/vendor_pyodide.py vendors (the Pyodide core and the wheels the page
+# loads), published as the assets of one pre-release per runtime version,
+# tagged `pyodide-runtime-<version>`. vendor_pyodide.py falls back to that
+# copy whenever jsDelivr or PyPI no longer serve a file. The committed hash
+# file stays the authority for both sources.
+#
+# A workflow of its own, because creating a release needs `contents: write`
+# and the deploy -- which publishes the site -- should never hold that.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/pyodide-assets.json'
+      - 'web/vendor_pyodide.py'
+      - '.github/workflows/mirror-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror-runtime
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # Fetched and checked against the committed hashes before anything is
+      # uploaded, so the mirror only ever holds verified bytes.
+      - name: Vendor the runtime (hash-verified)
+        run: python web/vendor_pyodide.py
+
+      - name: Publish, or complete, the mirror release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(python -c "import json; print(json.load(open('web/pyodide-assets.json'))['pyodide_version'])")
+          tag="pyodide-runtime-$version"
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            # A pre-release never becomes the repository's "Latest"
+            # release, so the README's release badge and link are unaffected.
+            gh release create "$tag" --prerelease --target "$GITHUB_SHA" \
+              --title "Pyodide runtime $version (mirror for the website)" \
+              --notes "A verbatim copy of the files web/vendor_pyodide.py vendors for the browser build: the Pyodide $version runtime (MPL-2.0) and the wheels the page loads, each under its own licence. It is only a fallback source for web/vendor_pyodide.py, which checks every file against web/pyodide-assets.json. Not a MERIDIAN release."
+          fi
+          gh release upload "$tag" web/pyodide/* web/pyodide-assets.json --clobber
