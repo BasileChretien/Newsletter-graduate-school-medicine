@@ -16,7 +16,7 @@ lxml>=6.1.3
 # Resizes newsletter photos to fit the email (see image_handler).
 # Optional at runtime -- if it is missing the toolkit still builds,
 # it just sends full-resolution photos.
-Pillow==11.3.0
+Pillow==12.3.0
 
 # Optional: enables Outlook draft + HTML clipboard on Windows.
 # (Pre-installed on most Windows Python distributions.)
