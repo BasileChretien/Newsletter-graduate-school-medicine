@@ -8,7 +8,7 @@ Jinja2>=3.1.6
 css-inline==0.14.1
 beautifulsoup4==4.12.3
 # CVE-2024-47081: .netrc credentials leaked via crafted URLs -- and validator.py issues HEAD requests to URLs taken from the DOCX
-requests>=2.33.0
+requests>=2.34.2
 # CVE-2026-7246 in click.edit(); unused
 click>=8.3.3
 # CVE-2026-41066: iterparse/ETCompatXMLParser default to resolve_entities=True (XXE). Not reached today, but it parses attacker-supplied documents
