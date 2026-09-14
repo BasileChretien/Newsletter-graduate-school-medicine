@@ -33,6 +33,19 @@ deploy time and checked against `pyodide-assets.json`, which IS
 committed and reviewable -- tampering is detectable even though the
 payload is not in git history.
 
+Where the files come from
+-------------------------
+Every file has two sources, tried in order: its upstream -- jsDelivr for
+the runtime and the lockfile's wheels, PyPI for the wheels vendored from
+there -- and a permanent mirror: the assets of this repository's
+pre-release `pyodide-runtime-<version>`, published by
+`.github/workflows/mirror-runtime.yml`. jsDelivr's `/pyodide/` path
+carries no retention promise, and a pinned runtime is kept for years;
+without the mirror, a file disappearing upstream would stop every
+deploy and freeze the live site. The hash file alone decides which
+bytes are acceptable: a source that fails, or serves bytes that do not
+match, is skipped.
+
 Usage
 -----
     python web/vendor_pyodide.py                # fetch + verify
@@ -44,6 +57,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -54,9 +68,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_DIR = REPO_ROOT / "web" / "pyodide"
 HASH_FILE = REPO_ROOT / "web" / "pyodide-assets.json"
 
-# Pinned to the 0.29.x line: `css_inline` -- the Rust-backed CSS inliner
-# the whole email layout depends on -- ships in that distribution. The
-# 314.x line moved to ABI 2026_0 and has no build for it.
+# Pinned to the 0.29.x line: css-inline -- the Rust-backed CSS inliner the
+# whole email layout depends on -- publishes a wheel for this line's ABI
+# (`pyemscripten_2025_0`). Pyodide 314.x moved to ABI 2026_0 and has no
+# css-inline build yet; the weekly update check reports when one appears
+# (tools/check_updates.py).
 PYODIDE_VERSION = "0.29.4"
 PYODIDE_BASE = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full/"
 
@@ -69,25 +85,51 @@ CORE_FILES = (
     "pyodide-lock.json",
 )
 
-# Packages the page loads. Dependencies are resolved from the lockfile,
-# so listing the direct ones is enough.
+# Packages the page loads from Pyodide's lockfile. Their dependencies are
+# resolved from the lockfile, so listing the direct ones is enough --
+# except for the dependencies of wheels loaded BY PATH (PYPI_WHEELS,
+# below), whose requirements the resolver never sees:
 #
-# `lxml` is listed explicitly even though nothing here imports it
-# directly: it is a dependency of `python-docx`, which is NOT in the
-# lockfile, so dependency resolution never reaches it. Leaving it out
-# produced a vendor directory that looked complete and then failed at
-# `import docx` in the browser.
-PACKAGES = ("css-inline", "jinja2", "beautifulsoup4", "pillow", "lxml")
+# * `lxml`, for python-docx. Leaving it out produced a vendor directory
+#   that looked complete and then failed at `import docx` in the browser.
+# * `soupsieve` and `typing-extensions`, for beautifulsoup4 (and
+#   typing-extensions for python-docx too).
+PACKAGES = ("jinja2", "pillow", "lxml", "soupsieve", "typing-extensions")
 
-# `python-docx` is the one dependency absent from Pyodide's lockfile, so
-# it came from PyPI at every cold load. Vendored here with an explicit
-# hash: PyPI permanently reserves filenames, so this exact artifact can
-# never be re-uploaded with different bytes.
+# Wheels vendored straight from PyPI, each at exactly the version
+# `requirements.txt` pins, so the page and the desktop build render the
+# same Word file with the same libraries. tests/test_web_bundle.py keeps
+# requirements.txt, this dict and web/app.js in step. PyPI permanently
+# reserves filenames, so an exact artifact can never be re-uploaded with
+# different bytes.
+#
+# * `python-docx` is absent from Pyodide's lockfile altogether.
+# * `css-inline` and `beautifulsoup4` are in it, but at older versions
+#   (0.16.0 and 4.13.3) than the desktop pins. css-inline publishes its own
+#   wheel for this runtime's ABI from 0.21.0 on.
 PYPI_WHEELS = {
     "python_docx-1.2.0-py3-none-any.whl":
         "https://files.pythonhosted.org/packages/py3/p/python-docx/"
         "python_docx-1.2.0-py3-none-any.whl",
+    "css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl":
+        "https://files.pythonhosted.org/packages/cp310/c/css-inline/"
+        "css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
+    "beautifulsoup4-4.15.0-py3-none-any.whl":
+        "https://files.pythonhosted.org/packages/py3/b/beautifulsoup4/"
+        "beautifulsoup4-4.15.0-py3-none-any.whl",
 }
+
+# The permanent second source for every file ("Where the files come from",
+# above). A fork points this at its own copy with MERIDIAN_RUNTIME_MIRROR.
+MIRROR_REPOSITORY = "BasileChretien/Newsletter-graduate-school-medicine"
+
+
+def mirror_base() -> str:
+    """Base URL of the mirror for the pinned runtime, ending in `/`."""
+    base = (os.environ.get("MERIDIAN_RUNTIME_MIRROR")
+            or f"https://github.com/{MIRROR_REPOSITORY}/releases/download/"
+               f"pyodide-runtime-{PYODIDE_VERSION}/")
+    return base if base.endswith("/") else base + "/"
 
 
 def _fetch(url: str) -> bytes:
@@ -98,6 +140,29 @@ def _fetch(url: str) -> bytes:
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def fetch_verified(name: str, urls: list[str], expected: str | None) -> bytes:
+    """The first bytes for `name` that a source serves and the hash accepts.
+
+    `expected` is the file's committed SHA-256. Without one -- a
+    `--write-hashes` run after a version bump -- the first source that
+    answers wins. A source that fails, or serves bytes that do not match,
+    is skipped rather than fatal: that is precisely the case the mirror is
+    for. Only when no source yields acceptable bytes does this raise, and
+    the error names every attempt.
+    """
+    attempts = []
+    for url in urls:
+        try:
+            data = _fetch(url)
+        except Exception as exc:  # noqa: BLE001 -- any failure: try the next source
+            attempts.append(f"{url}: {type(exc).__name__}: {exc}")
+            continue
+        if expected is None or _sha256(data) == expected:
+            return data
+        attempts.append(f"{url}: served bytes that do not match the committed hash")
+    raise RuntimeError(f"could not fetch {name}:\n    " + "\n    ".join(attempts))
 
 
 _SAFE_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
@@ -142,21 +207,31 @@ def _resolve_packages(lock: dict) -> list[str]:
     return sorted(_safe_name(entries[n]["file_name"]) for n in needed)
 
 
-def collect() -> dict[str, bytes]:
-    """Download everything the page needs. Returns {filename: bytes}."""
+def collect(expected: dict[str, str] | None = None) -> dict[str, bytes]:
+    """Download everything the page needs. Returns {filename: bytes}.
+
+    `expected` maps filenames to their committed hashes. A file it does not
+    list -- or everything, with `None` -- comes from the first source that
+    answers; `verify` then reports anything unexpected.
+    """
+    expected = expected or {}
+    mirror = mirror_base()
     out: dict[str, bytes] = {}
-    for name in CORE_FILES:
-        out[name] = _fetch(PYODIDE_BASE + name)
+
+    def get(name: str, upstream: str) -> None:
+        out[name] = fetch_verified(name, [upstream, mirror + name],
+                                   expected.get(name))
         print(f"  fetched {name} ({len(out[name]):,} B)")
+
+    for name in CORE_FILES:
+        get(name, PYODIDE_BASE + name)
 
     lock = json.loads(out["pyodide-lock.json"])
     for wheel in _resolve_packages(lock):
-        out[wheel] = _fetch(PYODIDE_BASE + wheel)
-        print(f"  fetched {wheel} ({len(out[wheel]):,} B)")
+        get(wheel, PYODIDE_BASE + wheel)
 
     for name, url in PYPI_WHEELS.items():
-        out[name] = _fetch(url)
-        print(f"  fetched {name} ({len(out[name]):,} B)")
+        get(name, url)
     return out
 
 
@@ -191,6 +266,16 @@ def verify(assets: dict[str, bytes]) -> list[str]:
     return problems
 
 
+def _recorded_hashes() -> dict[str, str] | None:
+    """The committed hashes for the pinned version, if there are any."""
+    if not HASH_FILE.exists():
+        return None
+    recorded = json.loads(HASH_FILE.read_text(encoding="utf-8"))
+    if recorded.get("pyodide_version") != PYODIDE_VERSION:
+        return None
+    return recorded.get("files", {})
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--write-hashes", action="store_true",
@@ -198,7 +283,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     print(f"Fetching Pyodide {PYODIDE_VERSION} ...")
-    assets = collect()
+    try:
+        assets = collect(None if args.write_hashes else _recorded_hashes())
+    except RuntimeError as exc:
+        print(f"\nERROR: {exc}\nNeither the upstream source nor the mirror "
+              f"({mirror_base()}) served these bytes.", file=sys.stderr)
+        return 1
 
     if args.write_hashes:
         write_hashes(assets)

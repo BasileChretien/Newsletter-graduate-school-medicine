@@ -28,23 +28,28 @@ const SOURCE_URL =
  * runtime, which is what lets the CSP narrow to `'self'`.
  *
  * These load via `pyodide.loadPackage`, not micropip: with a local
- * `indexURL` the runtime resolves them straight out of the vendored
+ * `indexURL` the runtime resolves names straight out of the vendored
  * lockfile, so micropip and its network access are not needed at all.
- * `python-docx` is the exception — absent from Pyodide's lockfile, so it
- * is vendored as a wheel and loaded by path. */
+ * Three packages are vendored from PyPI as wheels and loaded by path
+ * instead: python-docx (absent from Pyodide's lockfile), and css-inline
+ * and beautifulsoup4 (present there, but older than the desktop pins). */
 const PYODIDE_INDEX_URL = "./pyodide/";
 
 const PY_PACKAGES = [
-  "css_inline",             // the load-bearing one (Rust)
   "jinja2",
-  "beautifulsoup4",
   "pillow",                 // resizes photos before they are sent
-  // python-docx's own dependency. It has to be named here because
-  // python-docx is loaded BY PATH below, so the lockfile resolver never
-  // sees its requirements and pulls nothing in for it. Omitting it gets
-  // you a page that loads every package successfully and then dies on
-  // `from lxml import etree`.
-  "lxml",
+  // Dependencies of the wheels loaded BY PATH below. The lockfile
+  // resolver never sees a path-loaded wheel's requirements, so they have
+  // to be named here. Omitting lxml gets you a page that loads every
+  // package successfully and then dies on `from lxml import etree`.
+  "lxml",                   // python-docx
+  "soupsieve",              // beautifulsoup4
+  "typing-extensions",      // beautifulsoup4, python-docx
+  // Exactly the versions requirements.txt pins, so the page and the
+  // desktop build render the same Word file with the same libraries
+  // (tests/test_web_bundle.py keeps them in step).
+  "./pyodide/css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
+  "./pyodide/beautifulsoup4-4.15.0-py3-none-any.whl",
   "./pyodide/python_docx-1.2.0-py3-none-any.whl",
 ];
 

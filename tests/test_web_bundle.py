@@ -346,6 +346,61 @@ def test_desktop_and_browser_parse_with_the_same_python_docx():
         f"{browser.group(1)}, vendor_pyodide.py fetches {fetched.group(1)}")
 
 
+@pytest.mark.parametrize("project, wheel_name", [
+    ("css-inline", "css_inline"),
+    ("beautifulsoup4", "beautifulsoup4"),
+])
+def test_desktop_and_browser_render_with_the_same_version(project, wheel_name):
+    """The browser build used Pyodide's lockfile copies -- css-inline
+    0.16.0 and beautifulsoup4 4.13.3 -- while the desktop pinned other
+    versions, so the same Word file could produce different email HTML
+    depending on which build made it. Both are now vendored from PyPI
+    (css-inline publishes a wheel for this Pyodide ABI), and the same
+    three places as python-docx have to agree."""
+    reqs = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    vendor = (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(
+        encoding="utf-8")
+
+    desktop = re.search(rf"^{re.escape(project)}==([\d.]+)", reqs, re.M)
+    fetched = re.search(rf'"{wheel_name}-([\d.]+)-[^"/]+\.whl"\s*:', vendor)
+    browser = re.search(rf'"\./pyodide/{wheel_name}-([\d.]+)-[^"/]+\.whl"', app_js)
+    assert desktop and fetched and browser, (
+        f"could not find all three pins for {project}: requirements.txt "
+        f"{bool(desktop)}, PYPI_WHEELS {bool(fetched)}, PY_PACKAGES {bool(browser)}")
+    assert desktop.group(1) == fetched.group(1) == browser.group(1), (
+        f"requirements.txt pins {project} {desktop.group(1)}, "
+        f"vendor_pyodide.py fetches {fetched.group(1)}, web/app.js loads "
+        f"{browser.group(1)}")
+
+    # Loaded by path, so it must not ALSO be requested by lockfile name --
+    # that would load Pyodide's older copy alongside, or instead.
+    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
+    names = re.findall(r'"([^"./][^"]*)"', packages.group(1))
+    assert wheel_name not in names and project not in names, (
+        f"{project} is both vendored from PyPI and requested from the lockfile")
+    vendored = re.search(r"^PACKAGES\s*=\s*\((.*?)\)", vendor, re.M | re.S)
+    assert project not in re.findall(r'"([^"]+)"', vendored.group(1)), (
+        f"{project} is still fetched from the Pyodide lockfile as well")
+
+
+def test_beautifulsoup4_dependencies_are_requested_by_name():
+    """beautifulsoup4 is loaded by path, so -- exactly as with python-docx
+    and lxml -- the lockfile resolver never sees its requirements. Its
+    dependencies have to be named, or the page boots and then fails on
+    `import bs4`."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    vendor = (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(
+        encoding="utf-8")
+    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
+    loaded = set(re.findall(r'"([^"./][^"]*)"', packages.group(1)))
+    vendored = re.search(r"^PACKAGES\s*=\s*\((.*?)\)", vendor, re.M | re.S)
+    fetched = set(re.findall(r'"([^"]+)"', vendored.group(1)))
+    for dependency in ("soupsieve", "typing-extensions"):
+        assert dependency in loaded, f"web/app.js does not load {dependency}"
+        assert dependency in fetched, f"vendor_pyodide.py does not fetch {dependency}"
+
+
 def test_vendor_script_refuses_filenames_that_escape_the_vendor_dir():
     """Wheel filenames come out of `pyodide-lock.json`, which is fetched
     from the CDN and is NOT yet hash-verified when they are used -- they

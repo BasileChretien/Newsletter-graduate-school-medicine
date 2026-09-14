@@ -31,7 +31,7 @@ import os
 import re
 import sys
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable, Iterable
@@ -83,6 +83,9 @@ class VendorPins:
     pyodide: str
     packages: tuple[str, ...]
     pypi_wheels: dict[str, str]
+    # Name -> wheel filename. The filename carries the Pyodide ABI of a
+    # compiled wheel (css-inline), which decides what the page can load.
+    pypi_wheel_files: dict[str, str] = field(default_factory=dict)
 
 
 # ---------- network ----------
@@ -148,6 +151,28 @@ def _wheel_name_version(filename: str) -> tuple[str, str] | None:
     return normalise(parts[0]), parts[1]
 
 
+def _platform_tag(filename: str) -> str | None:
+    """A compiled wheel's platform tag (`pyemscripten_2025_0_wasm32`);
+    None for a pure-Python wheel, or for anything that is not a wheel."""
+    if not filename.endswith(".whl") or filename.endswith("-none-any.whl"):
+        return None
+    return filename[:-len(".whl")].rsplit("-", 1)[-1]
+
+
+def _pypi_has_build_for_abi(fetch_json: Callable[[str], object], name: str,
+                            abi: str) -> bool:
+    """Whether any release of `name` on PyPI ships a wheel for Pyodide `abi`."""
+    try:
+        releases = fetch_json(PYPI_URL.format(name=name)).get("releases", {})
+        return any(
+            isinstance(entry, dict)
+            and f"_{abi}_wasm32" in str(entry.get("filename", ""))
+            for files in releases.values() if isinstance(files, list)
+            for entry in files)
+    except Exception:  # noqa: BLE001 -- unknown counts as not published
+        return False
+
+
 def read_vendor_pins(source: str) -> VendorPins:
     """The runtime pins declared in `web/vendor_pyodide.py`.
 
@@ -162,15 +187,17 @@ def read_vendor_pins(source: str) -> VendorPins:
         raise ValueError(
             "web/vendor_pyodide.py no longer declares PYODIDE_VERSION, "
             "PACKAGES and PYPI_WHEELS in the form tools/check_updates.py reads")
-    pypi = {}
+    pypi, files = {}, {}
     for filename in re.findall(r'"([^"/]+\.whl)"\s*:', wheels.group(1)):
         parsed = _wheel_name_version(filename)
         if parsed:
             pypi[parsed[0]] = parsed[1]
+            files[parsed[0]] = filename
     return VendorPins(
         pyodide=version.group(1),
         packages=tuple(re.findall(r'"([^"]+)"', packages.group(1))),
         pypi_wheels=pypi,
+        pypi_wheel_files=files,
     )
 
 
@@ -252,8 +279,17 @@ def _line(version: tuple[int, ...]) -> tuple[int, ...]:
 
 
 def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
-                  fetch_lock: Callable[[str], dict]) -> list[Finding]:
-    """Is there a newer Pyodide, and could the page run on it?"""
+                  fetch_lock: Callable[[str], dict],
+                  native_wheels: dict[str, str] | None = None,
+                  fetch_json: Callable[[str], object] | None = None,
+                  ) -> list[Finding]:
+    """Is there a newer Pyodide, and could the page run on it?
+
+    Moving to a newer compatibility line needs every lockfile package the
+    page loads AND, for the new line's ABI, a build of every compiled wheel
+    it vendors from PyPI (`native_wheels`: css-inline). Pyodide's own
+    lockfile can have everything and still not run the page.
+    """
     if not isinstance(releases, list):
         # GitHub answers a rate limit or an outage with an error OBJECT.
         return [Finding("pyodide", "warning",
@@ -302,6 +338,15 @@ def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
                 _describe(exc)))
         else:
             missing = [p for p in packages if normalise(p) not in available]
+            info = lock.get("info")
+            abi = info.get("abi_version") if isinstance(info, dict) else None
+            for name, filename in sorted((native_wheels or {}).items()):
+                if _platform_tag(filename) is None:
+                    continue
+                if not (abi and fetch_json
+                        and _pypi_has_build_for_abi(fetch_json, name, abi)):
+                    missing.append(
+                        f"{name} (no wheel for ABI {abi or 'unknown'} on PyPI)")
             if missing:
                 findings.append(Finding(
                     "pyodide", "info",
@@ -313,36 +358,61 @@ def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
                     "pyodide", "action",
                     f"Pyodide {tag} has every package the page loads (pinned: {pinned})",
                     "This crosses a compatibility line: bump PYODIDE_VERSION, "
-                    "relax the 0.29.x pin in tests/test_web_bundle.py, run "
-                    "`python web/vendor_pyodide.py --write-hashes`, and test "
-                    "the page in a browser before merging."))
+                    "switch the vendored compiled wheels (css-inline) to their "
+                    "builds for the new ABI, relax the 0.29.x pin in "
+                    "tests/test_web_bundle.py, run `python web/vendor_pyodide.py "
+                    "--write-hashes`, and let the web-engine workflow compare "
+                    "the result with the desktop build before merging."))
     return findings
 
 
 def check_pypi_wheels(pinned: dict[str, str],
-                      fetch_json: Callable[[str], object]) -> list[Finding]:
-    """Wheels vendored straight from PyPI, against PyPI's latest release."""
+                      fetch_json: Callable[[str], object],
+                      files: dict[str, str] | None = None) -> list[Finding]:
+    """Wheels vendored straight from PyPI, against PyPI's latest release.
+
+    A compiled wheel (css-inline) can only move to a release that ships a
+    build for the page's Pyodide ABI, so a newer release without one is
+    reported for information rather than offered as an upgrade.
+    """
+    files = files or {}
     findings = []
     for name, have in sorted(pinned.items()):
         try:
-            latest = str(fetch_json(PYPI_URL.format(name=name))["info"]["version"])
+            data = fetch_json(PYPI_URL.format(name=name))
+            latest = str(data["info"]["version"])
         except Exception as exc:  # noqa: BLE001 -- report it, never crash the run
             findings.append(Finding(
                 "pypi", "warning", f"{name}: PyPI could not be checked",
                 _describe(exc)))
             continue
         have_v, latest_v = parse_version(have), parse_version(latest)
-        if have_v and latest_v and _key(latest_v) > _key(have_v):
-            findings.append(Finding(
-                "pypi", "action",
-                f"{name} {latest} is on PyPI; the browser build vendors {have}",
-                "Bump it in requirements.txt, in PY_PACKAGES in web/app.js "
-                "and in PYPI_WHEELS in web/vendor_pyodide.py, then run "
-                "`python web/vendor_pyodide.py --write-hashes`. "
-                "tests/test_web_bundle.py keeps the three in step."))
-        else:
+        if not (have_v and latest_v and _key(latest_v) > _key(have_v)):
             findings.append(Finding(
                 "pypi", "ok", f"{name} {have} is the newest release on PyPI"))
+            continue
+        platform = _platform_tag(files.get(name, ""))
+        if platform:
+            latest_files = data.get("urls") if isinstance(data, dict) else None
+            built = isinstance(latest_files, list) and any(
+                isinstance(entry, dict)
+                and str(entry.get("filename", "")).endswith(f"-{platform}.whl")
+                for entry in latest_files)
+            if not built:
+                findings.append(Finding(
+                    "pypi", "info",
+                    f"{name} {latest} is on PyPI, but without a {platform} "
+                    f"build; the browser build keeps {have}",
+                    "The page can only load a wheel built for its Pyodide ABI, "
+                    "so there is nothing to do until one is published."))
+                continue
+        findings.append(Finding(
+            "pypi", "action",
+            f"{name} {latest} is on PyPI; the browser build vendors {have}",
+            "Bump it in requirements.txt, in PY_PACKAGES in web/app.js and in "
+            "PYPI_WHEELS in web/vendor_pyodide.py, then run "
+            "`python web/vendor_pyodide.py --write-hashes`. "
+            "tests/test_web_bundle.py keeps the three in step."))
     return findings
 
 
@@ -482,10 +552,13 @@ def run_checks(repo: Path, today: date) -> list[Finding]:
     else:
         findings += check_pyodide(
             vendor.pyodide, vendor.packages, releases,
-            fetch_lock=lambda tag: fetch_json(PYODIDE_LOCK_URL.format(version=tag)))
+            fetch_lock=lambda tag: fetch_json(PYODIDE_LOCK_URL.format(version=tag)),
+            native_wheels=vendor.pypi_wheel_files,
+            fetch_json=lambda url: fetch_json(url))
     findings += check_browser_parity(browser_versions(assets), desktop)
     findings += check_pypi_wheels(vendor.pypi_wheels,
-                                  fetch_json=lambda url: fetch_json(url))
+                                  fetch_json=lambda url: fetch_json(url),
+                                  files=vendor.pypi_wheel_files)
     if floor is None:
         findings.append(Finding(
             "python", "warning",

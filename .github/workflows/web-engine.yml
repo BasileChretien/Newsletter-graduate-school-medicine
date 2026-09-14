@@ -1,0 +1,73 @@
+name: web-engine
+
+# Runs the website's real engine -- the vendored Pyodide runtime, the
+# packages web/app.js loads and the committed bundle -- under Node, and
+# checks it builds the same email as the desktop toolkit
+# (tests/test_web_engine.py). The ordinary test suite never executes that
+# runtime, so without this a broken wheel or a runtime that renders
+# differently would reach editors first.
+#
+# Weekly as well as on changes: it is also how we learn that the runtime
+# can no longer be fetched (from jsDelivr, PyPI or the mirror) before a
+# deploy needs it.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'scripts/**'
+      - 'templates/**'
+      - 'locales/**'
+      - 'images/**'
+      - 'requirements.txt'
+      - 'tests/test_web_engine.py'
+      - 'tests/web_engine/**'
+      - '.github/workflows/web-engine.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'scripts/**'
+      - 'templates/**'
+      - 'locales/**'
+      - 'images/**'
+      - 'requirements.txt'
+      - 'tests/test_web_engine.py'
+      - 'tests/web_engine/**'
+      - '.github/workflows/web-engine.yml'
+  schedule:
+    - cron: "30 0 * * 1"        # Mondays 00:30 UTC -- 09:30 in Japan
+  workflow_dispatch:
+
+# Declared in the file: this job runs pull-request code.
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the desktop toolkit
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Vendor the website runtime (hash-verified)
+        run: python web/vendor_pyodide.py
+
+      - name: Build with the website engine and compare with the desktop
+        env:
+          MERIDIAN_WEB_ENGINE: "1"
+        run: python -m pytest tests/test_web_engine.py -v -p no:cacheprovider
