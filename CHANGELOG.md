@@ -6,7 +6,13 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
-## [Unreleased]
+## [v1.5.0] — the website is built to last (2026-09-14)
+
+The website renders with the desktop's libraries, keeps a permanent copy of
+its runtime and has its real engine tested every week; the Windows launcher
+runs again; photos get real alt text. Python 3.11 is now the minimum for the
+desktop launchers — the website is unaffected. **669 tests passing** on
+Linux, macOS and Windows.
 
 ### Fixed — the Windows launcher stopped right after its banner (HIGH)
 - `Make Newsletter.bat` aborted with ". was unexpected at this time."
@@ -633,6 +639,7 @@ for the full archaeology.
 
 ---
 
+[v1.5.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.0
 [v1.4.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.2
 [v1.4.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.1
 [v1.4.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.0
