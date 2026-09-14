@@ -6,6 +6,19 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [v1.5.2] — dependency updates (2026-09-14)
+
+Dependency updates only. **685 tests passing** on Linux, macOS and Windows.
+
+### Changed — dependency updates
+- **Pillow 12.3.0** for the desktop (#28), up from 11.3.0. Pillow resizes
+  photos to fit the email. The website keeps Pyodide 0.29.4's Pillow 11.3.0
+  until it can move to Pyodide 314, so until then the desktop and the
+  website resize photos with different Pillow versions.
+- **click ≥ 8.5.0** (#34), the library behind the command line.
+- **actions/setup-node 7** in the website-engine workflow (#33); the engine
+  test passes on it.
+
 ## [v1.5.1] — desktop photo fixes (2026-09-14)
 
 Two fixes on the desktop path, both about photos. A run whose photos are
@@ -694,6 +707,7 @@ for the full archaeology.
 
 ---
 
+[v1.5.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.2
 [v1.5.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.1
 [v1.5.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.0
 [v1.4.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.2
