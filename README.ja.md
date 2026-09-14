@@ -4,7 +4,7 @@
 [![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![tests: 678 passing](https://img.shields.io/badge/tests-678%20passing-brightgreen.svg)](tests/)
+[![tests: 685 passing](https://img.shields.io/badge/tests-685%20passing-brightgreen.svg)](tests/)
 [![latest release](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
 
 > 🇬🇧 [English version](README.md)
@@ -127,7 +127,7 @@
 <details>
 <summary><strong>内部構成（開発者・保守担当者向け）</strong></summary>
 
-Python 3.11 以上（CI は 3.12）、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`BeautifulSoup4`、`click`、`pytest`。Outlook 連携は Windows で `pywin32` COM、macOS で AppleScript（`osascript`）、Linux で `xclip` または `wl-copy` を使用します。テストは 39 ファイル・678 件成功（6 件スキップ）で、パーサ、画像処理、バリデータ、平文変換、メールバックエンド、`.eml` 下書き生成、ブラウザ版、セキュリティ（受信者検証時の NFKC 正規化と不可視文字の除去、CSS による非表示要素のスクラブ、URL スキームの allowlist、埋め込み画像のマジックバイト**および拡張子**の検査、実書き込みバイト数で強制する解凍爆弾対策）、ビジュアル回帰までを網羅しています。v1.0.1 までに、設計、Python 実装、セキュリティ、コード品質、ビジュアル、UX、メール到達性の各観点から査読を計 10 ラウンド実施し、29 件の改修パッケージを適用しました。以降のリリースでも毎回査読を行っています。各変更には少なくとも 1 つの回帰テストを紐づけています。最新リリースは[こちら](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)をご覧ください。
+Python 3.11 以上（CI は 3.12）、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`BeautifulSoup4`、`click`、`pytest`。Outlook 連携は Windows で `pywin32` COM、macOS で AppleScript（`osascript`）、Linux で `xclip` または `wl-copy` を使用します。テストは 40 ファイル・685 件成功（6 件スキップ）で、パーサ、画像処理、バリデータ、平文変換、メールバックエンド、`.eml` 下書き生成、ブラウザ版、セキュリティ（受信者検証時の NFKC 正規化と不可視文字の除去、CSS による非表示要素のスクラブ、URL スキームの allowlist、埋め込み画像のマジックバイト**および拡張子**の検査、実書き込みバイト数で強制する解凍爆弾対策）、ビジュアル回帰までを網羅しています。v1.0.1 までに、設計、Python 実装、セキュリティ、コード品質、ビジュアル、UX、メール到達性の各観点から査読を計 10 ラウンド実施し、29 件の改修パッケージを適用しました。以降のリリースでも毎回査読を行っています。各変更には少なくとも 1 つの回帰テストを紐づけています。最新リリースは[こちら](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)をご覧ください。
 
 編集担当としてご利用いただく場合、上記の技術的内容を理解する必要はありません。次の 4 ステップの初期設定だけで使い始められます。
 
