@@ -63,7 +63,9 @@ jobs:
               gh issue create --title "$title" --label dependencies \
                 --body-file update-report.md
             fi
-          elif [ -n "$number" ]; then
+          elif [ "$ATTENTION" = "false" ] && [ -n "$number" ]; then
+            # Only an explicit all-clear closes the issue. An empty value
+            # means the check never reported, which is not good news.
             gh issue close "$number" \
               --comment "Everything is up to date as of $(date -u +%F)."
           fi

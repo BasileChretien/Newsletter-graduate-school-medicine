@@ -294,6 +294,118 @@ def test_report_never_renders_markup_or_mentions_from_fetched_text():
     assert "@someone" not in report
 
 
+# ---------- robustness (review findings) ----------
+@pytest.mark.parametrize("payload", [
+    {"message": "API rate limit exceeded"},        # GitHub's error object
+    "rate limited",
+    None,
+])
+def test_a_releases_payload_that_is_not_a_list_is_a_warning(payload):
+    """A JSON error object instead of a release list used to raise
+    AttributeError, killing the run before the issue could be updated."""
+    (f,) = cu.check_pyodide("0.29.4", NEEDED, payload, fetch_lock=pytest.fail)
+    assert f.level == "warning"
+
+
+def test_malformed_release_entries_are_skipped():
+    releases = ["0.29.9", 42, None, {"tag_name": None}] + _releases("0.29.4")
+    findings = cu.check_pyodide("0.29.4", NEEDED, releases, fetch_lock=pytest.fail)
+    assert [f.level for f in findings] == ["ok"]
+
+
+@pytest.mark.parametrize("payload", [{"error": "not found"}, "oops", None])
+def test_eol_data_that_is_not_a_list_is_a_warning(payload):
+    findings = cu.check_python("3.12", ["3.12"], payload, today=TODAY)
+    assert [f.level for f in findings] == ["warning"]
+
+
+def test_malformed_eol_entries_are_skipped():
+    findings = cu.check_python("3.12", ["3.12"], ["3.12", 7, None] + EOL, today=TODAY)
+    assert any(f.level == "ok" and "3.12" in f.title for f in findings)
+
+
+def test_an_exact_pin_equal_up_to_trailing_zeros_is_not_flagged():
+    assert not _flagged(cu.check_browser_parity(
+        browser={"foo": "1.2"}, desktop={"foo": ("==", "1.2.0")}))
+
+
+def test_python_floor_accepts_single_quoted_toml():
+    assert cu.python_floor("requires-python = '>=3.10'\n") == "3.10"
+
+
+def test_report_flattens_line_breaks_from_fetched_text():
+    """A newline in a fetched string must not start a new Markdown block
+    (a heading, a list) in the issue."""
+    f = cu.Finding("pypi", "action", "python-docx 9.9\n## Injected heading")
+    report = cu.render_report([f], today=TODAY)
+    assert "\n## Injected heading" not in report
+
+
+def _mini_repo(root: Path, *, tests_python: str, deploy_python: str) -> Path:
+    import json
+
+    (root / "web").mkdir()
+    (root / ".github" / "workflows").mkdir(parents=True)
+    (root / "web" / "vendor_pyodide.py").write_text(VENDOR_SRC, encoding="utf-8")
+    (root / "web" / "pyodide-assets.json").write_text(json.dumps({"files": {
+        "css_inline-0.16.0-cp39-abi3-pyodide_2025_0_wasm32.whl": "x"}}),
+        encoding="utf-8")
+    (root / "requirements.txt").write_text("css-inline==0.16.0\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        '[project]\nrequires-python = ">=3.12"\n', encoding="utf-8")
+    (root / ".github" / "workflows" / "tests.yml").write_text(
+        f'        python-version: ["{tests_python}"]\n', encoding="utf-8")
+    (root / ".github" / "workflows" / "deploy-web.yml").write_text(
+        f"          python-version: '{deploy_python}'\n", encoding="utf-8")
+    return root
+
+
+def _current_network(url: str):
+    if "api.github.com" in url:
+        return _releases("0.29.4")
+    if "pypi.org" in url:
+        return {"info": {"version": "1.2.0"}}
+    if "endoflife.date" in url:
+        return EOL
+    raise AssertionError(f"unexpected URL {url}")
+
+
+def test_only_the_test_matrix_counts_as_the_python_ci_tests(tmp_path, monkeypatch):
+    """deploy-web.yml's Python is build tooling, not a supported version."""
+    monkeypatch.setattr(cu, "fetch_json", _current_network)
+    findings = cu.run_checks(
+        _mini_repo(tmp_path, tests_python="3.12", deploy_python="3.14"), TODAY)
+    ci = [f for f in findings if "the version CI tests" in f.title]
+    assert [f.title.split()[1] for f in ci] == ["3.12"]
+
+
+def test_a_check_that_cannot_run_still_reports_and_asks_for_attention(
+    tmp_path, monkeypatch,
+):
+    """A reshaped or missing local file must reach the issue as a finding,
+    not leave it silently stale behind a failed workflow step."""
+    monkeypatch.setattr(cu, "fetch_json", _current_network)
+    output = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    report = tmp_path / "report.md"
+    empty_repo = tmp_path / "empty"
+    empty_repo.mkdir()
+
+    assert cu.main(["--repo", str(empty_repo), "--report", str(report),
+                    "--today", "2026-09-14"]) == 0
+    assert "could not run" in report.read_text(encoding="utf-8")
+    assert "attention=true" in output.read_text(encoding="utf-8")
+
+
+def test_the_workflow_closes_the_issue_only_on_an_explicit_all_clear():
+    """An empty `attention` output means the check never reported; closing
+    the issue then would announce good news nobody measured."""
+    workflow = (REPO_ROOT / ".github" / "workflows" / "update-check.yml").read_text(
+        encoding="utf-8")
+    assert '"$ATTENTION" = "false"' in workflow
+    assert "permissions:\n  contents: read\n  issues: write\n" in workflow
+
+
 # ---------- end to end ----------
 def test_main_checks_the_real_repository_with_a_fake_network(tmp_path, monkeypatch):
     def fake_fetch_json(url: str):

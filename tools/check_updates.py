@@ -12,10 +12,12 @@ request. This covers what it cannot see, and runs every Monday from
     `web/pyodide-assets.json` against `requirements.txt`, because the two
     builds must render the same Word file the same way;
   * wheels vendored straight from PyPI (`python-docx`);
-  * Python -- the `requires-python` floor and the versions CI tests,
-    against their end-of-life dates.
+  * Python -- the `requires-python` floor and the versions the test
+    matrix runs, against their end-of-life dates.
 
-Standard library only, so the workflow needs no `pip install`.
+Standard library only, so the workflow needs no `pip install`. It never
+crashes on bad input: anything unexpected becomes a finding in the
+report, because a crashed run leaves the tracking issue silently stale.
 
 Usage:
     python tools/check_updates.py [--report update-report.md]
@@ -42,6 +44,11 @@ PYODIDE_LOCK_URL = (
     "https://cdn.jsdelivr.net/pyodide/v{version}/full/pyodide-lock.json")
 PYPI_URL = "https://pypi.org/pypi/{name}/json"
 PYTHON_EOL_URL = "https://endoflife.date/api/python.json"
+
+# The workflow whose matrix IS the set of supported Python versions. Other
+# workflows pin a Python for their own tooling (deploy-web, update-check);
+# those say nothing about what editors can run.
+TEST_WORKFLOW = Path(".github") / "workflows" / "tests.yml"
 
 # How far ahead an end-of-life date turns into a warning: enough time to
 # raise `requires-python` and re-test within an ordinary release cycle.
@@ -95,6 +102,15 @@ def fetch_json(url: str):
         return json.load(response)
 
 
+def _describe(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _unexpected(what: str, payload: object) -> str:
+    """A short, safe description of a payload that had the wrong shape."""
+    return f"Expected a list from {what}, got {type(payload).__name__}: {str(payload)[:200]}"
+
+
 # ---------- parsing ----------
 _FINAL_VERSION = re.compile(r"v?(\d+(?:\.\d+)*)")
 
@@ -136,8 +152,8 @@ def read_vendor_pins(source: str) -> VendorPins:
     """The runtime pins declared in `web/vendor_pyodide.py`.
 
     Read as text rather than imported: importing that script would pull
-    in its download code, and a reshaped file should fail here, loudly,
-    instead of the weekly report quietly checking nothing.
+    in its download code. A reshaped file raises here, and `main` turns
+    that into an "action" finding, so the issue says the check broke.
     """
     version = re.search(r'^PYODIDE_VERSION\s*=\s*"([^"]+)"', source, re.M)
     packages = re.search(r"^PACKAGES\s*=\s*\((.*?)\)", source, re.M | re.S)
@@ -183,13 +199,14 @@ def desktop_requirements(text: str) -> dict[str, tuple[str, str]]:
 
 
 def python_floor(pyproject: str) -> str | None:
-    """The `X.Y` in `requires-python = ">=X.Y"`."""
-    match = re.search(r'^requires-python\s*=\s*"\s*>=\s*([0-9.]+)', pyproject, re.M)
+    """The `X.Y` in `requires-python = ">=X.Y"` (either TOML quote style)."""
+    match = re.search(
+        r"""^requires-python\s*=\s*["']\s*>=\s*([0-9.]+)""", pyproject, re.M)
     return match.group(1) if match else None
 
 
 def ci_python_versions(workflows: Iterable[str]) -> list[str]:
-    """Every literal `python-version` the workflows use."""
+    """Every literal `python-version` in the given workflow texts."""
     found: set[str] = set()
     for text in workflows:
         for match in re.finditer(r"python-version:\s*(.+)", text):
@@ -206,7 +223,10 @@ def check_browser_parity(browser: dict[str, str],
         operator, wanted = desktop[name]
         have = browser[name]
         have_v, wanted_v = parse_version(have), parse_version(wanted)
-        if operator == "==" and have != wanted:
+        # `1.2` and `1.2.0` are one release; fall back to the text only when
+        # either side is not a plain release number.
+        same = (_key(have_v) == _key(wanted_v)) if (have_v and wanted_v) else have == wanted
+        if operator == "==" and not same:
             findings.append(Finding(
                 "parity", "warning",
                 f"{name}: the browser build runs {have}, the desktop pins {wanted}",
@@ -231,18 +251,23 @@ def _line(version: tuple[int, ...]) -> tuple[int, ...]:
     return version[:2] if version[0] == 0 else version[:1]
 
 
-def check_pyodide(pinned: str, packages: Iterable[str], releases: list[dict],
+def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
                   fetch_lock: Callable[[str], dict]) -> list[Finding]:
     """Is there a newer Pyodide, and could the page run on it?"""
+    if not isinstance(releases, list):
+        # GitHub answers a rate limit or an outage with an error OBJECT.
+        return [Finding("pyodide", "warning",
+                        "Pyodide's release list came back in an unexpected shape",
+                        _unexpected("the GitHub releases API", releases))]
     pinned_v = parse_version(pinned)
     if pinned_v is None:
         return [Finding("pyodide", "warning",
                         f"The Pyodide pin {pinned} is not a release version")]
     finals = []
     for release in releases:
-        if release.get("draft") or release.get("prerelease"):
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
             continue
-        tag = str(release.get("tag_name", "")).lstrip("v")
+        tag = str(release.get("tag_name") or "").lstrip("v")
         version = parse_version(tag)
         if version:
             finals.append((_key(version), version, tag))
@@ -274,7 +299,7 @@ def check_pyodide(pinned: str, packages: Iterable[str], releases: list[dict],
             findings.append(Finding(
                 "pyodide", "warning",
                 f"Pyodide {tag} is out, but its package list could not be checked",
-                f"{type(exc).__name__}: {exc}"))
+                _describe(exc)))
         else:
             missing = [p for p in packages if normalise(p) not in available]
             if missing:
@@ -304,7 +329,7 @@ def check_pypi_wheels(pinned: dict[str, str],
         except Exception as exc:  # noqa: BLE001 -- report it, never crash the run
             findings.append(Finding(
                 "pypi", "warning", f"{name}: PyPI could not be checked",
-                f"{type(exc).__name__}: {exc}"))
+                _describe(exc)))
             continue
         have_v, latest_v = parse_version(have), parse_version(latest)
         if have_v and latest_v and _key(latest_v) > _key(have_v):
@@ -331,10 +356,15 @@ def _iso_date(value) -> date | None:
 
 
 def check_python(floor: str | None, ci_versions: Iterable[str],
-                 eol_data: list[dict], today: date) -> list[Finding]:
+                 eol_data: object, today: date) -> list[Finding]:
     """The Python versions MERIDIAN supports, against their end of life."""
+    if not isinstance(eol_data, list):
+        return [Finding("python", "warning",
+                        "Python's end-of-life data came back in an unexpected shape",
+                        _unexpected("endoflife.date", eol_data))]
+    entries = [entry for entry in eol_data if isinstance(entry, dict)]
     ci_versions = list(ci_versions)
-    cycles = {str(entry.get("cycle")): entry for entry in eol_data}
+    cycles = {str(entry.get("cycle")): entry for entry in entries}
     roles: dict[str, list[str]] = {}
     if floor:
         roles.setdefault(floor, []).append("the requires-python floor")
@@ -372,7 +402,7 @@ def check_python(floor: str | None, ci_versions: Iterable[str],
                 "python", "ok", f"{label} is supported until {end.isoformat()}"))
 
     released = []
-    for entry in eol_data:
+    for entry in entries:
         version = parse_version(str(entry.get("cycle", "")))
         release_date = _iso_date(entry.get("releaseDate"))
         if version and release_date and release_date <= today:
@@ -391,7 +421,15 @@ def check_python(floor: str | None, ci_versions: Iterable[str],
 
 # ---------- report ----------
 def _clean(text: str) -> str:
-    """Neutralise markup and @-mentions in text that may come from an API."""
+    """Make text from a third-party API inert inside the GitHub issue.
+
+    Line breaks are flattened, so a fetched string cannot open a new
+    Markdown block (a heading, a list); `<`, `>` and `&` are escaped; and
+    `@` is split so it pings nobody. Today every fetched string that
+    reaches a title has passed `parse_version` first, but that is an
+    invariant of the callers, not something this report should rely on.
+    """
+    text = re.sub(r"[\r\n]+", " ", text)
     return (text.replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace("@", "@​"))
 
@@ -432,9 +470,7 @@ def run_checks(repo: Path, today: date) -> list[Finding]:
     desktop = desktop_requirements(
         (repo / "requirements.txt").read_text(encoding="utf-8"))
     floor = python_floor((repo / "pyproject.toml").read_text(encoding="utf-8"))
-    ci = ci_python_versions(
-        path.read_text(encoding="utf-8")
-        for path in sorted((repo / ".github" / "workflows").glob("*.yml")))
+    ci = ci_python_versions([(repo / TEST_WORKFLOW).read_text(encoding="utf-8")])
 
     findings: list[Finding] = []
     try:
@@ -442,7 +478,7 @@ def run_checks(repo: Path, today: date) -> list[Finding]:
     except Exception as exc:  # noqa: BLE001 -- report it, never crash the run
         findings.append(Finding("pyodide", "warning",
                                 "Pyodide's releases could not be listed",
-                                f"{type(exc).__name__}: {exc}"))
+                                _describe(exc)))
     else:
         findings += check_pyodide(
             vendor.pyodide, vendor.packages, releases,
@@ -450,12 +486,17 @@ def run_checks(repo: Path, today: date) -> list[Finding]:
     findings += check_browser_parity(browser_versions(assets), desktop)
     findings += check_pypi_wheels(vendor.pypi_wheels,
                                   fetch_json=lambda url: fetch_json(url))
+    if floor is None:
+        findings.append(Finding(
+            "python", "warning",
+            "requires-python was not found in pyproject.toml",
+            "The Python floor is not being checked against end of life."))
     try:
         eol = fetch_json(PYTHON_EOL_URL)
     except Exception as exc:  # noqa: BLE001 -- report it, never crash the run
         findings.append(Finding("python", "warning",
                                 "Python's end-of-life dates could not be fetched",
-                                f"{type(exc).__name__}: {exc}"))
+                                _describe(exc)))
     else:
         findings += check_python(floor, ci, eol, today)
     return findings
@@ -472,13 +513,23 @@ def main(argv: list[str] | None = None) -> int:
                         help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
-    findings = run_checks(args.repo, args.today)
+    try:
+        findings = run_checks(args.repo, args.today)
+    except Exception as exc:  # noqa: BLE001 -- a broken check must still report
+        # A missing or reshaped local file. Reported as an action so the
+        # issue opens and says so, instead of the workflow failing and the
+        # issue going quietly stale.
+        findings = [Finding(
+            "self", "action", "The weekly update check could not run",
+            f"{_describe(exc)}. Fix tools/check_updates.py, or the file it "
+            "reads, so the report can be produced again.")]
     report = render_report(findings, args.today)
     if args.report:
         args.report.write_text(report, encoding="utf-8")
     print(report)
 
-    # The workflow opens or updates its issue only when this is true.
+    # The workflow opens or updates its issue when this is true, and closes
+    # it only when this is explicitly false.
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
         with open(github_output, "a", encoding="utf-8") as handle:
