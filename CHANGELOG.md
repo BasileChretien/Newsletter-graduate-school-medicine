@@ -6,6 +6,50 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [Unreleased]
+
+### Fixed — justified and centred text came out left-aligned (HIGH)
+- **Reported from the field.** Word's paragraph alignment (`w:jc`) was
+  never read: `paragraph_to_html` handled runs, links and pictures, so
+  every paragraph fell back to the stylesheet's left alignment. The issue
+  that exposed it had 106 of its 125 paragraphs justified (両端揃え, the
+  default when Word is set up for Japanese) and its photo captions
+  centred.
+- Alignment is now resolved the way Word does — direct formatting, then
+  the paragraph style and its `basedOn` chain, then the document
+  defaults — and carried on body paragraphs, bullet items and table cells
+  (data tables, highlight cards, layout tables). Measured on that issue:
+  23 body paragraphs, 11 table cells and 5 centred paragraphs now match
+  Word, for +748 bytes (42.9 → 43.6 KB).
+- Only `justify`, `center` and `right` are ever written. Word's values go
+  through an allowlist in the parser and again in the renderer, because
+  they land in a `style` attribute, where autoescaping does not stop a
+  `;`. Left and unset write nothing, so a document without alignment
+  renders exactly as before.
+- A photo in a centred or right-aligned paragraph now moves with it.
+  Photos are `display:block`, which `text-align` does not move in Gmail
+  or Apple Mail, so they also get auto margins; Outlook ignores those
+  margins and follows the paragraph's `text-align` instead.
+- Table styles are honoured too: a table style's own alignment, and its
+  conditional formatting — header row, total row, first and last column,
+  row and column banding, corner cells — as each table switches it on
+  with `w:tblLook`. Where Word and ECMA-376 disagree (a header row beats
+  the first column where they meet; a missing band size means no banding;
+  a table without `w:tblLook` gets header row and first column), this
+  follows Word as Microsoft documents it in [MS-OI29500], including the
+  `overrideTableStyleFontSizeAndJustification` rule for documents from
+  before Word 2013. No current issue uses a table style, so none of their
+  output changes.
+- Styles are resolved once per document. Walking style chains for every
+  table cell made the 20,000-cell table cap six times slower to parse
+  (0.85 s → 5.1 s); it now takes 1.26 s. That matters most in the
+  browser, where Python runs several times slower.
+- A table cell whose paragraphs disagree (a centred line above justified
+  text, say) keeps the default rather than guessing. Section headings,
+  sub-headings and the masthead keep the fixed MERIDIAN design.
+- In the bundled template, the copyright line and the dean's name block
+  are centred in Word and are now centred in the email too.
+
 ## [v1.3.0] — see it the way recipients will (2026-08-03)
 
 Four HIGH fixes, three new preview capabilities, offline support and a
