@@ -10,6 +10,66 @@
 
 > **MERIDIAN** — *Where medicine meets the world.*
 
+## Make the newsletter in your browser — start here
+
+> ### 👉 [**Open the newsletter builder**](https://basilechretien.github.io/Newsletter-graduate-school-medicine/) 👈
+>
+> <https://basilechretien.github.io/Newsletter-graduate-school-medicine/>
+>
+> Nothing to install, no account, no GitHub. Works in Edge, Chrome, Firefox and Safari. Switch between English and 日本語 at the top right of the page.
+
+### How to use it
+
+1. **Get the Word template.** [Download `Meridian_Newsletter_Template.docx`](https://raw.githubusercontent.com/BasileChretien/Newsletter-graduate-school-medicine/main/Meridian_Newsletter_Template.docx) once and reuse it for every issue.
+2. **Fill it in with Word**, then save a copy named `issue-N.docx` (for example `issue-3.docx`).
+   - Replace the masthead line `VOL. XX | ISSUE NO. XX | MONTH YEAR` and every bracketed placeholder (`[Author(s)]`, `[Paper Title]`, …).
+   - Add photos with **Insert → Picture**, exactly where they should appear in the email. The school logo and the dean's photo are already built in.
+
+   Adding, renaming or removing sections works the same as in the desktop toolkit: see [Step 2](#step-2--fill-in-your-content) and [Step 3](#step-3--add-photos-optional) below.
+3. **Open the builder** and wait for the form to appear. The very first visit takes about ten seconds while the engine loads. After that it is cached, so the page opens quickly and keeps working offline.
+4. **① Choose your Word file:** drop `issue-N.docx` onto the box, or click the box to pick it.
+5. **② Settings:** type the **issue number**. Optionally, paste the **BCC recipients**, one address per line. The university mail server accepts about 50 per send, so split longer lists.
+6. Click **Build the newsletter**.
+7. **Check the result.**
+   - **If there is an error**, most often a placeholder is still unfilled (such as `VOL. XX`). No email file is offered, and the preview highlights what is missing. Fix it in Word, save, choose the file again and rebuild.
+   - **The preview** shows what recipients will see. Switch between **As sent**, **Images blocked** (what people see when their email app hides pictures) and **Plain text**.
+8. Click **Download the email draft (.eml)**, then **double-click** the downloaded `issue-N.eml`. Outlook opens a ready-to-send draft with the subject, the BCC list and the photos already in place. Add the **To:** address, check the draft and press **Send**.
+
+   **Download the HTML** is optional. It saves a copy of the newsletter, photos included, for your records.
+
+### Where are the photos stored?
+
+**Only in your own files, never online.** The builder has no server, so your document and photos have nowhere to be uploaded to.
+
+| Where | What is there | For how long |
+|---|---|---|
+| **Your Word file** (`issue-N.docx`) | The photos you inserted, at full quality. | Until you delete it. **This is your master copy.** |
+| **The browser tab, during the build** | A temporary copy of each photo, taken out of the Word file and shrunk to email size. It is held in the tab's memory and never written to your disk. | Erased when you build again or close the tab. |
+| **The `.eml` file** (your *Downloads* folder) | Every photo, embedded inside the email itself. | Until you delete it. |
+| **The `.html` file** (only if you downloaded it) | Every photo, embedded inside the page, so it shows the photos even offline. | Until you delete it. |
+| **After you press Send** | Your Outlook *Sent Items* folder and each recipient's mailbox. | As long as those mailboxes keep the email. |
+
+In practice this means:
+
+- **Nothing is published.** The builder never puts photos on GitHub or on any public web address, and there is no link to the issue after sending. **Keep `issue-N.docx`, and ideally the `.eml` or `.html`, as your archive.** If someone asks for an old issue, forward the sent email or attach the `.html`.
+- **A photo larger than 2 MB cannot travel inside the email.** The page warns you when this happens. In Word, right-click the photo, choose **Compress Pictures**, save, and build again.
+- **The page keeps nothing between visits:** not your Word file, not your photos, not your BCC list. Only the builder's own program files are cached, which is what makes the next visit faster.
+- Treat photos as you would for any institutional email: no patient images, and no identifiable faces without consent.
+
+> **On a Mac?** Apple Mail opens `.eml` files read-only, so you can't send the draft from there. Use the desktop toolkit below instead.
+>
+> **Setting the builder up for your own institution?** See [`web/README.md`](web/README.md).
+
+---
+
+## Backup: the desktop toolkit
+
+Everything below documents the original desktop version of MERIDIAN. **You don't need it if the website works for you.** It remains available as a fallback when:
+
+- you are on a **Mac with Apple Mail**;
+- you want Outlook to **open the draft for you**, with the BCC list filled in from a saved `recipients.txt`;
+- the website can't be reached, for example on a network that blocks `github.io` before your first visit.
+
 > **One Word file → one polished email → one Outlook draft.** No copy-paste. No broken images. No formatting falling apart at recipients' end. Used in production at the **Graduate School of Medicine, Nagoya University** — and engineered to be forkable for any institution with the same problem.
 
 > ⭐ **Like what you see? [Star the repo](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/stargazers)** so other institutions facing the same problem can find it. (And [open an issue](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/issues/new/choose) if you've forked it for yours — you'll get a "Used by" listing.)
@@ -25,7 +85,7 @@
 | Re-type the BCC list every issue | `recipients.txt` populates BCC automatically, with separator-injection and Unicode-smuggle defences |
 | Half a day per issue on plumbing | A few minutes per issue on plumbing |
 
-> **Want to see it?** Generate a sample render yourself in 60 seconds: clone the repo, run `python build_newsletter.py build-template` (uses the bundled template + dean photo), then open the generated DOCX in Word. The HTML side is just `python build_newsletter.py build --input issue-1.docx --issue 1 --no-remote-check` after filling in any DOCX. (Working on getting a hosted preview link up — PR welcome.)
+> **Want to see it?** Generate a sample render yourself in 60 seconds: clone the repo, run `python build_newsletter.py build-template` (uses the bundled template + dean photo), then open the generated DOCX in Word. The HTML side is just `python build_newsletter.py build --input issue-1.docx --issue 1 --no-remote-check` after filling in any DOCX. Or skip all of that and use the [website](#make-the-newsletter-in-your-browser--start-here) at the top of this page.
 
 ## Why this exists
 
@@ -391,30 +451,6 @@ That's intentional. The print stylesheet swaps the dark cream-and-gold masthead 
 (Replace `N` with the issue number every time.)
 
 </details>
-
----
-
-## Can't install anything? Build it in your browser
-
-If you can't run the launcher — a locked-down work machine, or you're
-covering one issue as a stand-in — there's a browser version that needs
-no install at all:
-
-1. Open **[the newsletter builder](https://basilechretien.github.io/Newsletter-graduate-school-medicine/)**.
-2. Drop your `issue-N.docx` on it.
-3. Download the `.eml` and double-click it. Outlook opens a ready-to-send
-   draft with the subject, the BCC list and the photos already in place.
-   Add the To: address and press Send.
-
-**Your Word file is never uploaded.** The page has no server behind it —
-your document is read and converted inside your own browser tab, and the
-BCC addresses you type go only into the draft file you download.
-
-Two caveats: the first load takes about ten seconds (it fetches the
-engine, then caches it), and Apple Mail opens `.eml` files read-only,
-so on a Mac the desktop launcher is still the better route.
-
-Deploying it for your own institution: see [`web/README.md`](web/README.md).
 
 ---
 
