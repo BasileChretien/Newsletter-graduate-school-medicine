@@ -38,7 +38,8 @@ from scripts.docx_parser import ImageRef, Masthead, parse
 from scripts.html_utils import parse_html
 from scripts.image_handler import (
     DEFAULT_IMAGE_QUALITY, DEFAULT_MAX_IMAGE_PX,
-    extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
+    extension_to_mime, extract_embedded, ingest_drop_folder, issue_dir,
+    to_raw_url,
 )
 from scripts.inliner import inline
 from scripts.manifest import load_manifest, write_manifest
@@ -363,6 +364,39 @@ def _delete_stale_html(out_html: Path) -> None:
         log.warning("Could not remove stale %s: %s", out_html, e)
 
 
+def _remove_photos_from_earlier_builds(asset_dir: Path,
+                                       produced: list[Path]) -> None:
+    """Delete the photos in an issue's folder that this build did not produce.
+
+    Extraction and the drop folder only ever add to `assets/issue-N`, so a
+    photo taken out of the Word file or out of `drop-images/` stayed after
+    the rebuild: the manifest listed and counted it, and URL mode's publish
+    step pushed it again. Called once this build's own photos are in place.
+
+    Only photos go; the manifests and anything else stay. Names are compared
+    regardless of case: on Windows and macOS an old `IMAGE1.JPG` IS the
+    `image1.jpg` just written, and an exact comparison would delete it.
+    Best-effort, like `_delete_stale_html`.
+    """
+    keep = {p.name.casefold() for p in produced}
+    try:
+        stale = [
+            f for f in asset_dir.iterdir()
+            if f.is_file() and f.name.casefold() not in keep
+            and extension_to_mime(f) != "application/octet-stream"
+        ]
+    except OSError as e:
+        log.warning("Could not look for old photos in %s: %s", asset_dir, e)
+        return
+    for f in stale:
+        try:
+            f.unlink()
+            log.info("Removed %s, a photo from an earlier build that this "
+                     "one no longer uses.", f.name)
+        except OSError as e:
+            log.warning("Could not remove old photo %s: %s", f, e)
+
+
 def _build_pipeline(input_path: Path, issue: int, *,
                     validate_remote: bool,
                     output_dir: Path | None = None,
@@ -452,6 +486,8 @@ def _build_pipeline(input_path: Path, issue: int, *,
                                 max_image_px=max_image_px,
                                 image_quality=image_quality)
     drops = ingest_drop_folder(DROP_DIR, asset_dir)
+    _remove_photos_from_earlier_builds(
+        asset_dir, [*embedded.values(), *(d.dst_path for d in drops)])
     log.info("Embedded images: %d, drop-folder images: %d",
              len(embedded), len(drops))
 

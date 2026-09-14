@@ -31,6 +31,24 @@ is preserved in `git log` for archaeology.
   pinned by nine new tests in `tests/test_output_dir.py`. The website is
   unaffected: it always puts the photos inside the email.
 
+### Fixed — a rebuilt issue kept photos from earlier builds (LOW)
+- **Photos taken out stayed in `assets/issue-N/`.** A build extracts the
+  Word file's photos and copies the drop-folder photos into the issue's
+  folder, but never removed what an earlier build had put there. A photo
+  taken out of the Word file or out of `drop-images/` stayed: the
+  manifest listed and counted it, and URL mode's publish step pushed it
+  again. Emails were not affected -- they only show this build's photos.
+- **A rebuild now removes the photos it did not produce**, once its own
+  are in place. Other files and the manifests stay. Names are compared
+  regardless of case, so on Windows and macOS the photo just written is
+  never taken for an old one. A Word file that cannot be read stops the
+  build before anything is removed.
+- In URL mode the next publish removes those photos from GitHub too, so
+  an email sent earlier that showed one of them no longer does. A
+  replaced photo that kept its name already behaved that way. The website
+  is unaffected: it starts every build in an empty folder.
+- Pinned by `tests/test_stale_issue_photos.py`.
+
 ## [v1.5.0] — the website is built to last (2026-09-14)
 
 The website renders with the desktop's libraries, keeps a permanent copy of
