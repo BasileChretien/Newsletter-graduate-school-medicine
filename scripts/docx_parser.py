@@ -171,7 +171,16 @@ _JC_TO_CSS = {
 _W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 # Precompiled, with the style id bound as an XPath variable: a styleId is
 # document-controlled text and is never spliced into the expression.
-_STYLE_BY_ID = etree.XPath("w:style[@w:styleId = $sid]", namespaces=_W_NS)
+#
+# Looked up per type: a hand-edited file can give a paragraph style and a
+# table style the same id, and each lookup has to find its own kind. A
+# style with no `w:type` is a paragraph style.
+_PARAGRAPH_STYLE_BY_ID = etree.XPath(
+    "w:style[not(@w:type) or @w:type = 'paragraph'][@w:styleId = $sid]",
+    namespaces=_W_NS,
+)
+_TABLE_STYLE_BY_ID = etree.XPath(
+    "w:style[@w:type = 'table'][@w:styleId = $sid]", namespaces=_W_NS)
 _DEFAULT_PARAGRAPH_STYLE = etree.XPath(
     "w:style[@w:type = 'paragraph']"
     "[@w:default = '1' or @w:default = 'true' or @w:default = 'on']",
@@ -210,8 +219,12 @@ def _last(elements):
     return elements[-1] if elements else None
 
 
-def _style_chain(styles, style):
-    """`style`, then each style it is `basedOn` -- most derived first."""
+def _style_chain(styles, style, by_id):
+    """`style`, then each style it is `basedOn` -- most derived first.
+
+    `by_id` is the lookup for `style`'s own type, so a `basedOn` never
+    wanders from a table style into a paragraph style or back.
+    """
     seen: set[str] = set()
     for _ in range(_MAX_STYLE_DEPTH):
         if style is None:
@@ -223,7 +236,7 @@ def _style_chain(styles, style):
         yield style
         based_on = style.find(qn("w:basedOn"))
         parent_id = based_on.get(qn("w:val")) if based_on is not None else None
-        parents = _STYLE_BY_ID(styles, sid=parent_id) if parent_id else []
+        parents = by_id(styles, sid=parent_id) if parent_id else []
         style = parents[0] if parents else None
 
 
@@ -233,9 +246,9 @@ def _style_chain_jc(styles, style_id: str | None) -> str | None:
     A paragraph with no `w:pStyle`, or one naming a style that does not
     exist, uses the document's default paragraph style -- as Word does.
     """
-    found = _STYLE_BY_ID(styles, sid=style_id) if style_id else []
+    found = _PARAGRAPH_STYLE_BY_ID(styles, sid=style_id) if style_id else []
     start = found[0] if found else _last(_DEFAULT_PARAGRAPH_STYLE(styles))
-    for style in _style_chain(styles, start):
+    for style in _style_chain(styles, start, _PARAGRAPH_STYLE_BY_ID):
         value = _jc_value(style.find(qn("w:pPr")))
         if value is not None:
             return value
@@ -331,14 +344,14 @@ def _resolve_table_style(styles, style_id: str | None) -> _TableStyle | None:
     taken from the most derived style that sets it, the way every other
     style property inherits.
     """
-    found = _STYLE_BY_ID(styles, sid=style_id) if style_id else []
+    found = _TABLE_STYLE_BY_ID(styles, sid=style_id) if style_id else []
     start = found[0] if found else _last(_DEFAULT_TABLE_STYLE(styles))
     if start is None:
         return None
     base: str | None = None
     conditional: dict[str, str] = {}
     row_band = col_band = None
-    for style in _style_chain(styles, start):
+    for style in _style_chain(styles, start, _TABLE_STYLE_BY_ID):
         if base is None:
             base = _jc_value(style.find(qn("w:pPr")))
         for override in style.findall(qn("w:tblStylePr")):
@@ -371,6 +384,8 @@ class _TableAlignment:
         does; merged cells (`w:gridSpan`) are not expanded to grid columns.
         """
         look = self.look
+        # In a one-row table the only row is the header, not the total row,
+        # and in a one-column table the only column is the first.
         first_row = "firstRow" in look and row == 0
         last_row = "lastRow" in look and row == n_rows - 1 and not first_row
         first_col = "firstColumn" in look and col == 0
@@ -438,7 +453,10 @@ def _override_table_jc(part) -> bool:
     """
     try:
         settings = part.part_related_by(RT.SETTINGS).element
-    except (AttributeError, KeyError):
+    except (AttributeError, KeyError, ValueError):
+        # KeyError: no settings part. ValueError: a hand-edited file relates
+        # more than one. Neither is worth failing a build over -- the
+        # setting is then simply absent, which is Word's default too.
         return False
     values = _OVERRIDE_TABLE_JC(settings)
     return bool(values) and str(values[-1]).lower() in _ON_VALUES
@@ -510,7 +528,7 @@ def _inherited_jc(paragraph: Paragraph, table_jc: str | None) -> str | None:
         memo.paragraph_styles[style_id] = (
             _style_chain_jc(memo.styles, style_id),
             not style_id or style_id == memo.default_style_id
-            or not _STYLE_BY_ID(memo.styles, sid=style_id),
+            or not _PARAGRAPH_STYLE_BY_ID(memo.styles, sid=style_id),
         )
     style_jc, in_default_style = memo.paragraph_styles[style_id]
     if style_jc is None:
@@ -918,6 +936,9 @@ def _table_to_block(table: Table) -> TableBlock:
     # (header row, first column, banding), so it is worked out here, where
     # the position is known, and handed to each paragraph in the cell.
     table_alignment = _table_alignment(table)
+    # The table's true size, not what the caps let through: in a table
+    # longer than MAX_TABLE_ROWS the real last row is never emitted, so no
+    # emitted row takes total-row formatting -- which is right.
     n_rows = len(table._tbl.tr_lst)
     for r, row in enumerate(table.rows[:MAX_TABLE_ROWS]):
         if budget <= 0:

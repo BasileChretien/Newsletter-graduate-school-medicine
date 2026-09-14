@@ -40,6 +40,10 @@ is preserved in `git log` for archaeology.
   `overrideTableStyleFontSizeAndJustification` rule for documents from
   before Word 2013. No current issue uses a table style, so none of their
   output changes.
+- Styles are resolved once per document. Walking style chains for every
+  table cell made the 20,000-cell table cap six times slower to parse
+  (0.85 s → 5.1 s); it now takes 1.26 s. That matters most in the
+  browser, where Python runs several times slower.
 - A table cell whose paragraphs disagree (a centred line above justified
   text, say) keeps the default rather than guessing. Section headings,
   sub-headings and the masthead keep the fixed MERIDIAN design.

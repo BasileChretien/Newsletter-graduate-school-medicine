@@ -638,6 +638,60 @@ def test_each_table_style_is_resolved_once_per_document(monkeypatch):
     assert calls == [style.style_id]
 
 
+def test_a_one_row_table_treats_its_only_row_as_the_header():
+    d = docx.Document()
+    style = _table_style(d, "Both Edges", conditional={
+        "firstRow": "center", "lastRow": "right"})
+    t = _filled_table(d, 1, 1, style, firstRow=True, lastRow=True)
+    assert _table_to_block(t).aligns == (("center",),)
+
+
+def test_a_paragraph_style_and_a_table_style_sharing_an_id_stay_apart():
+    """A hand-edited file can give a paragraph style and a table style the
+    same id. Each lookup has to find its own kind, or a table silently takes
+    the paragraph style's alignment and loses its real header formatting."""
+    d = docx.Document()
+    para = d.styles.add_style("Dup Paragraph", WD_STYLE_TYPE.PARAGRAPH)
+    para.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    table_style = _table_style(d, "Dup Table", conditional={"firstRow": "center"})
+    para.element.set(qn("w:styleId"), "Dup")
+    table_style.element.set(qn("w:styleId"), "Dup")
+
+    t = _filled_table(d, 2, 1, table_style, firstRow=True)
+    p = d.add_paragraph("Right-aligned by the paragraph style.", style=para)
+    assert t._tbl.tblPr.find(qn("w:tblStyle")).get(qn("w:val")) == "Dup"
+    assert _table_to_block(t).aligns == (("center",), ("",))
+    assert paragraph_alignment(p) == "right"
+
+
+def test_a_duplicated_settings_relationship_does_not_crash_the_parse():
+    """python-docx raises ValueError when a hand-edited file relates two
+    settings parts. That must not reach the editor as a traceback."""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    d = docx.Document()
+    rels = d.part.rels
+    (settings_rel,) = [r for r in rels.values() if r.reltype == RT.SETTINGS]
+    rels.add_relationship(RT.SETTINGS, settings_rel.target_part,
+                          "rIdDuplicateSettings")
+    t = _filled_table(d, 1, 1, _table_style(d, "Centred Table", base="center"))
+    assert _table_to_block(t).aligns == (("center",),)
+
+
+def test_a_document_without_a_settings_part_gets_the_compatibility_rule():
+    """No settings part means no opt-out, so Word's older rule applies: a
+    LEFT in the default paragraph style yields to the table style."""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    d = docx.Document()
+    d.styles["Normal"].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    rels = d.part.rels
+    for r_id in [r_id for r_id, r in rels.items() if r.reltype == RT.SETTINGS]:
+        rels.pop(r_id)
+    t = _filled_table(d, 1, 1, _table_style(d, "Centred Table", base="center"))
+    assert _table_to_block(t).aligns == (("center",),)
+
+
 # ---------- rendering ----------
 def _newsletter(*blocks) -> Newsletter:
     return Newsletter(
