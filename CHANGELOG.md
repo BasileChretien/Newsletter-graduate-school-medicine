@@ -6,7 +6,10 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
-## [Unreleased]
+## [v1.4.2] — dependencies are checked automatically (2026-09-14)
+
+Maintenance tooling only; the newsletter output is unchanged. **616 tests
+passing** on Linux, macOS and Windows.
 
 ### Added — dependencies and runtimes are checked automatically
 - **Dependabot** (`.github/dependabot.yml`) opens weekly, grouped pull
@@ -23,7 +26,7 @@ is preserved in `git log` for archaeology.
   - the browser build's package versions against `requirements.txt`;
   - the wheel vendored straight from PyPI (`python-docx`);
   - the `requires-python` floor and the CI Python against end-of-life.
-- Its first run found real drift: the browser build ships `lxml` 6.0.2,
+- Its first run (issue #18) found real drift: the browser build ships `lxml` 6.0.2,
   below the desktop's 6.1.0 security floor, and different `css-inline`
   and `beautifulsoup4` versions from the desktop; Python 3.10, the
   `requires-python` floor, reaches end of life on 2026-10-31; and
@@ -548,6 +551,7 @@ for the full archaeology.
 
 ---
 
+[v1.4.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.2
 [v1.4.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.1
 [v1.4.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.0
 [v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.3.0
