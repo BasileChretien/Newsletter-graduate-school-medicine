@@ -6,7 +6,12 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
-## [Unreleased]
+## [v1.4.0] — the email keeps Word's alignment (2026-09-14)
+
+One HIGH fix from a field report — justified text came out
+ragged-right — extended at the maintainer's request to alignment set by
+table styles; and the README now opens with the website. **551 tests
+passing** on Linux, macOS and Windows.
 
 ### Fixed — justified and centred text came out left-aligned (HIGH)
 - **Reported from the field.** Word's paragraph alignment (`w:jc`) was
@@ -49,6 +54,16 @@ is preserved in `git log` for archaeology.
   sub-headings and the masthead keep the fixed MERIDIAN design.
 - In the bundled template, the copyright line and the dean's name block
   are centred in Word and are now centred in the email too.
+
+### Changed — the README starts with the website
+- `README.md` and `README.ja.md` open with the browser builder: how to
+  use it step by step, and where the photos are stored — the Word file,
+  the browser tab's memory during the build, the downloaded `.eml` and
+  `.html`, then Sent Items and recipients' mailboxes; never online. The
+  desktop launcher's documentation follows, unchanged, as the backup
+  route. The repository's About link now points at the website.
+- `web/README.md` no longer says the page has no service worker; v1.3.0
+  added one.
 
 ## [v1.3.0] — see it the way recipients will (2026-08-03)
 
@@ -488,6 +503,7 @@ for the full archaeology.
 
 ---
 
+[v1.4.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.0
 [v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.3.0
 [v1.2.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.2.0
 [v1.1.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.2
