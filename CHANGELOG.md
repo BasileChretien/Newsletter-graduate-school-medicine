@@ -6,6 +6,31 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [Unreleased]
+
+### Fixed — photos in a redirected output folder (MEDIUM)
+- **Drop-folder photos crashed `--output-dir`.** They are copied beside
+  the redirected output, but their links were still worked out from the
+  toolkit folder, so the build stopped on `ValueError: Asset ... must be
+  inside repo`. Embedded photos had the same bug, fixed in v1.3.0 (#6);
+  drop-folder photos now take the same route. `--output-dir` is also what
+  a run falls back to when the toolkit folder is read-only, as in the
+  macOS Downloads folder.
+- **URL mode opened a draft of broken images.** Hosted photos can only be
+  published from the toolkit's own `assets/` folder. With the photos saved
+  anywhere else, `all` printed a yellow note and opened the draft anyway,
+  and `compose` did not check at all: every recipient would have seen
+  broken images. Both now stop before anything is published or opened,
+  say why, and say what to do -- move the toolkit folder somewhere
+  writable, or use `--backend=eml` to put the photos inside the email. The
+  check reads the email itself, so a run whose email shows none of the
+  issue's photos is not stopped -- not even with old photos left in the
+  folder by an earlier build -- and `--output-dir` set to the toolkit
+  folder itself now publishes normally.
+- Ported from work left uncommitted in a worktree since 2026-07-29, and
+  pinned by nine new tests in `tests/test_output_dir.py`. The website is
+  unaffected: it always puts the photos inside the email.
+
 ## [v1.5.0] — the website is built to last (2026-09-14)
 
 The website renders with the desktop's libraries, keeps a permanent copy of

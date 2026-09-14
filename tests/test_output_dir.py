@@ -20,12 +20,19 @@ These tests pin:
     redirected location, NOT to PROJECT_ROOT/dist or PROJECT_ROOT/assets.
   * `--output-dir` is plumbed through the CLI: build, preview,
     compose, and all commands all accept it.
+
+The bottom of the file pins what happens to PHOTOS under `--output-dir`
+(which the automatic read-only fallback also uses): drop-folder photos
+build like embedded ones, redirected photos still resolve for CID, and
+URL mode -- which can only publish photos inside the toolkit's own
+folder -- stops instead of opening a draft of broken images.
 """
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
@@ -34,6 +41,8 @@ from scripts.config import (
     default_safe_output_dir,
     is_writable_location,
 )
+from scripts.mail import MailHandler
+from scripts.mail.cid import attach_inline_images
 
 
 # -- Writable-location probing -----------------------------------------------
@@ -267,6 +276,39 @@ def test_output_dir_survives_a_docx_containing_photos(tmp_path: Path):
     Uses the shipped template, which carries the masthead logo and the
     dean photo, so the assertion rests on real embedded images.
     """
+    src = _filled_template(tmp_path)
+    out = tmp_path / "elsewhere"
+
+    result = bn._build_pipeline(src, issue=3, validate_remote=False,
+                                output_dir=out)
+
+    assert result.exit_code == 0, "build --output-dir failed on a DOCX with photos"
+    assert (out / "dist" / "issue-3.html").exists()
+    # The URLs stay repo-relative, so a redirected build still produces
+    # the same links a conventional one would.
+    html = (out / "dist" / "issue-3.html").read_text(encoding="utf-8")
+    assert "raw.githubusercontent.com" in html
+    assert str(out).replace("\\", "/") not in html, (
+        "a local filesystem path leaked into the published HTML")
+
+
+# -- Photos under --output-dir ------------------------------------------------
+#
+# `--output-dir` is also where the automatic read-only fallback sends a
+# build, so everything below is the macOS Downloads case as much as it is
+# an explicit flag.
+
+# Smallest valid PNG (1x1). The drop folder checks magic bytes, so it has
+# to be a real image.
+_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ"
+    "DwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def _filled_template(tmp_path: Path, name: str = "issue-3.docx") -> Path:
+    """The shipped template with its masthead placeholders filled, so it
+    passes validation. It embeds the masthead logo and the dean photo."""
     import docx as docx_lib
 
     from scripts.config import MERIDIAN_TEMPLATE
@@ -283,18 +325,255 @@ def test_output_dir_survives_a_docx_containing_photos(tmp_path: Path):
                             for run in para.runs:
                                 run.text = run.text.replace(old, new)
 
-    src = tmp_path / "issue-3.docx"
+    src = tmp_path / name
     d.save(str(src))
+    return src
+
+
+def _drop_photo(tmp_path: Path, monkeypatch) -> Path:
+    """One photo in a drop folder, for section 1."""
+    drop = tmp_path / "drop-images"
+    drop.mkdir()
+    photo = drop / "s1_1_campus.png"
+    photo.write_bytes(_PNG_1X1)
+    monkeypatch.setattr(bn, "DROP_DIR", drop)
+    return photo
+
+
+def _apple_handler() -> MailHandler:
+    """Not Outlook: `--image-mode=auto` would choose URL mode too."""
+    return MailHandler(kind="apple_mail", name="Apple Mail")
+
+
+def _run_all(args: list[str], *, publish, composer, browser):
+    with patch("build_newsletter.detect_default_mail_handler",
+               return_value=_apple_handler()), \
+         patch("build_newsletter.publish_assets", new=publish), \
+         patch("build_newsletter.compose", new=composer), \
+         patch("build_newsletter.webbrowser.open", new=browser):
+        return CliRunner().invoke(bn.cli, ["all", *args])
+
+
+def test_output_dir_survives_drop_folder_photos(tmp_path: Path, monkeypatch):
+    """Drop-folder photos crashed `--output-dir` the way embedded photos
+    used to: they are copied beside the redirected output, but their URLs
+    were still resolved against PROJECT_ROOT, so `to_raw_url` raised
+    `ValueError: Asset ... must be inside repo ...`."""
+    photo = _drop_photo(tmp_path, monkeypatch)
     out = tmp_path / "elsewhere"
 
-    result = bn._build_pipeline(src, issue=3, validate_remote=False,
-                                output_dir=out)
+    result = bn._build_pipeline(_filled_template(tmp_path), issue=3,
+                                validate_remote=False, output_dir=out)
 
-    assert result.exit_code == 0, "build --output-dir failed on a DOCX with photos"
-    assert (out / "dist" / "issue-3.html").exists()
-    # The URLs stay repo-relative, so a redirected build still produces
-    # the same links a conventional one would.
+    assert result.exit_code == 0
     html = (out / "dist" / "issue-3.html").read_text(encoding="utf-8")
-    assert "raw.githubusercontent.com" in html
-    assert str(out).replace("\\", "/") not in html, (
-        "a local filesystem path leaked into the published HTML")
+    assert f"assets/issue-3/{photo.name}" in html
+    assert str(out).replace("\\", "/") not in html
+
+
+def test_redirected_photos_still_resolve_for_cid(tmp_path: Path, monkeypatch):
+    """A redirected build ships its photos inside the email: CID mode maps
+    each `assets/issue-N/<file>` URL back to the file on disk. Building is
+    not enough -- the URLs have to round-trip, or the draft goes out with
+    no photos."""
+    photo = _drop_photo(tmp_path, monkeypatch)
+    out = tmp_path / "elsewhere"
+
+    result = bn._build_pipeline(_filled_template(tmp_path), issue=3,
+                                validate_remote=False, output_dir=out)
+    assert result.exit_code == 0
+
+    html = (out / "dist" / "issue-3.html").read_text(encoding="utf-8")
+    _rewritten, inline = attach_inline_images(html, out / "assets" / "issue-3")
+    assert all(img.path.is_file() for img in inline)
+    assert photo.name in {img.path.name for img in inline}
+
+
+def test_url_mode_stops_when_the_photos_are_outside_the_toolkit(
+    tmp_path: Path, monkeypatch,
+):
+    """URL mode can only publish photos that sit inside the toolkit's own
+    folder: `publish_assets` pushes `assets/issue-N` from its checkout.
+    With the photos elsewhere, `all` printed a yellow note and opened the
+    draft anyway -- a newsletter of broken images for every recipient.
+    It now stops before publishing or composing, and says what to do."""
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "toolkit" / "assets")
+    monkeypatch.setattr(bn, "DROP_DIR", tmp_path / "no-drop-images")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    publish, composer, browser = MagicMock(), MagicMock(), MagicMock()
+
+    result = _run_all(
+        ["--input", str(_filled_template(tmp_path)), "--issue", "3",
+         "--image-mode", "url", "--output-dir", str(tmp_path / "elsewhere")],
+        publish=publish, composer=composer, browser=browser)
+
+    assert result.exit_code == 2, result.output
+    publish.assert_not_called()
+    composer.assert_not_called()
+    browser.assert_not_called()
+    assert "broken images" in result.output, result.output
+    assert "--backend=eml" in result.output, result.output
+
+
+def _one_section_docx(tmp_path: Path) -> Path:
+    """A valid issue with one section and no photos."""
+    import docx as docx_lib
+
+    d = docx_lib.Document()
+    masthead = d.add_table(rows=1, cols=2).rows[0].cells[1]
+    masthead.text = "MERIDIAN"
+    for line in ("Where medicine meets the world.",
+                 "Newsletter of the Graduate School of Medicine",
+                 "VOL. 12 | ISSUE NO. 3 | MARCH 2026"):
+        masthead.add_paragraph(line)
+    d.add_paragraph("1.  Some Section")
+    d.add_paragraph("Body content for the section.")
+    src = tmp_path / "no-photos.docx"
+    d.save(str(src))
+    return src
+
+
+def test_url_mode_is_not_blocked_when_the_issue_has_no_photos(
+    tmp_path: Path, monkeypatch,
+):
+    """The stop is about photos, not about `--output-dir`. An issue with
+    no photos has nothing to host, so a redirected run -- automatic on a
+    read-only toolkit folder -- must still go through."""
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "toolkit" / "assets")
+    monkeypatch.setattr(bn, "DROP_DIR", tmp_path / "no-drop-images")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    src = _one_section_docx(tmp_path)
+    publish, composer, browser = MagicMock(), MagicMock(), MagicMock()
+
+    result = _run_all(
+        ["--input", str(src), "--issue", "3", "--image-mode", "url",
+         "--output-dir", str(tmp_path / "elsewhere"), "--no-compose"],
+        publish=publish, composer=composer, browser=browser)
+
+    assert result.exit_code == 0, result.output
+    publish.assert_not_called()
+    browser.assert_called_once()
+
+
+def test_url_mode_publishes_when_output_dir_is_the_toolkit_folder(
+    tmp_path: Path, monkeypatch,
+):
+    """The check compares folders, not whether `--output-dir` was typed.
+    `--output-dir <the toolkit folder>` leaves the photos where
+    `publish_assets` can push them, so they must be published."""
+    toolkit = tmp_path / "toolkit"
+    monkeypatch.setattr(bn, "ASSETS_DIR", toolkit / "assets")
+    monkeypatch.setattr(bn, "DROP_DIR", tmp_path / "no-drop-images")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    publish = MagicMock(return_value=None)
+    composer, browser = MagicMock(), MagicMock()
+
+    result = _run_all(
+        ["--input", str(_filled_template(tmp_path)), "--issue", "3",
+         "--image-mode", "url", "--output-dir", str(toolkit), "--no-compose"],
+        publish=publish, composer=composer, browser=browser)
+
+    assert result.exit_code == 0, result.output
+    publish.assert_called_once_with(3, push=True)
+
+
+def test_url_mode_ignores_a_drop_photo_the_email_does_not_show(
+    tmp_path: Path, monkeypatch,
+):
+    """A drop-folder photo named for a section the Word file does not have
+    (`s9_...` in a one-section issue) is copied into the asset folder but
+    placed nowhere in the email. Nothing in the email needs hosting, so
+    the run is not stopped: the check reads the email, not the folder."""
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "toolkit" / "assets")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    drop = tmp_path / "drop-images"
+    drop.mkdir()
+    (drop / "s9_1_campus.png").write_bytes(_PNG_1X1)
+    monkeypatch.setattr(bn, "DROP_DIR", drop)
+    out = tmp_path / "elsewhere"
+    publish, composer, browser = MagicMock(), MagicMock(), MagicMock()
+
+    result = _run_all(
+        ["--input", str(_one_section_docx(tmp_path)), "--issue", "3",
+         "--image-mode", "url", "--output-dir", str(out), "--no-compose"],
+        publish=publish, composer=composer, browser=browser)
+
+    assert result.exit_code == 0, result.output
+    assert (out / "assets" / "issue-3" / "s9_1_campus.png").is_file()
+    publish.assert_not_called()
+    browser.assert_called_once()
+
+
+def _compose_in_url_mode(out: Path, composer):
+    with patch("build_newsletter.detect_default_mail_handler",
+               return_value=_apple_handler()), \
+         patch("build_newsletter.compose", new=composer):
+        return CliRunner().invoke(
+            bn.cli, ["compose", "--issue", "4", "--image-mode", "url",
+                     "--output-dir", str(out)])
+
+
+def _built_issue_4(out: Path, *, photo_on_disk: bool,
+                   photo_in_email: bool) -> None:
+    """A finished `build --output-dir` of issue 4, as `compose` finds it."""
+    url = ("https://raw.githubusercontent.com/acme/news/main/"
+           "assets/issue-4/image1.png")
+    body = (f'<img src="{url}" alt="Campus">' if photo_in_email
+            else "<p>Hello</p>")
+    (out / "dist").mkdir(parents=True)
+    (out / "dist" / "issue-4.html").write_text(
+        f"<html><body>{body}</body></html>", encoding="utf-8")
+    photos = out / "assets" / "issue-4"
+    photos.mkdir(parents=True)
+    if photo_on_disk:
+        (photos / "image1.png").write_bytes(_PNG_1X1)
+
+
+def test_compose_in_url_mode_stops_when_the_photos_are_outside_the_toolkit(
+    tmp_path: Path, monkeypatch,
+):
+    """`compose` opens the draft itself, so it carries the same stop."""
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "toolkit" / "assets")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    out = tmp_path / "elsewhere"
+    _built_issue_4(out, photo_on_disk=True, photo_in_email=True)
+    composer = MagicMock()
+
+    result = _compose_in_url_mode(out, composer)
+
+    assert result.exit_code == 2, result.output
+    composer.assert_not_called()
+    assert "broken images" in result.output, result.output
+
+
+def test_compose_in_url_mode_goes_ahead_when_the_issue_has_no_photos(
+    tmp_path: Path, monkeypatch,
+):
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "toolkit" / "assets")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    out = tmp_path / "elsewhere"
+    _built_issue_4(out, photo_on_disk=False, photo_in_email=False)
+    composer = MagicMock()
+
+    result = _compose_in_url_mode(out, composer)
+
+    composer.assert_called_once()
+    assert "broken images" not in result.output, result.output
+
+
+def test_compose_ignores_photos_left_by_an_earlier_build(
+    tmp_path: Path, monkeypatch,
+):
+    """A build never empties the issue's asset folder, so a photo taken out
+    of the Word file stays on disk after the rebuild. What counts is what
+    the email shows: this one shows no photo, so it is not stopped."""
+    monkeypatch.setattr(bn, "ASSETS_DIR", tmp_path / "toolkit" / "assets")
+    monkeypatch.setattr(bn, "RECIPIENTS_PATH", tmp_path / "recipients.txt")
+    out = tmp_path / "elsewhere"
+    _built_issue_4(out, photo_on_disk=True, photo_in_email=False)
+    composer = MagicMock()
+
+    result = _compose_in_url_mode(out, composer)
+
+    composer.assert_called_once()
+    assert "broken images" not in result.output, result.output
