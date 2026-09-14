@@ -57,6 +57,26 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM 1b. Python version check -------------------------------------------------
+REM MERIDIAN needs Python 3.11 or newer, the requires-python floor in
+REM pyproject.toml. pip never reads that file here -- this launcher installs
+REM requirements.txt -- so an older Python would install everything and then
+REM stop on a traceback. Keep "3, 11" in step with pyproject.toml;
+REM tests/test_python_floor.py checks it. No parentheses in the echo lines
+REM below: an unescaped closing one ends the if-block early.
+python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo  ERROR: MERIDIAN needs Python 3.11 or newer.
+    for /f "delims=" %%V in ('python --version 2^>^&1') do echo  This computer has: %%V
+    echo.
+    echo  Install a current Python from https://www.python.org/downloads/
+    echo  On the first install screen, tick "Add Python to PATH".
+    echo  Then re-run this launcher.
+    echo.
+    pause
+    exit /b 1
+)
+
 REM 2a. Setup self-check (Phase 2: downgraded from hard-fail to note) -------
 REM Pre-Phase-2, the toolkit always pushed photos to GitHub before the
 REM email was sent ("publish-images" step). That required the folder to

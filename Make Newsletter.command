@@ -29,6 +29,8 @@ if [[ $JP -eq 1 ]]; then
     PROMPT_DOCX_EXPLICIT="Word ファイル名"
     MSG_NO_PYTHON="エラー：Python 3 がインストールされていません。"
     MSG_NO_PYTHON_HINT="https://www.python.org/downloads/ から Python をインストールしてください。"
+    MSG_OLD_PYTHON="エラー：MERIDIAN には Python 3.11 以上が必要です。このコンピュータの Python："
+    MSG_OLD_PYTHON_HINT="https://www.python.org/downloads/ から最新の Python をインストールしてから、もう一度ダブルクリックしてください。"
     MSG_SETUP_HEADING="初回セットアップを実行しています"
     MSG_SETUP_BODY="ツールの依存ライブラリをインストールしています。完了まで 1〜2 分ほどかかります。処理中に画面が止まったように見える場合がありますが、そのままお待ちください。この画面は閉じないでください。"
     MSG_DONT_CLOSE=""
@@ -55,6 +57,8 @@ else
     PROMPT_DOCX_EXPLICIT="Word file name"
     MSG_NO_PYTHON="ERROR: Python 3 is not installed."
     MSG_NO_PYTHON_HINT="Install from https://www.python.org/downloads/ then re-run."
+    MSG_OLD_PYTHON="ERROR: MERIDIAN needs Python 3.11 or newer. This computer has:"
+    MSG_OLD_PYTHON_HINT="Install a current Python from https://www.python.org/downloads/ then re-run."
     MSG_SETUP_HEADING="FIRST-TIME SETUP IN PROGRESS"
     MSG_SETUP_BODY="Installing toolkit dependencies. This takes 1-2 minutes; it may look frozen for a while -- please wait, and don't close this window."
     MSG_DONT_CLOSE=""
@@ -128,6 +132,20 @@ elif command -v python >/dev/null 2>&1; then
 else
     echo "  $MSG_NO_PYTHON"
     echo "  $MSG_NO_PYTHON_HINT"
+    read -r -p "$PRESS_ENTER" _
+    exit 1
+fi
+
+# 1b. Python version check ---------------------------------------------------
+# MERIDIAN needs Python 3.11 or newer, the requires-python floor in
+# pyproject.toml. pip never reads that file here -- this launcher installs
+# requirements.txt -- so an older Python would install everything and then
+# stop on a traceback; the python3 that comes with macOS can be older.
+# One call both prints the version and sets the exit status. Keep "3, 11"
+# in step with pyproject.toml; tests/test_python_floor.py checks it.
+if ! PY_VERSION=$("$PY" -c "import sys; print(sys.version.split()[0]); sys.exit(0 if sys.version_info >= (3, 11) else 1)" 2>/dev/null); then
+    echo "  $MSG_OLD_PYTHON ${PY_VERSION:-$PY}"
+    echo "  $MSG_OLD_PYTHON_HINT"
     read -r -p "$PRESS_ENTER" _
     exit 1
 fi

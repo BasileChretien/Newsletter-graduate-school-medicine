@@ -3,9 +3,15 @@
 # The toolkit is shipped via the `Make Newsletter.bat` / `.command`
 # launcher rather than as a pip-installable package, so this file
 # exists primarily to declare the Python version constraint that
-# the codebase actually uses (`tuple | None` and other PEP 604/585
-# syntax requires Python 3.10+; `Path.is_relative_to` requires 3.9+;
-# both are used unconditionally).
+# the codebase actually uses (`tomllib`, which reads the locale files,
+# is in the standard library from Python 3.11; `tuple | None` and
+# other PEP 604/585 syntax requires 3.10+; all are used
+# unconditionally).
+#
+# Raised from 3.10 to 3.11 ahead of 3.10's end of life (2026-10-31),
+# reported by the weekly update check. The launchers install
+# requirements.txt and never read this file, so they check the same
+# floor themselves; tests/test_python_floor.py keeps them in step.
 #
 # Round-12 security MEDIUM: a Python 3.8 environment would crash
 # the CID compose path with `AttributeError: 'PosixPath' object has
@@ -17,7 +23,7 @@ name = "meridian-newsletter"
 description = "MERIDIAN newsletter toolkit -- Word DOCX -> Outlook draft."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dynamic = ["version", "dependencies"]
 
 [project.urls]

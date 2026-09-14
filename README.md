@@ -3,8 +3,8 @@
 [![website: newsletter builder](https://img.shields.io/badge/website-newsletter%20builder-003F88.svg)](https://basilechretien.github.io/Newsletter-graduate-school-medicine/)
 [![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![tests: 616 passing](https://img.shields.io/badge/tests-616%20passing-brightgreen.svg)](tests/)
+[![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![tests: 622 passing](https://img.shields.io/badge/tests-622%20passing-brightgreen.svg)](tests/)
 [![latest release](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
 
 > 🇯🇵 [日本語版はこちら](README.ja.md)
@@ -126,7 +126,7 @@ Primarily the editor at the Graduate School of Medicine producing the quarterly 
 
 ## Under the hood (for developers)
 
-Python 3.10+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **616 passing tests (2 skipped)** across 34 files covering parser, image handler, validator, plaintext converter, mail backends, the `.eml` draft builder, the browser build, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist, magic-byte **and extension** gating on embedded images, decompression-bomb caps enforced on bytes written) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** up to v1.0.1 (architect, Python, security, code, visual, UX, email-deliverability), with more review rounds in every release since — every change has at least one regression test pinned. See the [latest release](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest).
+Python 3.11+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **622 passing tests (2 skipped)** across 35 files covering parser, image handler, validator, plaintext converter, mail backends, the `.eml` draft builder, the browser build, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist, magic-byte **and extension** gating on embedded images, decompression-bomb caps enforced on bytes written) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** up to v1.0.1 (architect, Python, security, code, visual, UX, email-deliverability), with more review rounds in every release since — every change has at least one regression test pinned. See the [latest release](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest).
 
 You do **not** need any of the above to use the toolkit as an editor. The setup steps below are everything.
 
@@ -165,7 +165,7 @@ Then extract it. Detailed steps, because "extract a ZIP" trips up more first-tim
 Python is the program that runs the toolkit.
 
 - **Windows:** download the installer from <https://www.python.org/downloads/> and run it. **Important:** on the first screen, **check the box "Add Python to PATH"** before you click *Install Now*.
-- **macOS:** Macs ship with Python preinstalled, so you usually have nothing to do here. If the launcher later complains about a missing Python, come back and install from <https://www.python.org/downloads/> the same way as Windows.
+- **macOS:** Macs ship with Python preinstalled, so you usually have nothing to do here. If the launcher later says Python is missing or too old, come back and install from <https://www.python.org/downloads/> the same way as Windows.
 
 **That's it.** No GitHub account, no GitHub Desktop, no waiting for a write-access grant. Photos will travel inside the email itself when you send via Outlook (no public hosting needed).
 
@@ -477,7 +477,7 @@ You can ignore most of these — they just need to be there.
 
 Technical details for whoever maintains the toolkit:
 
-- **Stack:** Python 3.10+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
+- **Stack:** Python 3.11+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
 - **Visual identity** (per the [Nagoya University design guideline](https://www.med.nagoya-u.ac.jp/intranet/pr/logo/)): primary `#003F88` (NU blue); accent gold `#A8864B` (AA-compliant on white) used for borders, dividers, bullet markers, section dashes; footer-link gold `#E8C97F` (brighter, on charcoal); text `#1C1C1E`; muted `#6B6B70`; cool off-white surface `#EEF2F7`; stripe `#DCE3EE`; hairline `#C9D2DE`; page background `#E6EBF2`. Cambria headings, Calibri body.
 - **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline` plus a small kept-`<style>` block carrying `@media print`, dark-mode hints, and Apple-Mail data-detector overrides. MSO conditional ghost tables for Outlook desktop. `bgcolor` HTML attributes on masthead/header/footer survive Gmail iOS forced inversion. Validator: 80 KB early warning, 102 KB Gmail clip warning, broken-URL **warnings** (no longer hard errors).
 - **Module map:**

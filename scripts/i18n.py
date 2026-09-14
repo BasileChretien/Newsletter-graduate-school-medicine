@@ -16,14 +16,10 @@ from __future__ import annotations
 import locale as _locale
 import logging
 import os
+import tomllib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-
-try:
-    import tomllib  # Python 3.11+
-except ImportError:                              # pragma: no cover
-    import tomli as tomllib                       # type: ignore
 
 from scripts.config import PROJECT_ROOT
 

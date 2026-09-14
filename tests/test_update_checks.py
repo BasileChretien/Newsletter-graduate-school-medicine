@@ -238,6 +238,7 @@ def test_a_pypi_lookup_failure_is_a_warning():
 EOL = [
     {"cycle": "3.14", "eol": "2030-10-31", "releaseDate": "2025-10-07"},
     {"cycle": "3.12", "eol": "2028-10-31", "releaseDate": "2023-10-02"},
+    {"cycle": "3.11", "eol": "2027-10-31", "releaseDate": "2022-10-24"},
     {"cycle": "3.10", "eol": "2026-10-31", "releaseDate": "2021-10-04"},
     {"cycle": "3.9", "eol": "2025-10-31", "releaseDate": "2020-10-05"},
     {"cycle": "3.15", "eol": False, "releaseDate": "2026-10-01"},  # not out yet
@@ -430,5 +431,6 @@ def test_main_checks_the_real_repository_with_a_fake_network(tmp_path, monkeypat
     text = report.read_text(encoding="utf-8")
     assert text.startswith("# Dependency and runtime update report")
     assert "314.0.7" in text and "css-inline" in text     # blocked upgrade
-    assert "Python 3.10" in text                          # floor near EOL
+    # The real floor, read from pyproject.toml (raised from 3.10 before its EOL).
+    assert "Python 3.11 (the requires-python floor) is supported until 2027-10-31" in text
     assert "attention=true" in output.read_text(encoding="utf-8")
