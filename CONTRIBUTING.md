@@ -60,6 +60,13 @@ python -m pytest             # 201 tests, ~7 seconds
   bundle that fixed it. Please match that bar — a PR with only an
   implementation change is borderline; a PR with implementation + a
   regression test that would have caught the bug is welcome.
+- **Added tests? Update the README counts.** `tests/test_readme_figures.py`
+  fails while the test count quoted in the READMEs is stale; run
+  `python tools/readme_figures.py --fix` once the suite is green.
+- **Dependency bumps arrive as Dependabot pull requests.** What Dependabot
+  cannot see — the Pyodide runtime, the vendored `python-docx` wheel,
+  Python end-of-life — is reported weekly in the `dependencies` issue by
+  `tools/check_updates.py`.
 - **Type annotations on public functions.** `python-docx` types live at
   `docx.text.paragraph.Paragraph`, `docx.table.Table`, etc.
 - **PEP 8 + ruff.** No tooling enforcement is wired up yet, but it's coming.
