@@ -5,8 +5,8 @@
 python-docx==1.2.0
 # sandbox escapes; not reachable here
 Jinja2>=3.1.6
-css-inline==0.14.1
-beautifulsoup4==4.12.3
+css-inline==0.21.2
+beautifulsoup4==4.15.0
 # CVE-2024-47081: .netrc credentials leaked via crafted URLs -- and validator.py issues HEAD requests to URLs taken from the DOCX
 requests>=2.33.0
 # CVE-2026-7246 in click.edit(); unused
