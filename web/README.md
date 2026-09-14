@@ -106,9 +106,9 @@ hospital: the page works on institutional networks that block public
 CDNs outright.
 
 The DOCX itself is never sent anywhere — there is no endpoint to send it
-to. After the first load the runtime is browser-cached; note there is no
-service worker, so this is ordinary HTTP caching, not true offline
-support.
+to. After the first load the runtime is cached by a service worker
+(`web/sw.js`), so the page also runs offline; see that file for why the
+runtime is cache-first but `meridian-bundle.zip` is network-first.
 
 ## Two things that will bite you
 
