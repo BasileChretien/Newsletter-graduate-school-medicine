@@ -32,6 +32,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from PIL import Image
 
+from scripts import docx_parser
 from scripts.docx_parser import (
     BodyParagraph,
     BulletList,
@@ -40,12 +41,13 @@ from scripts.docx_parser import (
     Section,
     TableBlock,
     _parse_lenient,
+    _table_to_block,
     paragraph_alignment,
     paragraph_to_html,
     parse,
 )
 from scripts.inliner import inline
-from scripts.renderer import attach_image_urls, render
+from scripts.renderer import _align_at, attach_image_urls, render
 from scripts.webapp import build_from_bytes
 
 
@@ -154,6 +156,19 @@ def test_alignment_falls_back_to_document_defaults():
     assert paragraph_alignment(d.add_paragraph("Default.")) == "justify"
 
 
+def test_a_missing_style_falls_back_to_the_default_paragraph_style():
+    """`w:pStyle` naming a style that does not exist -- a paragraph pasted
+    from another document -- is laid out by Word with the default
+    paragraph style, so it takes that style's alignment."""
+    d = docx.Document()
+    d.styles["Normal"].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p = d.add_paragraph("Pasted from elsewhere.")
+    p_style = OxmlElement("w:pStyle")
+    p_style.set(qn("w:val"), "NoSuchStyle")
+    p._p.get_or_add_pPr().insert(0, p_style)
+    assert paragraph_alignment(p) == "justify"
+
+
 def test_a_basedon_cycle_does_not_hang():
     """A style `basedOn` itself (hand-edited XML) must terminate."""
     d = docx.Document()
@@ -162,6 +177,22 @@ def test_a_basedon_cycle_does_not_hang():
     based_on.set(qn("w:val"), st.style_id)
     st.element.append(based_on)
     assert paragraph_alignment(d.add_paragraph("Loop.", style=st)) == ""
+
+
+def test_each_style_is_resolved_once_per_document(monkeypatch):
+    """Walking the style chain per cell made the 20,000-cell table cap ~4x
+    slower to parse; it has to happen once per style, not per paragraph."""
+    calls = []
+    real = docx_parser._style_chain_jc
+    monkeypatch.setattr(
+        docx_parser, "_style_chain_jc",
+        lambda styles, style_id: calls.append(style_id) or real(styles, style_id))
+    d = docx.Document()
+    for _ in range(40):
+        d.add_paragraph("Normal paragraph.")
+        d.add_paragraph("A list item.", style="List Paragraph")
+    assert {paragraph_alignment(p) for p in d.paragraphs} == {""}
+    assert sorted(calls, key=str) == sorted([None, "ListParagraph"], key=str)
 
 
 # ---------- parsers carry it ----------
@@ -256,6 +287,357 @@ def test_blocks_built_without_alignment_still_construct():
     assert TableBlock(rows=(("a",),), has_header=False).aligns == ()
 
 
+# ---------- table styles ----------
+# A table style can align text with no paragraph alignment at all: its own
+# paragraph properties, and conditional formatting for the header row,
+# first column, banded rows and so on (`w:tblStylePr`), switched on per
+# table by `w:tblLook`. Several of Word's built-in table styles centre a
+# header row exactly that way.
+def _append_jc(parent, value: str) -> None:
+    ppr = parent.find(qn("w:pPr"))
+    if ppr is None:
+        ppr = OxmlElement("w:pPr")
+        parent.append(ppr)
+    jc = OxmlElement("w:jc")
+    jc.set(qn("w:val"), value)
+    ppr.append(jc)
+
+
+def _table_style(doc, name: str, *, base: str | None = None,
+                 conditional: dict[str, str] | None = None, based_on=None):
+    style = doc.styles.add_style(name, WD_STYLE_TYPE.TABLE)
+    if based_on is not None:
+        style.base_style = based_on
+    if base is not None:
+        _append_jc(style.element, base)
+    for kind, value in (conditional or {}).items():
+        pr = OxmlElement("w:tblStylePr")
+        pr.set(qn("w:type"), kind)
+        _append_jc(pr, value)
+        style.element.append(pr)
+    return style
+
+
+_LOOK_FLAGS = ("firstRow", "lastRow", "firstColumn", "lastColumn",
+               "noHBand", "noVBand")
+
+
+def _set_look(table, **flags) -> None:
+    """Replace `w:tblLook` with exactly these flags (all others "0")."""
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblLook")):
+        tbl_pr.remove(old)
+    look = OxmlElement("w:tblLook")
+    for flag in _LOOK_FLAGS:
+        look.set(qn(f"w:{flag}"), "1" if flags.get(flag) else "0")
+    tbl_pr.append(look)
+
+
+def _filled_table(doc, rows: int, cols: int, style=None, **look):
+    """A table whose cell (r, c) reads `r{r}c{c}.`."""
+    table = doc.add_table(rows=rows, cols=cols)
+    if style is not None:
+        table.style = style
+    for r in range(rows):
+        for c in range(cols):
+            table.cell(r, c).text = f"r{r}c{c}."
+    _set_look(table, **look)
+    return table
+
+
+def test_table_style_alignment_applies_to_its_cells():
+    d = docx.Document()
+    t = _filled_table(d, 2, 2, _table_style(d, "Centred Table", base="center"))
+    assert _table_to_block(t).aligns == (("center", "center"),
+                                         ("center", "center"))
+
+
+def test_paragraph_style_and_direct_formatting_beat_the_table_style():
+    d = docx.Document()
+    justified = d.styles.add_style("Justified Cell", WD_STYLE_TYPE.PARAGRAPH)
+    justified.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    t = _filled_table(d, 1, 3, _table_style(d, "Centred Table", base="center"))
+    t.cell(0, 1).paragraphs[0].style = justified
+    t.cell(0, 2).paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+    assert _table_to_block(t).aligns == (("center", "justify", ""),)
+
+
+def test_table_style_beats_document_defaults():
+    d = docx.Document()
+    _set_doc_default_jc(d, "right")
+    t = _filled_table(d, 1, 1, _table_style(d, "Centred Table", base="center"))
+    assert _table_to_block(t).aligns == (("center",),)
+
+
+@pytest.mark.parametrize("first_row, header", [(True, "center"),
+                                               (False, "justify")])
+def test_header_row_formatting_follows_tbllook(first_row, header):
+    d = docx.Document()
+    style = _table_style(d, "Header Table", base="both",
+                         conditional={"firstRow": "center"})
+    t = _filled_table(d, 3, 2, style, firstRow=first_row)
+    aligns = _table_to_block(t).aligns
+    assert aligns[0] == (header, header)
+    assert aligns[1:] == (("justify", "justify"),) * 2
+
+
+def test_legacy_hex_tbllook_enables_the_header_row():
+    """Older files carry only `w:val`, a bitmask; 0x0020 is the first row."""
+    d = docx.Document()
+    style = _table_style(d, "Header Table", conditional={"firstRow": "center"})
+    t = _filled_table(d, 2, 1, style)
+    tbl_pr = t._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblLook")):
+        tbl_pr.remove(old)
+    legacy = OxmlElement("w:tblLook")
+    legacy.set(qn("w:val"), "0020")
+    tbl_pr.append(legacy)
+    assert _table_to_block(t).aligns == (("center",), ("",))
+
+
+def test_table_style_conditional_formatting_is_inherited_through_basedon():
+    d = docx.Document()
+    base = _table_style(d, "Base Table", base="center",
+                        conditional={"firstRow": "right"})
+    derived = _table_style(d, "Derived Table", based_on=base)
+    t = _filled_table(d, 2, 1, derived, firstRow=True)
+    assert _table_to_block(t).aligns == (("right",), ("center",))
+
+
+def test_a_table_without_a_style_uses_the_default_table_style():
+    d = docx.Document()
+    defaults = [s for s in d.styles.element.findall(qn("w:style"))
+                if s.get(qn("w:type")) == "table"
+                and s.get(qn("w:default")) in ("1", "true", "on")]
+    if defaults:
+        default = defaults[0]
+    else:
+        default = _table_style(d, "Default Table").element
+        default.set(qn("w:default"), "1")
+    _append_jc(default, "right")
+    t = _filled_table(d, 1, 1)
+    for old in t._tbl.tblPr.findall(qn("w:tblStyle")):
+        t._tbl.tblPr.remove(old)
+    assert _table_to_block(t).aligns == (("right",),)
+
+
+def test_last_row_and_first_last_column_formatting():
+    """Corner cells are left out here: which condition wins where a row
+    and a column meet is pinned separately."""
+    d = docx.Document()
+    style = _table_style(d, "Edges", conditional={
+        "lastRow": "right", "firstCol": "center", "lastCol": "both"})
+    t = _filled_table(d, 3, 3, style, lastRow=True, firstColumn=True,
+                      lastColumn=True, noHBand=True, noVBand=True)
+    aligns = _table_to_block(t).aligns
+    assert aligns[0] == ("center", "", "justify")
+    assert aligns[1] == ("center", "", "justify")
+    assert aligns[2][1] == "right"
+
+
+def test_hostile_table_style_values_are_dropped():
+    d = docx.Document()
+    style = _table_style(d, "Hostile", base="center;color:red",
+                         conditional={"firstRow;x": "center"})
+    t = _filled_table(d, 2, 1, style, firstRow=True)
+    assert _table_to_block(t).aligns == (("",), ("",))
+
+
+def test_picture_in_a_table_style_centred_cell_is_centred(tmp_path: Path):
+    png = tmp_path / "photo.png"
+    Image.new("RGB", (40, 20), "white").save(png)
+    d = docx.Document()
+    t = _filled_table(d, 1, 1, _table_style(d, "Centred Table", base="center"))
+    t.cell(0, 0).paragraphs[0].add_run().add_picture(str(png))
+    ((cell,),) = _table_to_block(t).rows
+    assert "margin:0 auto;" in cell
+
+
+# Word's own rules, where they differ from the letter of ECMA-376, as
+# Microsoft documents them in [MS-OI29500].
+def _set_style_band_sizes(style, *, row: int | None = None,
+                          col: int | None = None) -> None:
+    tbl_pr = style.element.find(qn("w:tblPr"))
+    if tbl_pr is None:
+        tbl_pr = OxmlElement("w:tblPr")
+        style.element.append(tbl_pr)
+    for axis, size in (("Row", row), ("Col", col)):
+        if size is not None:
+            el = OxmlElement(f"w:tblStyle{axis}BandSize")
+            el.set(qn("w:val"), str(size))
+            tbl_pr.append(el)
+
+
+def _rows_col0(table) -> list[str]:
+    return [row[0] for row in _table_to_block(table).aligns]
+
+
+def test_where_a_row_meets_a_column_the_row_wins_unless_a_corner_is_set():
+    """Word applies first/last column before first/last row, and corner
+    cells after both; ECMA-376 lists the first two the other way round."""
+    d = docx.Document()
+    rows_win = _table_style(d, "Rows Win", conditional={
+        "firstRow": "center", "firstCol": "right"})
+    t = _filled_table(d, 2, 2, rows_win, firstRow=True, firstColumn=True)
+    assert _table_to_block(t).aligns == (("center", "center"), ("right", ""))
+
+    corner = _table_style(d, "Corner", conditional={
+        "firstRow": "center", "firstCol": "right", "nwCell": "both"})
+    t = _filled_table(d, 2, 2, corner, firstRow=True, firstColumn=True)
+    assert _table_to_block(t).aligns == (("justify", "center"), ("right", ""))
+
+
+def test_a_corner_needs_both_of_its_edges_switched_on():
+    d = docx.Document()
+    style = _table_style(d, "Corner Only", conditional={"nwCell": "both"})
+    t = _filled_table(d, 2, 2, style, firstRow=True)
+    assert _table_to_block(t).aligns[0][0] == ""
+
+
+def test_row_banding_skips_the_header_row():
+    d = docx.Document()
+    style = _table_style(d, "Banded", conditional={
+        "band1Horz": "center", "band2Horz": "right"})
+    _set_style_band_sizes(style, row=1)
+    t = _filled_table(d, 5, 1, style, firstRow=True, noVBand=True)
+    assert _rows_col0(t) == ["", "center", "right", "center", "right"]
+
+
+def test_band_size_groups_rows():
+    d = docx.Document()
+    style = _table_style(d, "Paired Bands", conditional={
+        "band1Horz": "center", "band2Horz": "right"})
+    _set_style_band_sizes(style, row=2)
+    t = _filled_table(d, 4, 1, style, noVBand=True)
+    assert _rows_col0(t) == ["center", "center", "right", "right"]
+
+
+def test_without_a_band_size_word_does_not_band():
+    """Word treats a missing band size as 0 -- no banding (ECMA-376 says 1)."""
+    d = docx.Document()
+    style = _table_style(d, "Unsized Bands", conditional={
+        "band1Horz": "center", "band2Horz": "right"})
+    t = _filled_table(d, 3, 1, style, noVBand=True)
+    assert _rows_col0(t) == ["", "", ""]
+
+
+def test_nohband_switches_row_banding_off():
+    d = docx.Document()
+    style = _table_style(d, "Banded", conditional={"band1Horz": "center"})
+    _set_style_band_sizes(style, row=1)
+    t = _filled_table(d, 3, 1, style, noHBand=True, noVBand=True)
+    assert _rows_col0(t) == ["", "", ""]
+
+
+def test_column_bands_beat_row_bands_and_the_total_row_is_not_banded():
+    d = docx.Document()
+    style = _table_style(d, "Criss Cross", conditional={
+        "band1Horz": "center", "band1Vert": "right", "lastRow": "both"})
+    _set_style_band_sizes(style, row=1, col=1)
+    t = _filled_table(d, 3, 2, style, lastRow=True)
+    assert _table_to_block(t).aligns == (
+        ("right", "center"),        # band1 row; band1 column wins in col 0
+        ("right", ""),              # band2 row sets nothing
+        ("justify", "justify"),     # total row: no row band, row beats column
+    )
+
+
+def test_a_table_without_tbllook_gets_words_default_flags():
+    """No `w:tblLook`: Word assumes 0x04A0 -- header row and first column
+    on (ECMA-376 says all off)."""
+    d = docx.Document()
+    style = _table_style(d, "Edges", conditional={
+        "firstRow": "center", "firstCol": "right"})
+    t = _filled_table(d, 2, 2, style)
+    for old in t._tbl.tblPr.findall(qn("w:tblLook")):
+        t._tbl.tblPr.remove(old)
+    assert _table_to_block(t).aligns == (("center", "center"), ("right", ""))
+
+
+def test_named_tbllook_attributes_win_over_the_hex_value():
+    d = docx.Document()
+    style = _table_style(d, "Header Table", conditional={"firstRow": "center"})
+    t = _filled_table(d, 2, 1, style, firstRow=False)
+    t._tbl.tblPr.find(qn("w:tblLook")).set(qn("w:val"), "0020")
+    assert _rows_col0(t) == ["", ""]
+
+
+def _remove_override_setting(document) -> None:
+    compat = document.settings.element.find(qn("w:compat"))
+    if compat is None:
+        return
+    for setting in list(compat.findall(qn("w:compatSetting"))):
+        if setting.get(qn("w:name")) == "overrideTableStyleFontSizeAndJustification":
+            compat.remove(setting)
+
+
+@pytest.mark.parametrize("override, expected", [(True, ""), (False, "center")])
+def test_left_in_the_default_style_under_the_compatibility_setting(
+    override, expected,
+):
+    """Without `overrideTableStyleFontSizeAndJustification`, a LEFT set by
+    the default paragraph style does not override the table style; with it
+    (Word 2013 and later, and python-docx's template), the paragraph style
+    wins as usual."""
+    d = docx.Document()
+    d.styles["Normal"].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    if not override:
+        _remove_override_setting(d)
+    t = _filled_table(d, 1, 1, _table_style(d, "Centred Table", base="center"))
+    assert _table_to_block(t).aligns == ((expected,),)
+
+
+def test_the_compatibility_rule_covers_only_the_default_style_itself():
+    d = docx.Document()
+    _remove_override_setting(d)
+    left = d.styles.add_style("Left Cell", WD_STYLE_TYPE.PARAGRAPH)
+    left.base_style = d.styles["Normal"]
+    left.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    t = _filled_table(d, 1, 1, _table_style(d, "Centred Table", base="center"))
+    t.cell(0, 0).paragraphs[0].style = left
+    assert _table_to_block(t).aligns == (("",),)
+
+
+def test_conditional_formats_merge_per_type_through_basedon():
+    d = docx.Document()
+    base = _table_style(d, "Base Table", conditional={
+        "firstRow": "center", "lastRow": "right"})
+    derived = _table_style(d, "Derived Table", based_on=base,
+                           conditional={"firstRow": "both"})
+    t = _filled_table(d, 3, 1, derived, firstRow=True, lastRow=True)
+    assert _rows_col0(t) == ["justify", "", "right"]
+
+
+def test_a_table_naming_a_missing_style_uses_the_default_table_style():
+    d = docx.Document()
+    defaults = [s for s in d.styles.element.findall(qn("w:style"))
+                if s.get(qn("w:type")) == "table"
+                and s.get(qn("w:default")) in ("1", "true", "on")]
+    assert defaults, "python-docx's template always has a default table style"
+    _append_jc(defaults[-1], "right")
+    t = _filled_table(d, 1, 1)
+    tbl_pr = t._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblStyle")):
+        tbl_pr.remove(old)
+    missing = OxmlElement("w:tblStyle")
+    missing.set(qn("w:val"), "NoSuchTableStyle")
+    tbl_pr.insert(0, missing)
+    assert _table_to_block(t).aligns == (("right",),)
+
+
+def test_each_table_style_is_resolved_once_per_document(monkeypatch):
+    calls = []
+    real = docx_parser._resolve_table_style
+    monkeypatch.setattr(
+        docx_parser, "_resolve_table_style",
+        lambda styles, style_id: calls.append(style_id) or real(styles, style_id))
+    d = docx.Document()
+    style = _table_style(d, "Centred Table", base="center")
+    for table in [_filled_table(d, 3, 3, style) for _ in range(4)]:
+        _table_to_block(table)
+    assert calls == [style.style_id]
+
+
 # ---------- rendering ----------
 def _newsletter(*blocks) -> Newsletter:
     return Newsletter(
@@ -265,10 +647,31 @@ def _newsletter(*blocks) -> Newsletter:
 
 
 def _style_of(html: str, tag: str, text: str) -> str:
-    """Whitespace-free inline style of the `tag` element whose text is `text`."""
+    """Whitespace-free inline style of the one `tag` whose text is `text`."""
     soup = BeautifulSoup(html, "html.parser")
-    (el,) = [e for e in soup.find_all(tag) if e.get_text(strip=True) == text]
-    return re.sub(r"\s+", "", el.get("style", ""))
+    matches = [e for e in soup.find_all(tag) if e.get_text(strip=True) == text]
+    assert len(matches) == 1, (
+        f"expected one <{tag}> with text {text!r}, found {len(matches)} -- "
+        "give each element in the test a distinct text")
+    return re.sub(r"\s+", "", matches[0].get("style", ""))
+
+
+@pytest.mark.parametrize("aligns, index, expected", [
+    ("center", (), "center"),
+    (("justify", "right"), (1,), "right"),
+    ((("center",), ("", "right")), (1, 1), "right"),
+    (("center",), (5,), ""),                  # shorter than the cells
+    ((), (0, 0), ""),
+    (None, (0,), ""),
+    ((("center",),), (0,), ""),               # a row, not a value
+    ((["center"],), (0,), ""),                # unhashable -- must not raise
+    # The renderer re-checks the allowlist: a hand-built block's value
+    # lands in a style attribute, where autoescaping does not stop a `;`.
+    (("right;background:url(https://evil.example/x)",), (0,), ""),
+    (("left",), (0,), ""),
+])
+def test_align_at_returns_only_allowlisted_values(aligns, index, expected):
+    assert _align_at(aligns, *index) == expected
 
 
 def test_body_paragraph_alignment_survives_render_and_inlining():

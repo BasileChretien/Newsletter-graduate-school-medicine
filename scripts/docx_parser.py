@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import weakref
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Iterable
 
 from docx import Document
 from docx.document import Document as DocxDocument
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -175,8 +177,19 @@ _DEFAULT_PARAGRAPH_STYLE = etree.XPath(
     "[@w:default = '1' or @w:default = 'true' or @w:default = 'on']",
     namespaces=_W_NS,
 )
+_DEFAULT_TABLE_STYLE = etree.XPath(
+    "w:style[@w:type = 'table']"
+    "[@w:default = '1' or @w:default = 'true' or @w:default = 'on']",
+    namespaces=_W_NS,
+)
 _DOC_DEFAULT_PPR = etree.XPath(
     "w:docDefaults/w:pPrDefault/w:pPr", namespaces=_W_NS)
+_OVERRIDE_TABLE_JC = etree.XPath(
+    "w:compat/w:compatSetting"
+    "[@w:name = 'overrideTableStyleFontSizeAndJustification']/@w:val",
+    namespaces=_W_NS,
+)
+_ON_VALUES = frozenset({"1", "true", "on"})
 
 # Word nests `basedOn` a handful of levels deep. A longer chain is
 # malformed, and a cycle (a style based on itself) would never end.
@@ -191,6 +204,29 @@ def _jc_value(ppr) -> str | None:
     return None if jc is None else (jc.get(qn("w:val")) or "")
 
 
+def _last(elements):
+    """The last match, or None. Where a document marks several styles of
+    one type as the default, the last of them is the one used."""
+    return elements[-1] if elements else None
+
+
+def _style_chain(styles, style):
+    """`style`, then each style it is `basedOn` -- most derived first."""
+    seen: set[str] = set()
+    for _ in range(_MAX_STYLE_DEPTH):
+        if style is None:
+            return
+        own_id = style.get(qn("w:styleId")) or ""
+        if own_id in seen:
+            return
+        seen.add(own_id)
+        yield style
+        based_on = style.find(qn("w:basedOn"))
+        parent_id = based_on.get(qn("w:val")) if based_on is not None else None
+        parents = _STYLE_BY_ID(styles, sid=parent_id) if parent_id else []
+        style = parents[0] if parents else None
+
+
 def _style_chain_jc(styles, style_id: str | None) -> str | None:
     """First alignment set by a paragraph style or a style it is based on.
 
@@ -198,31 +234,310 @@ def _style_chain_jc(styles, style_id: str | None) -> str | None:
     exist, uses the document's default paragraph style -- as Word does.
     """
     found = _STYLE_BY_ID(styles, sid=style_id) if style_id else []
-    style = found[0] if found else next(
-        iter(_DEFAULT_PARAGRAPH_STYLE(styles)), None)
-    seen: set[str] = set()
-    for _ in range(_MAX_STYLE_DEPTH):
-        if style is None:
-            return None
-        own_id = style.get(qn("w:styleId")) or ""
-        if own_id in seen:
-            return None
-        seen.add(own_id)
+    start = found[0] if found else _last(_DEFAULT_PARAGRAPH_STYLE(styles))
+    for style in _style_chain(styles, start):
         value = _jc_value(style.find(qn("w:pPr")))
         if value is not None:
             return value
-        based_on = style.find(qn("w:basedOn"))
-        parent_id = based_on.get(qn("w:val")) if based_on is not None else None
-        parents = _STYLE_BY_ID(styles, sid=parent_id) if parent_id else []
-        style = parents[0] if parents else None
     return None
 
 
-def paragraph_alignment(paragraph: Paragraph) -> str:
+# ---------- table-style alignment ----------
+# A table style aligns text too: through its own paragraph properties, and
+# through conditional formatting for the header row, first column, banded
+# rows and so on (`w:tblStylePr`), which each table switches on with
+# `w:tblLook`. Several of Word's built-in table styles centre a header row
+# that way, with no paragraph alignment anywhere.
+#
+# Where Word and the letter of ECMA-376 disagree, this follows Word -- it
+# is what the editor sees -- as Microsoft documents it in [MS-OI29500].
+
+# Conditional formats in the order Word applies them, lowest first; where
+# two apply to one cell and both set alignment, the later wins. ECMA-376
+# lists column bands before row bands, and first/last row before
+# first/last column; Word does the opposite of both, so a header row beats
+# the first column where they meet, unless a corner format is set.
+# `wholeTable` is left out on purpose: Word does not apply it, and the
+# style's own `w:pPr` is the whole-table layer.
+_CONDITION_ORDER = (
+    "band1Horz", "band2Horz", "band1Vert", "band2Vert",
+    "firstCol", "lastCol", "firstRow", "lastRow",
+    "nwCell", "neCell", "swCell", "seCell",
+)
+
+# `w:tblLook` flags. Word reads the named attributes whenever any of them
+# is present, and falls back to the older hex bitmask in `w:val` only
+# when none is.
+_LOOK_BITS = {
+    "firstRow": 0x0020, "lastRow": 0x0040,
+    "firstColumn": 0x0080, "lastColumn": 0x0100,
+    "noHBand": 0x0200, "noVBand": 0x0400,
+}
+# A table with no `w:tblLook` at all: Word assumes header row and first
+# column on, vertical banding off. (ECMA-376 says all off.)
+_DEFAULT_LOOK = 0x04A0
+# Word caps a band at 3 rows or columns. A missing band size is 0, which
+# means no banding at all. (ECMA-376 says 1.)
+_MAX_BAND_SIZE = 3
+
+
+def _table_look(tbl_pr) -> frozenset[str]:
+    """The `w:tblLook` flags switched on for a table."""
+    look = tbl_pr.find(qn("w:tblLook")) if tbl_pr is not None else None
+    if look is None:
+        bits = _DEFAULT_LOOK
+    else:
+        named = {flag: look.get(qn(f"w:{flag}")) for flag in _LOOK_BITS}
+        if any(value is not None for value in named.values()):
+            return frozenset(
+                flag for flag, value in named.items()
+                if (value or "").lower() in _ON_VALUES)
+        try:
+            # Four hex digits hold every flag; anything longer is malformed
+            # and must not cost an arbitrarily large integer parse.
+            bits = int((look.get(qn("w:val")) or "0")[:8], 16)
+        except ValueError:
+            bits = 0
+    return frozenset(flag for flag, bit in _LOOK_BITS.items() if bits & bit)
+
+
+def _band_size(tbl_pr, axis: str) -> int | None:
+    """`w:tblStyleRowBandSize` / `ColBandSize`, or None when not set."""
+    el = tbl_pr.find(qn(f"w:tblStyle{axis}BandSize")) if tbl_pr is not None else None
+    if el is None:
+        return None
+    value = el.get(qn("w:val")) or ""
+    if not (value.isascii() and value.isdigit()) or len(value) > 4:
+        return 0
+    return min(int(value), _MAX_BAND_SIZE)
+
+
+@dataclass(frozen=True)
+class _TableStyle:
+    """A table style's alignment settings, merged through `basedOn`."""
+
+    base: str | None
+    conditional: dict[str, str]
+    row_band: int | None
+    col_band: int | None
+
+
+def _resolve_table_style(styles, style_id: str | None) -> _TableStyle | None:
+    """Merge a table style with the styles it is based on, derived first.
+
+    A table with no `w:tblStyle`, or one naming a style that does not
+    exist, uses the document's default table style. Microsoft does not
+    document how conditional formats inherit through `basedOn`; each is
+    taken from the most derived style that sets it, the way every other
+    style property inherits.
+    """
+    found = _STYLE_BY_ID(styles, sid=style_id) if style_id else []
+    start = found[0] if found else _last(_DEFAULT_TABLE_STYLE(styles))
+    if start is None:
+        return None
+    base: str | None = None
+    conditional: dict[str, str] = {}
+    row_band = col_band = None
+    for style in _style_chain(styles, start):
+        if base is None:
+            base = _jc_value(style.find(qn("w:pPr")))
+        for override in style.findall(qn("w:tblStylePr")):
+            kind = override.get(qn("w:type"))
+            if kind in _CONDITION_ORDER and kind not in conditional:
+                value = _jc_value(override.find(qn("w:pPr")))
+                if value is not None:
+                    conditional[kind] = value
+        tbl_pr = style.find(qn("w:tblPr"))
+        if row_band is None:
+            row_band = _band_size(tbl_pr, "Row")
+        if col_band is None:
+            col_band = _band_size(tbl_pr, "Col")
+    return _TableStyle(base, conditional, row_band, col_band)
+
+
+@dataclass(frozen=True)
+class _TableAlignment:
+    """One table's style, flags and band sizes: enough to align any cell."""
+
+    style: _TableStyle
+    look: frozenset[str]
+    row_band: int
+    col_band: int
+
+    def cell_jc(self, row: int, col: int, n_rows: int, n_cols: int) -> str | None:
+        """The `w:jc` the table style gives the cell at (row, col).
+
+        `col` and `n_cols` count the row's `w:tc` cells, as LibreOffice
+        does; merged cells (`w:gridSpan`) are not expanded to grid columns.
+        """
+        look = self.look
+        first_row = "firstRow" in look and row == 0
+        last_row = "lastRow" in look and row == n_rows - 1 and not first_row
+        first_col = "firstColumn" in look and col == 0
+        last_col = "lastColumn" in look and col == n_cols - 1 and not first_col
+        active = {
+            "firstRow": first_row, "lastRow": last_row,
+            "firstCol": first_col, "lastCol": last_col,
+            # A corner needs both of its edges switched on.
+            "nwCell": first_row and first_col,
+            "neCell": first_row and last_col,
+            "swCell": last_row and first_col,
+            "seCell": last_row and last_col,
+        }
+        # Header and total rows are not banded, and the count starts after
+        # the header row, so the first body row is band 1. Columns likewise
+        # with the first column.
+        if "noHBand" not in look and self.row_band and not (first_row or last_row):
+            band = (row - (1 if "firstRow" in look else 0)) // self.row_band
+            active["band1Horz" if band % 2 == 0 else "band2Horz"] = True
+        if "noVBand" not in look and self.col_band and not (first_col or last_col):
+            band = (col - (1 if "firstColumn" in look else 0)) // self.col_band
+            active["band1Vert" if band % 2 == 0 else "band2Vert"] = True
+        jc = self.style.base
+        for kind in _CONDITION_ORDER:
+            if active.get(kind) and kind in self.style.conditional:
+                jc = self.style.conditional[kind]
+        return jc
+
+
+# ---------- per-document memo ----------
+@dataclass
+class _DocumentAlignment:
+    """What one document's styles resolve to, filled in as they are met."""
+
+    styles: object
+    doc_default: str | None
+    default_style_id: str | None
+    # Word's `overrideTableStyleFontSizeAndJustification` compatibility
+    # setting -- see `_inherited_jc`.
+    override_table_jc: bool
+    # style id -> (alignment from its chain, is it the default style)
+    paragraph_styles: dict[str | None, tuple[str | None, bool]] = field(
+        default_factory=dict)
+    table_styles: dict[str | None, _TableStyle | None] = field(
+        default_factory=dict)
+
+
+# Resolving a style walks its `basedOn` chain with an XPath lookup per
+# step. Done per paragraph and per table cell, that made the 20,000-cell
+# table cap ~6x slower to parse (0.85 s -> 5.1 s, measured) -- a visible
+# stall in the browser build, where Pyodide runs CPython several times
+# slower still. So each style is resolved once per document. Keyed weakly
+# on the document part, so the entry goes when its document does: the
+# browser tab builds many times over. Parsing never edits styles, so a
+# memo taken at the first lookup stays true for the whole parse.
+_DOCUMENT_ALIGNMENT: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def _override_table_jc(part) -> bool:
+    """Whether the document sets `overrideTableStyleFontSizeAndJustification`.
+
+    Read through the relationship rather than python-docx's `settings`
+    property, which adds an empty settings part to a document that has
+    none.
+    """
+    try:
+        settings = part.part_related_by(RT.SETTINGS).element
+    except (AttributeError, KeyError):
+        return False
+    values = _OVERRIDE_TABLE_JC(settings)
+    return bool(values) and str(values[-1]).lower() in _ON_VALUES
+
+
+def _document_alignment(obj) -> _DocumentAlignment | None:
+    """The memo for the document `obj` (a paragraph or a table) belongs to."""
+    try:
+        # A table built outside any document (`Table(tbl, None)`) has no
+        # part at all -- and no styles either, so nothing is inherited.
+        part = obj.part
+    except AttributeError:
+        return None
+    cached = _DOCUMENT_ALIGNMENT.get(part)
+    if cached is None:
+        try:
+            styles = part.styles.element
+        except (AttributeError, KeyError, NotImplementedError):
+            return None
+        defaults = _DOC_DEFAULT_PPR(styles)
+        default_style = _last(_DEFAULT_PARAGRAPH_STYLE(styles))
+        cached = _DocumentAlignment(
+            styles=styles,
+            doc_default=_jc_value(defaults[0]) if defaults else None,
+            default_style_id=(default_style.get(qn("w:styleId"))
+                              if default_style is not None else None),
+            override_table_jc=_override_table_jc(part),
+        )
+        _DOCUMENT_ALIGNMENT[part] = cached
+    return cached
+
+
+def _table_alignment(table: Table) -> _TableAlignment | None:
+    """What aligns this table's cells, or None when nothing can."""
+    memo = _document_alignment(table)
+    if memo is None:
+        return None
+    tbl_pr = table._tbl.find(qn("w:tblPr"))
+    style_el = tbl_pr.find(qn("w:tblStyle")) if tbl_pr is not None else None
+    style_id = style_el.get(qn("w:val")) if style_el is not None else None
+    if style_id not in memo.table_styles:
+        memo.table_styles[style_id] = _resolve_table_style(memo.styles, style_id)
+    style = memo.table_styles[style_id]
+    if style is None:
+        return None
+    # A band size set on the table itself overrides its style's.
+    row_band = _band_size(tbl_pr, "Row")
+    col_band = _band_size(tbl_pr, "Col")
+    return _TableAlignment(
+        style=style,
+        look=_table_look(tbl_pr),
+        row_band=(style.row_band or 0) if row_band is None else row_band,
+        col_band=(style.col_band or 0) if col_band is None else col_band,
+    )
+
+
+def _inherited_jc(paragraph: Paragraph, table_jc: str | None) -> str | None:
+    """The `w:jc` a paragraph inherits when it sets none itself.
+
+    ECMA-376 §17.7.2 order, most specific first: the paragraph style and
+    its `basedOn` chain, then -- inside a table -- the table style, then
+    the document defaults.
+    """
+    memo = _document_alignment(paragraph)
+    if memo is None:
+        return table_jc
+    style_id = paragraph._p.style
+    if style_id not in memo.paragraph_styles:
+        memo.paragraph_styles[style_id] = (
+            _style_chain_jc(memo.styles, style_id),
+            not style_id or style_id == memo.default_style_id
+            or not _STYLE_BY_ID(memo.styles, sid=style_id),
+        )
+    style_jc, in_default_style = memo.paragraph_styles[style_id]
+    if style_jc is None:
+        return memo.doc_default if table_jc is None else table_jc
+    # Word's compatibility rule, in force unless the document opts out
+    # with `overrideTableStyleFontSizeAndJustification` (Word 2013 and
+    # later write it): LEFT set by the default paragraph style does not
+    # override the table style's alignment. It covers the default style
+    # itself, not styles based on it.
+    if (table_jc is not None and in_default_style
+            and not memo.override_table_jc
+            and style_jc in ("left", "start")):
+        return table_jc
+    return style_jc
+
+
+def paragraph_alignment(paragraph: Paragraph,
+                        table_jc: str | None = None) -> str:
     """The paragraph's effective alignment as a CSS `text-align` value.
 
     Resolved the way Word resolves it: direct formatting first, then the
-    paragraph style and its `basedOn` chain, then the document defaults.
+    paragraph style and its `basedOn` chain, then -- for a paragraph in a
+    table -- the table style, then the document defaults. `table_jc` is
+    the table style's value for the paragraph's cell; it depends on where
+    the cell sits (header row, banding...), so `_table_to_block`, which
+    knows the position, works it out and passes it in.
+
     Returns "justify", "center" or "right" -- or "" for left, start and
     unset, which is what the stylesheet already renders.
 
@@ -230,18 +545,14 @@ def paragraph_alignment(paragraph: Paragraph) -> str:
     out ragged-right. Word set up for Japanese justifies body text by
     default (両端揃え); the issue that exposed it had 106 of its 125
     paragraphs justified, and its photo captions centred.
+
+    Not consulted: a list's numbering level, and right-to-left paragraphs
+    (`w:bidi`), which would flip `start` / `end` -- this newsletter is
+    Japanese and English.
     """
     value = _jc_value(paragraph._p.pPr)
     if value is None:
-        try:
-            styles = paragraph.part.styles.element
-        except (AttributeError, KeyError, NotImplementedError):
-            styles = None
-        if styles is not None:
-            value = _style_chain_jc(styles, paragraph._p.style)
-            if value is None:
-                defaults = _DOC_DEFAULT_PPR(styles)
-                value = _jc_value(defaults[0]) if defaults else None
+        value = _inherited_jc(paragraph, table_jc)
     return _JC_TO_CSS.get(value or "", "")
 
 
@@ -391,8 +702,12 @@ def _iter_content_children(element):
             yield child
 
 
-def paragraph_to_html(paragraph: Paragraph) -> str:
-    """Convert a paragraph's runs (and hyperlinks) into safe HTML."""
+def paragraph_to_html(paragraph: Paragraph, table_jc: str | None = None) -> str:
+    """Convert a paragraph's runs (and hyperlinks) into safe HTML.
+
+    `table_jc` is what the table style gives this paragraph's cell, for a
+    paragraph in a table -- see `paragraph_alignment`.
+    """
     rid_to_url = _hyperlinks(paragraph)
     # Resolved only when a picture needs it: most paragraphs have none,
     # and their alignment travels on the block instead.
@@ -406,7 +721,7 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
             drawing = child.find(".//" + DRAWING_TAG)
             if drawing is not None:
                 if align is None:
-                    align = paragraph_alignment(paragraph)
+                    align = paragraph_alignment(paragraph, table_jc)
                 img = _drawing_to_img(drawing, paragraph.part, align)
                 if img:
                     parts.append(img)
@@ -599,12 +914,20 @@ def _table_to_block(table: Table) -> TableBlock:
     # cost is per cell (each runs `paragraph_to_html` over its
     # paragraphs), not per row or per column.
     budget = MAX_TABLE_CELLS_TOTAL
-    for row in table.rows[:MAX_TABLE_ROWS]:
+    # What the table style gives a cell depends on where the cell sits
+    # (header row, first column, banding), so it is worked out here, where
+    # the position is known, and handed to each paragraph in the cell.
+    table_alignment = _table_alignment(table)
+    n_rows = len(table._tbl.tr_lst)
+    for r, row in enumerate(table.rows[:MAX_TABLE_ROWS]):
         if budget <= 0:
             break
         cells = []
         cell_aligns = []
-        for cell in _row_cells(row)[:budget]:
+        n_cols = len(row._tr.tc_lst)
+        for c, cell in enumerate(_row_cells(row)[:budget]):
+            table_jc = (table_alignment.cell_jc(r, c, n_rows, n_cols)
+                        if table_alignment is not None else None)
             cell_html_parts = []
             # One `text-align` per cell, taken from the paragraphs that
             # carry text (a picture paragraph places itself with margins)
@@ -613,11 +936,11 @@ def _table_to_block(table: Table) -> TableBlock:
             # default rather than guessing.
             text_aligns = set()
             for p in cell.paragraphs:
-                ph = paragraph_to_html(p)
+                ph = paragraph_to_html(p, table_jc)
                 if ph:
                     cell_html_parts.append(ph)
                     if _has_text(ph):
-                        text_aligns.add(paragraph_alignment(p))
+                        text_aligns.add(paragraph_alignment(p, table_jc))
             cells.append("<br>".join(cell_html_parts))
             cell_aligns.append(
                 next(iter(text_aligns)) if len(text_aligns) == 1 else "")

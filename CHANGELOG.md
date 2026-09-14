@@ -30,6 +30,16 @@ is preserved in `git log` for archaeology.
   Photos are `display:block`, which `text-align` does not move in Gmail
   or Apple Mail, so they also get auto margins; Outlook ignores those
   margins and follows the paragraph's `text-align` instead.
+- Table styles are honoured too: a table style's own alignment, and its
+  conditional formatting — header row, total row, first and last column,
+  row and column banding, corner cells — as each table switches it on
+  with `w:tblLook`. Where Word and ECMA-376 disagree (a header row beats
+  the first column where they meet; a missing band size means no banding;
+  a table without `w:tblLook` gets header row and first column), this
+  follows Word as Microsoft documents it in [MS-OI29500], including the
+  `overrideTableStyleFontSizeAndJustification` rule for documents from
+  before Word 2013. No current issue uses a table style, so none of their
+  output changes.
 - A table cell whose paragraphs disagree (a centred line above justified
   text, say) keeps the default rather than guessing. Section headings,
   sub-headings and the masthead keep the fixed MERIDIAN design.
