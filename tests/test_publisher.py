@@ -7,6 +7,8 @@ test artefacts (images + manifest with PII like dean name).
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -86,3 +88,59 @@ def test_publisher_error_message_explains_why(tmp_path: Path) -> None:
         for word in ("sandbox", "development", "1", "test artefact",
                      "test artifacts", "local")
     ), f"Error message lacks guidance: {msg!r}"
+
+
+# ---------- Publishing never removes a published photo -------------------
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=repo, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+@pytest.fixture
+def published_repo(tmp_path: Path) -> Path:
+    """A git checkout where issue 3's two photos are already published."""
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "commit.gpgsign", "false")
+    _git(tmp_path, "config", "core.hooksPath", str(tmp_path / "no-hooks"))
+    photos = tmp_path / "assets" / "issue-3"
+    photos.mkdir(parents=True)
+    (photos / "image1.jpg").write_bytes(b"one")
+    (photos / "image2.jpg").write_bytes(b"two")
+    assert publisher.publish_assets(3, push=False, cwd=tmp_path)
+    return tmp_path
+
+
+def test_publishing_never_removes_a_photo_that_was_already_published(
+    published_repo: Path,
+) -> None:
+    """A rebuild removes the photos it did not produce from the issue
+    folder. Raw GitHub URLs point at the branch tip, so committing that
+    removal would take the photo out of every email already sent -- even
+    when the build left it out for a reason the editor never chose, such
+    as the size cap. Publishing adds and updates photos, never removes."""
+    photos = published_repo / "assets" / "issue-3"
+    (photos / "image2.jpg").unlink()
+    (photos / "image3.jpg").write_bytes(b"three")
+
+    assert publisher.publish_assets(3, push=False, cwd=published_repo)
+
+    assert set(_git(published_repo, "ls-files", "assets/issue-3").split()) == {
+        "assets/issue-3/image1.jpg",
+        "assets/issue-3/image2.jpg",
+        "assets/issue-3/image3.jpg",
+    }
+
+
+def test_a_removed_photo_alone_leaves_nothing_to_publish(
+    published_repo: Path,
+) -> None:
+    head = _git(published_repo, "rev-parse", "HEAD")
+    (published_repo / "assets" / "issue-3" / "image2.jpg").unlink()
+
+    assert publisher.publish_assets(3, push=False, cwd=published_repo) is None
+    assert _git(published_repo, "rev-parse", "HEAD") == head

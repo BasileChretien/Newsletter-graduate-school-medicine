@@ -43,11 +43,16 @@ is preserved in `git log` for archaeology.
   regardless of case, so on Windows and macOS the photo just written is
   never taken for an old one. A Word file that cannot be read stops the
   build before anything is removed.
-- In URL mode the next publish removes those photos from GitHub too, so
-  an email sent earlier that showed one of them no longer does. A
-  replaced photo that kept its name already behaved that way. The website
-  is unaffected: it starts every build in an empty folder.
-- Pinned by `tests/test_stale_issue_photos.py`.
+- **Publishing never removes a photo from GitHub.** Hosted photo links
+  point at the branch tip, so committing the removal would take the photo
+  out of every email already sent -- even when a rebuild left it out for a
+  reason the editor never chose, such as the size cap. URL mode's publish
+  step now only adds and updates photos (`git add --ignore-removal`), and
+  a rebuild that only removed photos has nothing to publish. Taking a
+  photo off GitHub stays a deliberate step. The website is unaffected: it
+  starts every build in an empty folder.
+- Pinned by `tests/test_stale_issue_photos.py` and two new tests in
+  `tests/test_publisher.py`.
 
 ## [v1.5.0] — the website is built to last (2026-09-14)
 
