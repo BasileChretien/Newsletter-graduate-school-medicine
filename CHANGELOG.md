@@ -6,7 +6,14 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
-## [Unreleased]
+## [v1.5.1] — desktop photo fixes (2026-09-14)
+
+Two fixes on the desktop path, both about photos. A run whose photos are
+saved outside the toolkit folder no longer crashes or opens a draft of
+broken images, and a rebuilt issue no longer keeps photos from earlier
+builds. Publishing never removes a photo from GitHub. The website is
+unaffected. Dependency updates: pywin32 312, requests ≥ 2.34.2, pytest ≥
+9.1.1. **685 tests passing** on Linux, macOS and Windows.
 
 ### Fixed — photos in a redirected output folder (MEDIUM)
 - **Drop-folder photos crashed `--output-dir`.** They are copied beside
@@ -687,6 +694,7 @@ for the full archaeology.
 
 ---
 
+[v1.5.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.1
 [v1.5.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.0
 [v1.4.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.2
 [v1.4.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.1
