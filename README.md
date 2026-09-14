@@ -4,7 +4,7 @@
 [![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![tests: 669 passing](https://img.shields.io/badge/tests-669%20passing-brightgreen.svg)](tests/)
+[![tests: 678 passing](https://img.shields.io/badge/tests-678%20passing-brightgreen.svg)](tests/)
 [![latest release](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
 
 > 🇯🇵 [日本語版はこちら](README.ja.md)
@@ -126,7 +126,7 @@ Primarily the editor at the Graduate School of Medicine producing the quarterly 
 
 ## Under the hood (for developers)
 
-Python 3.11+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **669 passing tests (6 skipped)** across 39 files covering parser, image handler, validator, plaintext converter, mail backends, the `.eml` draft builder, the browser build, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist, magic-byte **and extension** gating on embedded images, decompression-bomb caps enforced on bytes written) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** up to v1.0.1 (architect, Python, security, code, visual, UX, email-deliverability), with more review rounds in every release since — every change has at least one regression test pinned. See the [latest release](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest).
+Python 3.11+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **678 passing tests (6 skipped)** across 39 files covering parser, image handler, validator, plaintext converter, mail backends, the `.eml` draft builder, the browser build, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist, magic-byte **and extension** gating on embedded images, decompression-bomb caps enforced on bytes written) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** up to v1.0.1 (architect, Python, security, code, visual, UX, email-deliverability), with more review rounds in every release since — every change has at least one regression test pinned. See the [latest release](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest).
 
 You do **not** need any of the above to use the toolkit as an editor. The setup steps below are everything.
 

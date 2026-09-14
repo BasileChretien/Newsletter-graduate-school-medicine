@@ -16,6 +16,7 @@ import webbrowser
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import click
 
@@ -34,6 +35,7 @@ from scripts.config import (
     default_safe_output_dir, get_default_repo, is_writable_location,
 )
 from scripts.docx_parser import ImageRef, Masthead, parse
+from scripts.html_utils import parse_html
 from scripts.image_handler import (
     DEFAULT_IMAGE_QUALITY, DEFAULT_MAX_IMAGE_PX,
     extract_embedded, ingest_drop_folder, issue_dir, to_raw_url,
@@ -204,6 +206,73 @@ def _resolve_output_dir(user_choice: str | None) -> Path | None:
     return safe
 
 
+def _assets_are_in_toolkit(assets_dir: Path) -> bool:
+    """True when `assets_dir` is the toolkit's own `assets/` folder.
+
+    The only place `publish_assets` can push photos from: it commits
+    `assets/issue-N` inside the toolkit's git checkout. Folders are
+    compared rather than asking whether `--output-dir` was given, since
+    `--output-dir <the toolkit folder>` changes nothing for publishing.
+    """
+    try:
+        return assets_dir.resolve() == ASSETS_DIR.resolve()
+    except OSError as e:
+        log.warning("Could not compare %s with %s (%s); treating the "
+                    "photos as outside the toolkit.", assets_dir,
+                    ASSETS_DIR, e)
+        return False
+
+
+def _email_shows_issue_photos(html: str, issue: int) -> bool:
+    """True when the email shows a photo from this issue's asset folder.
+
+    Those are the `<img>` URLs whose path runs through
+    `assets/issue-N/`: the ones URL mode has to make live by publishing
+    that folder. Brand images under `images/` are already hosted. Read
+    from the email, not the folder: a rebuild never empties the folder,
+    so a photo taken out of the Word file stays there, and a drop-folder
+    photo named for a section the Word file lacks is copied there but
+    placed nowhere.
+    """
+    wanted = ["assets", f"issue-{issue}"]
+    for img in parse_html(html).find_all("img"):
+        parsed = urlparse(img.get("src") or "")
+        if parsed.scheme not in ("http", "https"):
+            continue
+        parts = [p for p in parsed.path.split("/") if p]
+        if any(parts[i:i + 2] == wanted for i in range(len(parts) - 1)):
+            return True
+    return False
+
+
+def _stop_url_mode_outside_toolkit(photo_dir: Path) -> None:
+    """Exit 2: URL mode cannot host photos saved outside the toolkit.
+
+    Hosted photos are pushed from the toolkit's git checkout. Photos in
+    `--output-dir` -- or in the automatic fallback for a read-only toolkit
+    folder -- can never be pushed, so every recipient would see broken
+    images. `all` used to print a yellow note and open the draft anyway.
+    Called after the build, which only writes to the chosen output folder,
+    and before anything is published or opened.
+    """
+    click.echo(click.style(
+        "ERROR: the photos in this newsletter cannot reach your recipients. "
+        "This run hosts the photos on GitHub -- the route for email apps "
+        "other than Outlook -- and that only works for photos inside the "
+        f"toolkit's own folder, but these were saved to {photo_dir}. Sent "
+        "like this, every recipient would see broken images, so the draft "
+        "was not opened.\n"
+        "What to do -- either:\n"
+        "  * move the toolkit folder somewhere you can save files (your "
+        "Documents folder, for example) and run it again, without "
+        "--output-dir, or\n"
+        "  * put the photos inside the email instead: --backend=eml writes "
+        "a ready-to-send draft file with the photos embedded (Outlook "
+        "opens it ready to send).",
+        fg="red"), err=True)
+    sys.exit(2)
+
+
 def _image_mode_blurb(image_mode: str | None) -> str | None:
     """Plain-English line about how photos will travel.
 
@@ -309,13 +378,12 @@ def _build_pipeline(input_path: Path, issue: int, *,
     """
     if output_dir is not None:
         dist_dir = output_dir / "dist"
-        # Note: assets/ MUST stay next to the toolkit when URL mode is
-        # active (publish-images pushes to the toolkit's git repo).
-        # In CID mode the assets dir is purely local-cache, so it's
-        # safe to redirect. The CID-vs-URL decision happens later in
-        # all_cmd; here we redirect both consistently and let the
-        # publish step error out cleanly if URL mode is chosen on a
-        # redirected layout.
+        # assets/ goes with it. That is fine in CID mode, where the photos
+        # travel inside the email. URL mode can only publish photos from
+        # the toolkit's own assets/ (publish-images pushes its git
+        # checkout), so `all` and `compose` stop before opening a draft
+        # whose photos could never be hosted -- see
+        # `_stop_url_mode_outside_toolkit`.
         assets_dir = output_dir / "assets"
     else:
         dist_dir = DIST_DIR
@@ -412,9 +480,14 @@ def _build_pipeline(input_path: Path, issue: int, *,
     }
 
     # 4) Build drop-image inserts grouped by section
+    #
+    # Same root as the embedded photos: drop-folder photos are copied
+    # into the same, possibly redirected, asset folder. Resolved against
+    # PROJECT_ROOT they raised the same ValueError, so `--output-dir`
+    # still crashed for any issue with a drop-folder photo.
     drop_inserts: dict[int, list[ImageRef]] = defaultdict(list)
     for d in drops:
-        url = to_raw_url(d.dst_path, PROJECT_ROOT, get_default_repo())
+        url = to_raw_url(d.dst_path, url_root, get_default_repo())
         drop_inserts[d.section].append(ImageRef(
             rel_id="", filename=d.dst_path.name, alt=d.slug, url=url,
         ))
@@ -722,6 +795,13 @@ def compose_cmd(issue: int, input_path: str | None, backend: str,
     resolved_image_mode = resolve_image_mode(
         image_mode, handler, backend=image_mode_key(chosen),
     )
+    # The same stop as `all`: URL mode reads the photos from GitHub, and
+    # only the toolkit's own assets/ can be published there. A build
+    # redirected with `--output-dir` would open a draft of broken images.
+    if (resolved_image_mode == "url"
+            and not _assets_are_in_toolkit(assets_dir)
+            and _email_shows_issue_photos(html, issue)):
+        _stop_url_mode_outside_toolkit(issue_dir(assets_dir, issue))
     if chosen.name == "outlook":
         click.echo(
             "Opening Outlook (this can take up to 30 seconds the first "
@@ -869,15 +949,17 @@ def all_cmd(input_path: str, issue: int, no_compose: bool, backend: str,
 
     if resolved_image_mode == "url":
         # URL mode: photos must be reachable at `raw.githubusercontent.com`
-        # before recipients open the email, so push them now.
-        if out_dir_override is not None:
-            click.echo(click.style(
-                "Note: --output-dir was set, so the published "
-                "photos live OUTSIDE the toolkit's git checkout. "
-                "URL mode requires them inside the git tree to "
-                "push to GitHub. Skipping publish-images. Either "
-                "use --image-mode=cid (Outlook), or run without "
-                "--output-dir.", fg="yellow"))
+        # before recipients open the email, so push them now -- which only
+        # works from the toolkit's own assets/. Photos anywhere else
+        # (`--output-dir`, or the automatic read-only fallback) can never
+        # be pushed: stop, unless the email shows none of this issue's
+        # photos.
+        if not _assets_are_in_toolkit(effective_assets):
+            mail_html = result.html_path.read_text(encoding="utf-8")
+            if _email_shows_issue_photos(mail_html, issue):
+                _stop_url_mode_outside_toolkit(asset_dir)
+            log.info("The email for issue %d shows no photos to publish.",
+                     issue)
         else:
             try:
                 sha = publish_assets(issue, push=True)
