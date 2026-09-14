@@ -19,7 +19,7 @@ lxml>=6.1.3
 Pillow==11.3.0
 
 # Backport for Python 3.10 -- 3.11+ ships tomllib in the stdlib.
-tomli>=2.0.1; python_version < "3.11"
+tomli>=2.4.1; python_version < "3.11"
 
 # Optional: enables Outlook draft + HTML clipboard on Windows.
 # (Pre-installed on most Windows Python distributions.)
