@@ -1,10 +1,11 @@
 # MERIDIAN — The Newsletter Toolkit
 
+[![website: newsletter builder](https://img.shields.io/badge/website-newsletter%20builder-003F88.svg)](https://basilechretien.github.io/Newsletter-graduate-school-medicine/)
 [![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![python: 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![tests: 378 passing](https://img.shields.io/badge/tests-378%20passing-brightgreen.svg)](tests/)
-[![release: v1.0.1](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
+[![python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![tests: 551 passing](https://img.shields.io/badge/tests-551%20passing-brightgreen.svg)](tests/)
+[![latest release](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
 
 > 🇯🇵 [日本語版はこちら](README.ja.md)
 
