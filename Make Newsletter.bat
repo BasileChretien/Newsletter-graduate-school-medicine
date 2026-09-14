@@ -13,6 +13,11 @@ REM   "command not recognized" errors.
 REM   Japanese editors get a localized experience via README.ja.md and
 REM   the Python output. The launcher itself stays English to avoid
 REM   any encoding confusion on Japanese Windows.
+REM
+REM   And no parentheses in echo text inside an if-block. cmd.exe reads
+REM   the block whole, and an unescaped closing one ends it early: the
+REM   launcher then stops with "... was unexpected at this time." for
+REM   everyone. tests/test_launcher_bat.py checks every block.
 REM ---------------------------------------------------------------------
 
 echo.
@@ -92,19 +97,19 @@ REM and let the build proceed; if the editor turns out to be on a
 REM non-Outlook backend (which forces URL mode), the publish-images
 REM step will fail later with a clearer error.
 if not exist ".git" (
-    echo  Note: this folder is not a git checkout (probably extracted
-    echo  from ZIP).
+    echo  Note: this folder is not a git checkout - probably extracted
+    echo  from a ZIP download.
     echo.
-    echo  - If your default email app is **Outlook desktop** (the most
-    echo    common case): you're fine to continue. Photos will travel
+    echo  - If your default email app is **Outlook desktop**, the most
+    echo    common case, you're fine to continue. Photos will travel
     echo    inside the email itself; no GitHub publishing is needed.
     echo  - If your default email app is **Apple Mail / Gmail in a
     echo    browser / Thunderbird**: you'll need a git checkout for
     echo    photos to reach recipients. Re-clone via GitHub Desktop
-    echo    (README Step 3) before sending an issue with photos.
+    echo    - README Step 3 - before sending an issue with photos.
     echo.
     echo  You can also force URL mode explicitly with --image-mode=url
-    echo  (advanced; CLI users only).
+    echo  - advanced, CLI users only.
     echo.
 )
 
@@ -129,7 +134,7 @@ if errorlevel 1 (
         exit /b 1
     )
     echo.
-    echo Setup complete. (You will not see this message again.)
+    echo Setup complete - you will not see this message again.
     echo.
 )
 
@@ -184,8 +189,8 @@ set "OUTPUT_DIR_FLAG="
 echo test > ".meridian_writable_probe" 2>nul
 if errorlevel 1 (
     echo.
-    echo  Note: this folder isn't writable (this can happen on
-    echo  corporate PCs or network shares). Output will be saved
+    echo  Note: this folder isn't writable - this can happen on
+    echo  corporate PCs or network shares. Output will be saved
     echo  elsewhere.
     set "DEFAULT_OUTPUT_DIR=%USERPROFILE%\Documents\Meridian-Newsletter"
     set /p "CUSTOM_OUTPUT_DIR=Output folder (press Enter for !DEFAULT_OUTPUT_DIR!): "

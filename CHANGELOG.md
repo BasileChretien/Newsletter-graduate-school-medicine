@@ -8,6 +8,19 @@ is preserved in `git log` for archaeology.
 
 ## [Unreleased]
 
+### Fixed — the Windows launcher stopped right after its banner (HIGH)
+- `Make Newsletter.bat` aborted with ". was unexpected at this time."
+  on every run, for every Windows editor, from the Phase 2 launcher
+  (2026-04-30) on. Friendly sentences in `echo` lines inside `if (...)`
+  blocks contained `)`, and cmd.exe reads a block whole: an unescaped
+  `)` ends it early wherever it appears. It went unnoticed because
+  editors had moved to the website. Found in review.
+- The six sentences are reworded without parentheses. One of them had
+  not crashed but silently moved the line after it out of its block.
+- `tests/test_launcher_bat.py` checks every block, and CI's Windows job
+  now runs the real launcher, in a folder that is not a git checkout,
+  up to its first prompt.
+
 ### Changed — Python 3.11 is now the minimum
 - **Python 3.10 reaches end of life on 2026-10-31**, which the weekly
   update check reported (issue #18). `requires-python` in `pyproject.toml`
