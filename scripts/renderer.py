@@ -15,6 +15,7 @@ from scripts.config import (
     TEMPLATES_DIR,
 )
 from scripts.docx_parser import (
+    _UNTITLED_PHOTO_MARKER,
     BodyParagraph,
     BulletList,
     ImageRef,
@@ -31,9 +32,10 @@ _MEDIA_SENTINEL_RE = re.compile(r'media://([^"\'\s>]+)')
 def _resolve_media(html: str, url_map: dict[str, str]) -> str:
     """Replace `media://filename` sentinels with their public URLs.
 
-    Also rewrites the dean-photo `alt=""` from a raw filename to a
-    human-meaningful description so screen readers don't recite
-    `Nagoya_university_school_medicine_dean.jpg`.
+    This used to rewrite the dean photo's alt text too, from the file name
+    the parser passed through as alt text. The parser no longer uses a
+    picture's name as its alt text, so it writes the dean's directly --
+    see `docx_parser._picture_alt`.
     """
     if not html or "media://" not in html:
         return html
@@ -43,13 +45,10 @@ def _resolve_media(html: str, url_map: dict[str, str]) -> str:
         return url_map.get(name, m.group(0))
 
     out = _MEDIA_SENTINEL_RE.sub(_sub, html)
-    # Replace the dean-photo's filename-derived alt with a real one.
-    out = re.sub(
-        r'alt="Nagoya_university_school_medicine_dean(?:\.jpg)?"',
-        'alt="Dean of the Graduate School of Medicine"',
-        out, flags=re.IGNORECASE,
-    )
-    return out
+    # `parse` names every untitled picture before a block leaves it. HTML
+    # built any other way can still carry the marker; it already has its
+    # `alt=""`, and the marker itself must not reach a recipient.
+    return out.replace(_UNTITLED_PHOTO_MARKER, "")
 
 
 # The Nagoya template wraps every placeholder in <em> italic. Once an

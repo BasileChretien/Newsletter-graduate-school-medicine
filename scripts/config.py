@@ -32,6 +32,11 @@ LOGO_REL = f"images/{LOGO_FILENAME}"
 DEAN_FILENAME = "Nagoya_university_school_medicine_dean.jpg"
 DEAN_PATH = IMAGES_DIR / DEAN_FILENAME
 DEAN_REL = f"images/{DEAN_FILENAME}"
+# Alt text for the dean's photo. The template builder inserts the photo
+# with python-docx, which records DEAN_FILENAME as the picture's object
+# name; the parser recognises the photo by that name. (The media part
+# itself is renamed `imageN.jpg`, so the name is the only trace left.)
+DEAN_PHOTO_ALT = "Dean of the Graduate School of Medicine"
 
 # Placeholder text in the DOCX Dean cell that should be replaced by the photo.
 DEAN_PHOTO_PLACEHOLDER = "[ Photo ]"
