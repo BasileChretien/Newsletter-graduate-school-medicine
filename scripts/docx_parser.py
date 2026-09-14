@@ -9,10 +9,10 @@ from __future__ import annotations
 import logging
 import re
 import weakref
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html import escape
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -23,7 +23,11 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from lxml import etree
 
-from scripts.config import SUBHEAD_TEXTS  # known sub-headings (canonical template)
+from scripts.config import (
+    DEAN_FILENAME,
+    DEAN_PHOTO_ALT,
+    SUBHEAD_TEXTS,  # known sub-headings (canonical template)
+)
 from scripts.text_utils import is_safe_url_scheme
 
 log = logging.getLogger(__name__)
@@ -585,6 +589,7 @@ BLIP_TAG = qn("a:blip")
 EMBED_ATTR = qn("r:embed")
 EXTENT_TAG = qn("wp:extent")
 PIC_CNVPR_TAG = qn("pic:cNvPr")
+DOCPR_TAG = qn("wp:docPr")
 
 # EMU per pixel at 96 dpi (914400 EMU / inch / 96 px / inch).
 EMU_PER_PX = 9525
@@ -598,11 +603,75 @@ MAX_IMG_PX = 560
 _IMG_MARGIN = {"center": "0 auto", "right": "0 0 0 auto"}
 
 
+# ---------- picture alt text ----------
+# Word's "Mark as decorative": a flag on `wp:docPr`, inside an extension
+# list that older readers skip. Its value is an xsd:boolean.
+_DECORATIVE_TAG = (
+    "{http://schemas.microsoft.com/office/drawing/2017/decorative}decorative")
+_DECORATIVE_ON = frozenset({"1", "true"})
+
+# The dean's photo, by the name the template builder gives it: python-docx
+# records the inserted file's name on the picture, and that name is the
+# only trace of which photo it is -- the media part becomes `imageN.jpg`.
+# The two spellings, with and without the extension, are the ones the
+# renderer matched when it rewrote this alt text itself.
+_DEAN_PHOTO_NAMES = frozenset({
+    DEAN_FILENAME.lower(), Path(DEAN_FILENAME).stem.lower()})
+
+# A picture's alt attribute while the title of its section is not yet
+# known. `_name_untitled_photos` fills it in once the section is complete,
+# because "(1)" depends on how many such pictures the whole section holds.
+# On its own it is still a valid empty alt, so `paragraph_to_html` called
+# outside a parse returns correct HTML. A document cannot forge it: all
+# document text reaches this HTML escaped with `quote=True`, so a literal
+# `"` only ever comes from the parser itself.
+_UNTITLED_PHOTO_MARKER = ' data-meridian-untitled=""'
+_UNTITLED_ALT = 'alt=""' + _UNTITLED_PHOTO_MARKER
+_UNTITLED_ALT_RE = re.compile(re.escape(_UNTITLED_ALT))
+
+
+def _picture_alt(drawing) -> str:
+    """The alt attribute for a `w:drawing`, as `alt="..."`.
+
+    In order:
+      1. Marked decorative in Word: `alt=""`, and nothing replaces it --
+         the editor has said a screen reader should skip this picture.
+      2. A description: `wp:docPr@descr`, where Word's Alt Text box
+         writes it, then `pic:cNvPr@descr`, where other tools do.
+      3. The dean's photo, recognised by its name: `DEAN_PHOTO_ALT`.
+      4. Otherwise `_UNTITLED_ALT`; the section title goes in later.
+
+    A name (`@name`) is never used as the text. Word makes names up --
+    `Picture 122515128`, `drawing`, `図 3` -- and python-docx uses the
+    source file's name. This read `pic:cNvPr@descr or @name` before, and
+    never looked at `wp:docPr` at all: reported from the field, an issue
+    with no descriptions sent 6 of its 7 photos out with alt text like
+    `Picture 122515128`, which is what a recipient with images blocked
+    sees and what a screen reader reads aloud.
+    """
+    doc_pr = drawing.find(".//" + DOCPR_TAG)
+    props = [el for el in (doc_pr, drawing.find(".//" + PIC_CNVPR_TAG))
+             if el is not None]
+    if doc_pr is not None and any(
+            (flag.get("val") or "").strip().lower() in _DECORATIVE_ON
+            for flag in doc_pr.iter(_DECORATIVE_TAG)):
+        return 'alt=""'
+    for el in props:
+        descr = (el.get("descr") or "").strip()
+        if descr:
+            return f'alt="{escape(descr, quote=True)}"'
+    if any((el.get("name") or "").strip().lower() in _DEAN_PHOTO_NAMES
+           for el in props):
+        return f'alt="{escape(DEAN_PHOTO_ALT, quote=True)}"'
+    return _UNTITLED_ALT
+
+
 def _drawing_to_img(drawing, part, align: str = "") -> str:
     """Return an <img> tag (with media:// sentinel src) for a w:drawing.
 
     `align` is the paragraph's `paragraph_alignment` value; see
     `_IMG_MARGIN` for why a picture needs it separately from the text.
+    The alt text comes from `_picture_alt`.
     """
     blip = drawing.find(".//" + BLIP_TAG)
     if blip is None:
@@ -614,12 +683,6 @@ def _drawing_to_img(drawing, part, align: str = "") -> str:
     if rel is None or not rel.target_ref:
         return ""
     fname = Path(rel.target_ref).name
-
-    # Optional alt text from pic:cNvPr@descr or @name.
-    alt = ""
-    cnv_pr = drawing.find(".//" + PIC_CNVPR_TAG)
-    if cnv_pr is not None:
-        alt = cnv_pr.get("descr") or cnv_pr.get("name") or ""
 
     # Width and height from wp:extent (in EMU). Cap width to MAX_IMG_PX
     # and scale height proportionally so Outlook (which ignores
@@ -642,7 +705,7 @@ def _drawing_to_img(drawing, part, align: str = "") -> str:
 
     return (
         f'<img src="media://{escape(fname, quote=True)}" '
-        f'alt="{escape(alt, quote=True)}"{size_attrs} '
+        f'{_picture_alt(drawing)}{size_attrs} '
         f'style="display:block;max-width:100%;height:auto;'
         f'margin:{_IMG_MARGIN.get(align, "0")};border:0;" />'
     )
@@ -1001,6 +1064,81 @@ def _extract_masthead(doc: DocxDocument) -> Masthead:
     return Masthead(title, tagline, subtitle, issue_line)
 
 
+# ---------- photo titles ----------
+def _block_html(block: Block) -> Iterable[str]:
+    """Each piece of HTML in `block`, in document order."""
+    if isinstance(block, BodyParagraph):
+        yield block.html
+    elif isinstance(block, BulletList):
+        yield from block.items
+    elif isinstance(block, TableBlock):
+        for row in block.rows:
+            yield from row
+
+
+def _map_block_html(block: Block, fn) -> Block:
+    """A copy of `block` with `fn` applied to each piece of its HTML, in
+    the same order as `_block_html` -- bullets in turn, cells row by row."""
+    if isinstance(block, BodyParagraph):
+        return replace(block, html=fn(block.html))
+    if isinstance(block, BulletList):
+        return replace(block, items=tuple(fn(item) for item in block.items))
+    if isinstance(block, TableBlock):
+        return replace(block, rows=tuple(
+            tuple(fn(cell) for cell in row) for row in block.rows))
+    return block
+
+
+def _name_untitled_photos(blocks: Sequence[Block], title: str) -> list[Block]:
+    """Give `title` as alt text to every picture in `blocks` that has none.
+
+    When there are several, each is numbered in document order --
+    "Research (1)", "Research (2)" -- so someone listening can tell them
+    apart; a lone one gets the bare title. Only pictures that carry the
+    `_UNTITLED_ALT` marker are counted: those with a description, the
+    dean's photo and decorative pictures never do.
+    """
+    total = sum(html.count(_UNTITLED_ALT)
+                for block in blocks for html in _block_html(block))
+    if not total:
+        return list(blocks)
+    title = title.strip()
+    numbers = iter(range(1, total + 1))
+
+    def label(_match: re.Match) -> str:
+        n = next(numbers)
+        if not title:
+            return 'alt=""'
+        text = title if total == 1 else f"{title} ({n})"
+        return f'alt="{escape(text, quote=True)}"'
+
+    def fill(html: str) -> str:
+        return _UNTITLED_ALT_RE.sub(label, html)
+
+    return [_map_block_html(block, fill) for block in blocks]
+
+
+def _name_photos_by_heading(blocks: Sequence[Block], title: str) -> list[Block]:
+    """`_name_untitled_photos` for the lenient parse's one section.
+
+    That section is synthetic: what a reader sees as the sections are the
+    document's own Word headings. So a picture takes the text of the
+    nearest heading before it, numbered within that heading's stretch,
+    and `title` names only the pictures before the first heading.
+    """
+    out: list[Block] = []
+    span: list[Block] = []
+    for block in blocks:
+        if isinstance(block, Heading):
+            out.extend(_name_untitled_photos(span, title))
+            out.append(block)
+            span, title = [], block.text
+        else:
+            span.append(block)
+    out.extend(_name_untitled_photos(span, title))
+    return out
+
+
 # ---------- main parse ----------
 def _iter_body_blocks(doc: DocxDocument) -> Iterable[tuple[str, object]]:
     """Yield ('paragraph', Paragraph) or ('table', Table) in document order."""
@@ -1079,7 +1217,10 @@ def _parse_strict(doc: DocxDocument) -> list[Section]:
             sections.append(Section(
                 number=current_num,
                 title=current_title,
-                blocks=tuple(current_blocks),
+                # Only now is the section complete, so only now can its
+                # untitled pictures be counted and named after it.
+                blocks=tuple(_name_untitled_photos(current_blocks,
+                                                   current_title)),
             ))
         current_blocks = []
 
@@ -1221,7 +1362,9 @@ def _parse_lenient(doc: DocxDocument) -> list[Section]:
     # so the rendered HTML doesn't have a bare section break.
     if not blocks:
         return []
-    return [Section(number=1, title="Newsletter", blocks=tuple(blocks))]
+    title = "Newsletter"
+    return [Section(number=1, title=title,
+                    blocks=tuple(_name_photos_by_heading(blocks, title)))]
 
 
 def _looks_like_masthead(t: Table) -> bool:

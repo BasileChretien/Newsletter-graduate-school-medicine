@@ -23,6 +23,30 @@ is preserved in `git log` for archaeology.
 - **The `tomli` backport is gone** from `requirements.txt`: 3.11 ships
   `tomllib`, which `scripts/i18n.py` now imports directly.
 
+### Fixed — photos had meaningless alt text (MEDIUM)
+- **Photos went out with alt text like `Picture 122515128`**: what a
+  recipient sees when images are blocked, and what a screen reader reads
+  aloud. In a real issue none of the 8 pictures had a description, and
+  6 of the 7 photos in the email were labelled that way. With no
+  description the parser fell back to the picture's object name, which
+  Word makes up. It also never read `wp:docPr@descr`, where Word's Alt
+  Text box writes, so even a description an editor did type could be
+  ignored.
+- **The rule now:** a description from Word wins (`wp:docPr`, then
+  `pic:cNvPr`), and an object name is never used. A photo without a
+  description takes the title of its section. When a section has several
+  such photos they are numbered in document order: "Research & Academic
+  Updates (1)", "(2)", "(3)". Photos in bullets and in table cells (the
+  Featured Highlights cards) are covered too. A Word file without
+  numbered sections uses the nearest Word heading above each photo.
+- **Decorative images stay silent:** a picture marked decorative in Word
+  keeps `alt=""`.
+- **The dean's photo still reads "Dean of the Graduate School of
+  Medicine".** Before, the renderer rewrote a file name that had been
+  passed through as alt text. Now the parser writes the alt text itself,
+  recognising the photo by the name the template builder gives it.
+  Pinned by `tests/test_photo_alt_text.py`.
+
 ## [v1.4.2] — dependencies are checked automatically (2026-09-14)
 
 Maintenance tooling only; the newsletter output is unchanged. **616 tests
