@@ -1,0 +1,45 @@
+# Dependabot keeps the pinned versions current by opening pull requests,
+# which the `tests` workflow then runs on Linux, macOS and Windows.
+#
+# What it cannot see -- the Pyodide runtime the browser build is pinned
+# to, the wheels vendored from PyPI, and Python's end-of-life dates -- is
+# covered by `.github/workflows/update-check.yml` instead.
+#
+# Coupled pins fail CI on purpose. `python-docx` must match
+# `web/app.js`'s PY_PACKAGES and the vendored wheel, so a bump of
+# `requirements.txt` alone fails `tests/test_web_bundle.py` with the
+# steps to finish it (bump the wheel in `web/vendor_pyodide.py`, re-run
+# it with `--write-hashes`, refresh `web/meridian-bundle.zip`).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"             # requirements.txt and requirements-dev.txt
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # One pull request for the routine bumps; a major version still gets
+      # its own, so a breaking change is reviewed on its own.
+      python-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: "/"             # .github/workflows/*.yml
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    labels: [dependencies]
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ["*"]
