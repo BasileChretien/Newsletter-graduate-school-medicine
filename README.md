@@ -126,7 +126,7 @@ Primarily the editor at the Graduate School of Medicine producing the quarterly 
 
 ## Under the hood (for developers)
 
-Python 3.12, `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **378 passing tests (2 skipped)** across 28 files covering parser, image handler, validator, plaintext converter, mail backends, the `.eml` draft builder, the browser build, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist, magic-byte **and extension** gating on embedded images, decompression-bomb caps enforced on bytes written) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** (architect, Python, security, code, visual, UX, email-deliverability) — every change has at least one regression test pinned. The current production tag is `v1.0.1-bundle29`.
+Python 3.10+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline` (Rust-backed), `BeautifulSoup4`, `click`, `pytest`. Outlook integration via `pywin32` COM on Windows; AppleScript / `osascript` on macOS; `xclip` / `wl-copy` on Linux. **551 passing tests (2 skipped)** across 32 files covering parser, image handler, validator, plaintext converter, mail backends, the `.eml` draft builder, the browser build, security guards (NFKC + invisible-char strip on recipient validation, CSS-hidden element scrub, URL-scheme allowlist, magic-byte **and extension** gating on embedded images, decompression-bomb caps enforced on bytes written) and visual regression contracts. **29 fix bundles** across **10 specialist-review rounds** up to v1.0.1 (architect, Python, security, code, visual, UX, email-deliverability), with more review rounds in every release since — every change has at least one regression test pinned. The latest release is `v1.4.0`.
 
 You do **not** need any of the above to use the toolkit as an editor. The setup steps below are everything.
 
@@ -477,7 +477,7 @@ You can ignore most of these — they just need to be there.
 
 Technical details for whoever maintains the toolkit:
 
-- **Stack:** Python 3.12, `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
+- **Stack:** Python 3.10+ (CI runs 3.12), `python-docx`, `Jinja2`, `css_inline`, `click`, `pytest`, `pywin32` (Windows only).
 - **Visual identity** (per the [Nagoya University design guideline](https://www.med.nagoya-u.ac.jp/intranet/pr/logo/)): primary `#003F88` (NU blue); accent gold `#A8864B` (AA-compliant on white) used for borders, dividers, bullet markers, section dashes; footer-link gold `#E8C97F` (brighter, on charcoal); text `#1C1C1E`; muted `#6B6B70`; cool off-white surface `#EEF2F7`; stripe `#DCE3EE`; hairline `#C9D2DE`; page background `#E6EBF2`. Cambria headings, Calibri body.
 - **Email-client compatibility:** 600px table-based layout, inline CSS via `css_inline` plus a small kept-`<style>` block carrying `@media print`, dark-mode hints, and Apple-Mail data-detector overrides. MSO conditional ghost tables for Outlook desktop. `bgcolor` HTML attributes on masthead/header/footer survive Gmail iOS forced inversion. Validator: 80 KB early warning, 102 KB Gmail clip warning, broken-URL **warnings** (no longer hard errors).
 - **Module map:**
