@@ -6,6 +6,21 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [v1.4.1] — README refresh (2026-09-14)
+
+Documentation only; no code changes. **551 tests passing** on Linux,
+macOS and Windows.
+
+### Changed — README badges and figures
+- **Badges** (#14): a new first badge links to the browser builder; the
+  test count reads 551 passing (was 378); Python reads 3.10+, the floor
+  `pyproject.toml` enforces (CI runs 3.12); the release badge's label no
+  longer says v1.0.1, and `README.ja.md` gains that badge.
+- **"Under the hood"** (#15): 551 passing tests across 32 files (was 378
+  across 28); Python 3.10+; the 29 fix bundles and 10 review rounds dated
+  "up to v1.0.1". The paragraph now links the latest release instead of
+  naming a version, so it no longer goes stale with every tag.
+
 ## [v1.4.0] — the email keeps Word's alignment (2026-09-14)
 
 One HIGH fix from a field report — justified text came out
@@ -503,6 +518,7 @@ for the full archaeology.
 
 ---
 
+[v1.4.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.1
 [v1.4.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.4.0
 [v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.3.0
 [v1.2.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.2.0
