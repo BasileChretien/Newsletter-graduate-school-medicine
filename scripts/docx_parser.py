@@ -19,6 +19,7 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
+from lxml import etree
 
 from scripts.config import SUBHEAD_TEXTS  # known sub-headings (canonical template)
 from scripts.text_utils import is_safe_url_scheme
@@ -83,17 +84,24 @@ class Heading:
 @dataclass(frozen=True)
 class BodyParagraph:
     html: str
+    # CSS `text-align` from `paragraph_alignment`; "" is the default (left).
+    align: str = ""
 
 
 @dataclass(frozen=True)
 class BulletList:
     items: tuple[str, ...]  # each item is HTML-safe
+    # Per item, parallel to `items`. May be shorter (hand-built blocks);
+    # a missing entry renders as the default.
+    aligns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class TableBlock:
     rows: tuple[tuple[str, ...], ...]  # rows of HTML cells
     has_header: bool
+    # Per cell, parallel to `rows`; same "may be shorter" rule as bullets.
+    aligns: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -140,6 +148,108 @@ def _run_to_html(run) -> str:
     return text
 
 
+# ---------- paragraph alignment ----------
+# Word's `w:jc` values, mapped onto the only `text-align` values that
+# ever reach the email. An allowlist, not a pass-through: the value ends
+# up inside a `style` attribute, and a DOCX is untrusted input. `left`
+# and `start` are the email's default and deliberately absent -- an
+# unaligned paragraph costs no bytes towards Gmail's clip threshold.
+_JC_TO_CSS = {
+    "both": "justify",
+    "distribute": "justify",       # 均等割り付け
+    "lowKashida": "justify",
+    "mediumKashida": "justify",
+    "highKashida": "justify",
+    "thaiDistribute": "justify",
+    "center": "center",
+    "right": "right",
+    "end": "right",
+}
+
+_W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+# Precompiled, with the style id bound as an XPath variable: a styleId is
+# document-controlled text and is never spliced into the expression.
+_STYLE_BY_ID = etree.XPath("w:style[@w:styleId = $sid]", namespaces=_W_NS)
+_DEFAULT_PARAGRAPH_STYLE = etree.XPath(
+    "w:style[@w:type = 'paragraph']"
+    "[@w:default = '1' or @w:default = 'true' or @w:default = 'on']",
+    namespaces=_W_NS,
+)
+_DOC_DEFAULT_PPR = etree.XPath(
+    "w:docDefaults/w:pPrDefault/w:pPr", namespaces=_W_NS)
+
+# Word nests `basedOn` a handful of levels deep. A longer chain is
+# malformed, and a cycle (a style based on itself) would never end.
+_MAX_STYLE_DEPTH = 32
+
+
+def _jc_value(ppr) -> str | None:
+    """`w:jc/@w:val` of a `w:pPr`, or None when it sets no alignment."""
+    if ppr is None:
+        return None
+    jc = ppr.find(qn("w:jc"))
+    return None if jc is None else (jc.get(qn("w:val")) or "")
+
+
+def _style_chain_jc(styles, style_id: str | None) -> str | None:
+    """First alignment set by a paragraph style or a style it is based on.
+
+    A paragraph with no `w:pStyle`, or one naming a style that does not
+    exist, uses the document's default paragraph style -- as Word does.
+    """
+    found = _STYLE_BY_ID(styles, sid=style_id) if style_id else []
+    style = found[0] if found else next(
+        iter(_DEFAULT_PARAGRAPH_STYLE(styles)), None)
+    seen: set[str] = set()
+    for _ in range(_MAX_STYLE_DEPTH):
+        if style is None:
+            return None
+        own_id = style.get(qn("w:styleId")) or ""
+        if own_id in seen:
+            return None
+        seen.add(own_id)
+        value = _jc_value(style.find(qn("w:pPr")))
+        if value is not None:
+            return value
+        based_on = style.find(qn("w:basedOn"))
+        parent_id = based_on.get(qn("w:val")) if based_on is not None else None
+        parents = _STYLE_BY_ID(styles, sid=parent_id) if parent_id else []
+        style = parents[0] if parents else None
+    return None
+
+
+def paragraph_alignment(paragraph: Paragraph) -> str:
+    """The paragraph's effective alignment as a CSS `text-align` value.
+
+    Resolved the way Word resolves it: direct formatting first, then the
+    paragraph style and its `basedOn` chain, then the document defaults.
+    Returns "justify", "center" or "right" -- or "" for left, start and
+    unset, which is what the stylesheet already renders.
+
+    Reported from the field: this was never read, so justified text came
+    out ragged-right. Word set up for Japanese justifies body text by
+    default (両端揃え); the issue that exposed it had 106 of its 125
+    paragraphs justified, and its photo captions centred.
+    """
+    value = _jc_value(paragraph._p.pPr)
+    if value is None:
+        try:
+            styles = paragraph.part.styles.element
+        except (AttributeError, KeyError, NotImplementedError):
+            styles = None
+        if styles is not None:
+            value = _style_chain_jc(styles, paragraph._p.style)
+            if value is None:
+                defaults = _DOC_DEFAULT_PPR(styles)
+                value = _jc_value(defaults[0]) if defaults else None
+    return _JC_TO_CSS.get(value or "", "")
+
+
+def _has_text(html: str) -> bool:
+    """True when `html` shows any text, rather than only a picture."""
+    return bool(re.sub(r"<[^>]*>", "", html).strip())
+
+
 # ---------- inline image (drawing → <img>) ----------
 DRAWING_TAG = qn("w:drawing")
 BLIP_TAG = qn("a:blip")
@@ -151,10 +261,20 @@ PIC_CNVPR_TAG = qn("pic:cNvPr")
 EMU_PER_PX = 9525
 # Cap image width to fit the 600 px email container with padding.
 MAX_IMG_PX = 560
+# A picture's horizontal placement, by its paragraph's alignment.
+# Pictures are `display:block`, and a block is not moved by its parent's
+# `text-align` in Gmail or Apple Mail -- only auto margins move it.
+# Outlook's Word engine is the reverse (ignores the margins, honours
+# `text-align` on the paragraph), so a centred photo relies on both.
+_IMG_MARGIN = {"center": "0 auto", "right": "0 0 0 auto"}
 
 
-def _drawing_to_img(drawing, part) -> str:
-    """Return an <img> tag (with media:// sentinel src) for a w:drawing."""
+def _drawing_to_img(drawing, part, align: str = "") -> str:
+    """Return an <img> tag (with media:// sentinel src) for a w:drawing.
+
+    `align` is the paragraph's `paragraph_alignment` value; see
+    `_IMG_MARGIN` for why a picture needs it separately from the text.
+    """
     blip = drawing.find(".//" + BLIP_TAG)
     if blip is None:
         return ""
@@ -195,7 +315,7 @@ def _drawing_to_img(drawing, part) -> str:
         f'<img src="media://{escape(fname, quote=True)}" '
         f'alt="{escape(alt, quote=True)}"{size_attrs} '
         f'style="display:block;max-width:100%;height:auto;'
-        f'margin:0;border:0;" />'
+        f'margin:{_IMG_MARGIN.get(align, "0")};border:0;" />'
     )
 
 
@@ -274,6 +394,9 @@ def _iter_content_children(element):
 def paragraph_to_html(paragraph: Paragraph) -> str:
     """Convert a paragraph's runs (and hyperlinks) into safe HTML."""
     rid_to_url = _hyperlinks(paragraph)
+    # Resolved only when a picture needs it: most paragraphs have none,
+    # and their alignment travels on the block instead.
+    align: str | None = None
 
     parts: list[str] = []
     for child in _iter_content_children(paragraph._p):
@@ -282,7 +405,9 @@ def paragraph_to_html(paragraph: Paragraph) -> str:
             # Inline drawing inside this run? Emit an <img> tag.
             drawing = child.find(".//" + DRAWING_TAG)
             if drawing is not None:
-                img = _drawing_to_img(drawing, paragraph.part)
+                if align is None:
+                    align = paragraph_alignment(paragraph)
+                img = _drawing_to_img(drawing, paragraph.part, align)
                 if img:
                     parts.append(img)
                     continue
@@ -467,6 +592,7 @@ def _row_cells(row) -> list:
 # ---------- table → block ----------
 def _table_to_block(table: Table) -> TableBlock:
     rows_out: list[tuple[str, ...]] = []
+    aligns_out: list[tuple[str, ...]] = []
     # The row and column caps bound each dimension separately, so on
     # their own they still admit 500 x 64 = 32,000 cells -- more than the
     # 20,000 total this file declares. The total is the one that matters:
@@ -477,19 +603,32 @@ def _table_to_block(table: Table) -> TableBlock:
         if budget <= 0:
             break
         cells = []
+        cell_aligns = []
         for cell in _row_cells(row)[:budget]:
             cell_html_parts = []
+            # One `text-align` per cell, taken from the paragraphs that
+            # carry text (a picture paragraph places itself with margins)
+            # and kept only when they agree: a cell mixing centred and
+            # justified text has no single right answer, so it keeps the
+            # default rather than guessing.
+            text_aligns = set()
             for p in cell.paragraphs:
                 ph = paragraph_to_html(p)
                 if ph:
                     cell_html_parts.append(ph)
+                    if _has_text(ph):
+                        text_aligns.add(paragraph_alignment(p))
             cells.append("<br>".join(cell_html_parts))
+            cell_aligns.append(
+                next(iter(text_aligns)) if len(text_aligns) == 1 else "")
         budget -= len(cells)
         rows_out.append(tuple(cells))
+        aligns_out.append(tuple(cell_aligns))
     # First row is header if all cells are short labels (heuristic: <= 30 chars
     # and bold dominant) — for safety we say it's a header.
     has_header = len(rows_out) >= 2
-    return TableBlock(rows=tuple(rows_out), has_header=has_header)
+    return TableBlock(rows=tuple(rows_out), has_header=has_header,
+                      aligns=tuple(aligns_out))
 
 
 # ---------- masthead extraction ----------
@@ -580,12 +719,15 @@ def _parse_strict(doc: DocxDocument) -> list[Section]:
     current_title: str = ""
     current_blocks: list[Block] = []
     pending_bullets: list[str] = []
+    pending_aligns: list[str] = []
     table_index = 0
 
     def flush_bullets():
         if pending_bullets:
-            current_blocks.append(BulletList(items=tuple(pending_bullets)))
+            current_blocks.append(BulletList(items=tuple(pending_bullets),
+                                             aligns=tuple(pending_aligns)))
             pending_bullets.clear()
+            pending_aligns.clear()
 
     def flush_section():
         nonlocal current_num, current_title, current_blocks
@@ -615,6 +757,7 @@ def _parse_strict(doc: DocxDocument) -> list[Section]:
                 html = paragraph_to_html(p)
                 if html:
                     pending_bullets.append(html)
+                    pending_aligns.append(paragraph_alignment(p))
                 continue
             flush_bullets()
 
@@ -628,7 +771,8 @@ def _parse_strict(doc: DocxDocument) -> list[Section]:
             # renders as <img> inside the body paragraph.
             html = paragraph_to_html(p)
             if html:
-                current_blocks.append(BodyParagraph(html=html))
+                current_blocks.append(BodyParagraph(
+                    html=html, align=paragraph_alignment(p)))
 
         else:  # table
             t: Table = item
@@ -663,12 +807,15 @@ def _parse_lenient(doc: DocxDocument) -> list[Section]:
     """
     blocks: list[Block] = []
     pending_bullets: list[str] = []
+    pending_aligns: list[str] = []
     table_index = 0
 
     def flush_bullets():
         if pending_bullets:
-            blocks.append(BulletList(items=tuple(pending_bullets)))
+            blocks.append(BulletList(items=tuple(pending_bullets),
+                                     aligns=tuple(pending_aligns)))
             pending_bullets.clear()
+            pending_aligns.clear()
 
     for kind, item in _iter_body_blocks(doc):
         if kind == "paragraph":
@@ -681,7 +828,7 @@ def _parse_lenient(doc: DocxDocument) -> list[Section]:
                 html = paragraph_to_html(p)
                 if html:
                     flush_bullets()
-                    blocks.append(BodyParagraph(html=html))
+                    blocks.append(BodyParagraph(html=html, align=paragraph_alignment(p)))
                 continue
 
             # Word-style heading detection -- promote to visual
@@ -703,12 +850,13 @@ def _parse_lenient(doc: DocxDocument) -> list[Section]:
                 html = paragraph_to_html(p)
                 if html:
                     pending_bullets.append(html)
+                    pending_aligns.append(paragraph_alignment(p))
                 continue
             flush_bullets()
 
             html = paragraph_to_html(p)
             if html:
-                blocks.append(BodyParagraph(html=html))
+                blocks.append(BodyParagraph(html=html, align=paragraph_alignment(p)))
 
         else:  # table
             t: Table = item
@@ -753,6 +901,6 @@ def _looks_like_masthead(t: Table) -> bool:
 __all__ = [
     "Newsletter", "Masthead", "Section", "Heading",
     "BodyParagraph", "BulletList", "TableBlock", "ImageRef",
-    "parse", "paragraph_to_html",
+    "parse", "paragraph_alignment", "paragraph_to_html",
     "is_subheading_paragraph",
 ]

@@ -76,6 +76,28 @@ def _issue_line_filter(text: str) -> str:
     return "".join(out)
 
 
+# The `text-align` values a block may carry. Checked again here, not only
+# in the parser, because blocks can be built by hand and the value lands
+# in a `style` attribute, where autoescaping does not stop a `;`.
+_CSS_ALIGN = frozenset({"justify", "center", "right"})
+
+
+def _align_at(aligns, *index) -> str:
+    """`aligns[i][j]...` as a `text-align` value, or "" when absent.
+
+    A block may carry fewer alignments than it has cells -- built by
+    hand, or by a caller that predates the field -- and Jinja raises on
+    an item lookup through an undefined value, so the walk happens here.
+    """
+    value = aligns
+    for i in index:
+        try:
+            value = value[i]
+        except (IndexError, KeyError, TypeError):
+            return ""
+    return value if isinstance(value, str) and value in _CSS_ALIGN else ""
+
+
 def make_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
@@ -89,6 +111,7 @@ def make_env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["issue_line"] = _issue_line_filter
+    env.filters["align_at"] = _align_at
     env.tests["highlights_block"] = _is_highlights_block_filter
     return env
 
