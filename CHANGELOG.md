@@ -15,10 +15,6 @@ in the preview"; the rest were found while investigating those, and the
 restyle was requested separately. **468 tests passing** on Linux, macOS
 and Windows.
 
-> **Note on v1.2.0.** It was written up but never tagged, so nothing was
-> ever released under that name. Both sections are real and separate;
-> see the tagging note at the foot of this file.
-
 ### Fixed — the downloaded HTML had no photos (HIGH)
 - **Reported from the field.** `WebBuildResult` carries two documents:
   `standalone_html`, with photos as `data:` URIs, and `html`, with them
@@ -448,8 +444,8 @@ for the full archaeology.
 
 ---
 
-[v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/commit/f67b228
-[v1.2.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/commit/b361a16
+[v1.3.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.3.0
+[v1.2.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.2.0
 [v1.1.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.2
 [v1.1.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.1
 [v1.1.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.1.0
@@ -460,21 +456,9 @@ for the full archaeology.
 
 ## Tagging note
 
-`v1.2.0` and `v1.3.0` are both documented above but were not tagged at
-the time they were written: `tag.gpgSign = true` with an SSH key whose
-passphrase cannot be supplied non-interactively, so `git tag -a` waits
-for input that never comes. The v1.1.x tags predate that setting and are
-unsigned.
-
-Both are still tag-able at the right commits:
-
-    git tag -a v1.2.0 b361a16 -m "v1.2.0 -- .eml export, browser build"
-    git tag -a v1.3.0 f67b228 -m "v1.3.0 -- see it the way recipients will"
-    git push origin v1.2.0 v1.3.0
-
-Both commits are pinned deliberately. `HEAD` would have been wrong by the
-time anyone ran this -- the commit adding these very lines lands after
-it. `f67b228` is the last code change in v1.3.0; this entry documents it
-from immediately afterwards.
-
-Add `--no-sign` to match the unsigned v1.1.x tags.
+`v1.2.0` and `v1.3.0` were written up before they were tagged: with tag
+signing on, `git tag -a` waited for an SSH-key passphrase that a
+non-interactive run cannot supply. Both were tagged afterwards at the
+commits their entries describe -- `v1.2.0` at `b361a16` (SSH-signed),
+`v1.3.0` at `f67b228` (unsigned, like the v1.1.x tags) -- and published
+as GitHub Releases on 2026-09-14.
