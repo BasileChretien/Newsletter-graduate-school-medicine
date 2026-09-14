@@ -3,8 +3,8 @@
 [![website: ニュースレター作成ページ](https://img.shields.io/badge/website-%E3%83%8B%E3%83%A5%E3%83%BC%E3%82%B9%E3%83%AC%E3%82%BF%E3%83%BC%E4%BD%9C%E6%88%90%E3%83%9A%E3%83%BC%E3%82%B8-003F88.svg)](https://basilechretien.github.io/Newsletter-graduate-school-medicine/)
 [![tests](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml/badge.svg)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![tests: 616 passing](https://img.shields.io/badge/tests-616%20passing-brightgreen.svg)](tests/)
+[![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![tests: 622 passing](https://img.shields.io/badge/tests-622%20passing-brightgreen.svg)](tests/)
 [![latest release](https://img.shields.io/github/v/release/BasileChretien/Newsletter-graduate-school-medicine)](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)
 
 > 🇬🇧 [English version](README.md)
@@ -127,7 +127,7 @@
 <details>
 <summary><strong>内部構成（開発者・保守担当者向け）</strong></summary>
 
-Python 3.10 以上（CI は 3.12）、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`BeautifulSoup4`、`click`、`pytest`。Outlook 連携は Windows で `pywin32` COM、macOS で AppleScript（`osascript`）、Linux で `xclip` または `wl-copy` を使用します。テストは 34 ファイル・616 件成功（2 件スキップ）で、パーサ、画像処理、バリデータ、平文変換、メールバックエンド、`.eml` 下書き生成、ブラウザ版、セキュリティ（受信者検証時の NFKC 正規化と不可視文字の除去、CSS による非表示要素のスクラブ、URL スキームの allowlist、埋め込み画像のマジックバイト**および拡張子**の検査、実書き込みバイト数で強制する解凍爆弾対策）、ビジュアル回帰までを網羅しています。v1.0.1 までに、設計、Python 実装、セキュリティ、コード品質、ビジュアル、UX、メール到達性の各観点から査読を計 10 ラウンド実施し、29 件の改修パッケージを適用しました。以降のリリースでも毎回査読を行っています。各変更には少なくとも 1 つの回帰テストを紐づけています。最新リリースは[こちら](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)をご覧ください。
+Python 3.11 以上（CI は 3.12）、`python-docx`、`Jinja2`、`css_inline`（Rust 製）、`BeautifulSoup4`、`click`、`pytest`。Outlook 連携は Windows で `pywin32` COM、macOS で AppleScript（`osascript`）、Linux で `xclip` または `wl-copy` を使用します。テストは 35 ファイル・622 件成功（2 件スキップ）で、パーサ、画像処理、バリデータ、平文変換、メールバックエンド、`.eml` 下書き生成、ブラウザ版、セキュリティ（受信者検証時の NFKC 正規化と不可視文字の除去、CSS による非表示要素のスクラブ、URL スキームの allowlist、埋め込み画像のマジックバイト**および拡張子**の検査、実書き込みバイト数で強制する解凍爆弾対策）、ビジュアル回帰までを網羅しています。v1.0.1 までに、設計、Python 実装、セキュリティ、コード品質、ビジュアル、UX、メール到達性の各観点から査読を計 10 ラウンド実施し、29 件の改修パッケージを適用しました。以降のリリースでも毎回査読を行っています。各変更には少なくとも 1 つの回帰テストを紐づけています。最新リリースは[こちら](https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/latest)をご覧ください。
 
 編集担当としてご利用いただく場合、上記の技術的内容を理解する必要はありません。次の 4 ステップの初期設定だけで使い始められます。
 
@@ -168,7 +168,7 @@ Python 3.10 以上（CI は 3.12）、`python-docx`、`Jinja2`、`css_inline`（
 Python はツールを動作させるためのプログラムです。
 
 - **Windows：** <https://www.python.org/downloads/> からインストーラをダウンロードして実行します。**重要：** 最初の画面の下にある **「Add Python to PATH」** のチェックボックスに必ずチェックを入れてから *Install Now* をクリックしてください（これを忘れるとツールが Python を見つけられません）。
-- **macOS：** Mac には Python が標準で入っているため、通常は本ステップで行う作業はありません。万一ランチャーから Python が見つからない旨の表示が出た場合のみ、Windows と同じ手順で <https://www.python.org/downloads/> からインストールしてください。
+- **macOS：** Mac には Python が標準で入っているため、通常は本ステップで行う作業はありません。万一ランチャーから Python が見つからない、またはバージョンが古い旨の表示が出た場合のみ、Windows と同じ手順で <https://www.python.org/downloads/> からインストールしてください。
 
 **以上でセットアップは完了です。** GitHub アカウントの作成も、GitHub Desktop のインストールも、書き込み権限の付与待ちも不要です。Outlook から送信する場合、写真はメールに直接添付されて配信されますので、公開ホスティングは不要です。
 

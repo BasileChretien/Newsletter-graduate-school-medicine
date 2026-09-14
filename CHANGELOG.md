@@ -6,6 +6,23 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [Unreleased]
+
+### Changed — Python 3.11 is now the minimum
+- **Python 3.10 reaches end of life on 2026-10-31**, which the weekly
+  update check reported (issue #18). `requires-python` in `pyproject.toml`
+  and both READMEs now say 3.11+. CI stays on 3.12 and the browser build
+  on Pyodide's 3.13, so neither changes.
+- **The launchers check the version first.** They install
+  `requirements.txt`, which pip reads without `pyproject.toml`, so on an
+  older Python the build would stop on a traceback. An editor with only
+  Python 3.10 is now told which version the computer has and to install a
+  current Python from <https://www.python.org/downloads/>, then re-run.
+  `tests/test_python_floor.py` keeps both launchers, both READMEs and
+  `requires-python` in step.
+- **The `tomli` backport is gone** from `requirements.txt`: 3.11 ships
+  `tomllib`, which `scripts/i18n.py` now imports directly.
+
 ## [v1.4.2] — dependencies are checked automatically (2026-09-14)
 
 Maintenance tooling only; the newsletter output is unchanged. **616 tests
