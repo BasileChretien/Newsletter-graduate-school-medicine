@@ -57,9 +57,10 @@ to store.
 section claimed "exactly two requests" and was wrong, so this is the one
 place that has to stay accurate:
 
-- **Your own origin, and nothing else.** `index.html`, `app.js`,
-  `style.css`, `meridian-bundle.zip`, and `./pyodide/` — the whole
-  runtime: `pyodide.js`, `pyodide.asm.mjs`, `pyodide.asm.wasm`,
+- **Your own origin, and nothing else.** `index.html`, `app.js` (as
+  `app.js?v=<commit>`), `style.css`, `meridian-bundle.zip`, and
+  `./pyodide/<version>/` — the whole runtime, in a directory named for
+  the Pyodide version: `pyodide.js`, `pyodide.asm.mjs`, `pyodide.asm.wasm`,
   `python_stdlib.zip`, `pyodide-lock.json`, and the wheels for
   `css_inline`, `jinja2` (with `markupsafe`), `beautifulsoup4` (with
   `soupsieve` and `typing-extensions`), `lxml`, `pillow` and
@@ -122,6 +123,23 @@ to. After the first load the runtime is cached by a service worker
 (`web/sw.js`), so the page also runs offline; see that file for why the
 runtime is cache-first but `meridian-bundle.zip` is network-first.
 
+**No cache can answer for another release.** The runtime's own filenames
+are the same in every Pyodide version, and on the first visit after a
+deploy the previous service worker is still in charge, with the previous
+runtime in its cache. So each version is served from its own directory,
+`./pyodide/<version>/`, which no cache has seen. `index.html` and
+`app.js` both name that directory, so they must come from the same
+deploy: `index.html` loads `app.js?v=<commit>` (the deploy stamps it, as
+it stamps `sw.js`), and the worker's network-first requests revalidate
+instead of taking the browser's copy, which GitHub Pages lets live ten
+minutes. Each was measured in Chrome, upgrading 0.29.4 to 314.0.7 against
+a server sending GitHub Pages' headers. Without the directory, the new
+`app.js` booted 0.29.4 from the worker's cache. Without the stamp, a
+reload paired the new `index.html` with the old `app.js` (the browser
+reuses it without asking the worker), and 314.0.7's loader read 0.29.4's
+files and failed to boot. Without revalidation, a new tab opened within
+ten minutes ran the whole previous release.
+
 ## Things that will bite you
 
 **Refresh the bundle after touching `scripts/`.** The zip is a committed
@@ -139,17 +157,19 @@ with css-inline's own PyPI wheel for that ABI, which it publishes from
 with a wheel built for another line breaks the page at install time, with
 an error that points at the loader rather than at us. The weekly update
 report says when a newer Pyodide can run the page. Then: bump
-`PYODIDE_VERSION` in `web/vendor_pyodide.py`; switch the css-inline wheel
-to its build for the new ABI in `PYPI_WHEELS` and in `PY_PACKAGES` in
-`app.js`; check the runtime's own filenames against the new release (314
-renamed `pyodide.asm.js` to `pyodide.asm.mjs`), which `CORE_FILES` and
+`PYODIDE_VERSION` in `web/vendor_pyodide.py`; move every
+`./pyodide/<version>/` in `index.html` and `app.js` to the new version (a
+test names any that lag); switch the css-inline wheel to its build for
+the new ABI in `PYPI_WHEELS` and in `PY_PACKAGES` in `app.js`; check the
+runtime's own filenames against the new release (314 renamed
+`pyodide.asm.js` to `pyodide.asm.mjs`), which `CORE_FILES` and
 `RUNTIME_CORE` in `sw.js` list; re-run the script with `--write-hashes`,
 commit the new `pyodide-assets.json`, and let the `web-engine` workflow
-compare the result with the desktop build. Tests check that the script and
-the hash file agree and that every compiled wheel is built for one ABI.
-Expect a returning editor's first load after the deploy to boot the
-previous runtime from the service worker's cache; `sw.js` explains why.
-If a wheel fails to load, in that mix or after a partial deploy, the page
+compare the result with the desktop build. Tests check that the script,
+the hash file and the page's paths agree and that every compiled wheel is
+built for one ABI. The script writes the runtime to
+`web/pyodide/<version>/` and removes anything else under `web/pyodide/`.
+If a wheel fails to load, after a partial deploy for instance, the page
 stops at boot with "could not start" rather than running without it:
 `loadPackage` does not throw on a failed wheel, so `app.js` collects its
 `errorCallback` messages and throws. Without that, a missing Pillow wheel

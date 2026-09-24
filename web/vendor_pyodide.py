@@ -65,7 +65,7 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VENDOR_DIR = REPO_ROOT / "web" / "pyodide"
+VENDOR_ROOT = REPO_ROOT / "web" / "pyodide"
 HASH_FILE = REPO_ROOT / "web" / "pyodide-assets.json"
 
 # Pinned to the 314.x line (ABI `pyemscripten_2026_0`). css-inline -- the
@@ -77,6 +77,16 @@ HASH_FILE = REPO_ROOT / "web" / "pyodide-assets.json"
 # fails if the compiled wheels do not all match the runtime's ABI.
 PYODIDE_VERSION = "314.0.7"
 PYODIDE_BASE = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full/"
+
+# Each version is served from a directory of its own, `./pyodide/<version>/`,
+# and never from `./pyodide/` itself. The runtime's own filenames do not
+# change between versions (`pyodide.js`, `pyodide.asm.wasm`, ...), and
+# `web/sw.js` answers every runtime URL from its cache first -- so under
+# one shared path, a returning editor's first visit after an upgrade booted
+# the runtime cached from the previous one. A new version in a new
+# directory has URLs no cache has seen. web/index.html and web/app.js name
+# this directory; tests/test_web_bundle.py keeps them on PYODIDE_VERSION.
+VENDOR_DIR = VENDOR_ROOT / PYODIDE_VERSION
 
 # The runtime itself. `web/sw.js` warms the same list (RUNTIME_CORE). Since
 # 314.0.0 the loader imports `pyodide.asm.mjs`, an ES module, where it used
@@ -308,13 +318,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"All {len(assets)} files match {HASH_FILE.name}.")
 
-    if VENDOR_DIR.exists():
-        shutil.rmtree(VENDOR_DIR)
+    # The whole of web/pyodide/, not just this version's directory: a
+    # version left over from before a bump would otherwise be deployed
+    # (and mirrored) alongside the pinned one.
+    if VENDOR_ROOT.exists():
+        shutil.rmtree(VENDOR_ROOT)
     VENDOR_DIR.mkdir(parents=True)
     for name, data in assets.items():
         (VENDOR_DIR / _safe_name(name)).write_bytes(data)
     total = sum(len(d) for d in assets.values())
-    print(f"Wrote {len(assets)} files to web/pyodide/ ({total:,} B)")
+    print(f"Wrote {len(assets)} files to web/pyodide/{PYODIDE_VERSION}/ "
+          f"({total:,} B)")
     return 0
 
 

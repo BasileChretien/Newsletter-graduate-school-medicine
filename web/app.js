@@ -32,8 +32,15 @@ const SOURCE_URL =
  * lockfile, so micropip and its network access are not needed at all.
  * Three packages are vendored from PyPI as wheels and loaded by path
  * instead: python-docx and css-inline (absent from Pyodide's lockfile),
- * and beautifulsoup4 (present there, but older than the desktop pin). */
-const PYODIDE_INDEX_URL = "./pyodide/";
+ * and beautifulsoup4 (present there, but older than the desktop pin).
+ *
+ * Every runtime URL carries the Pyodide version, here, in the wheel paths
+ * below and in index.html's <script src>. The service worker answers
+ * runtime URLs from its cache first, and the runtime's filenames are the
+ * same in every version, so a shared `./pyodide/` let a returning
+ * editor's first visit after an upgrade boot the previous runtime. A test
+ * keeps all of them on PYODIDE_VERSION in vendor_pyodide.py. */
+const PYODIDE_INDEX_URL = "./pyodide/314.0.7/";
 
 const PY_PACKAGES = [
   "jinja2",
@@ -48,9 +55,9 @@ const PY_PACKAGES = [
   // Exactly the versions requirements.txt pins, so the page and the
   // desktop build render the same Word file with the same libraries
   // (tests/test_web_bundle.py keeps them in step).
-  "./pyodide/css_inline-0.21.3-cp310-abi3-pyemscripten_2026_0_wasm32.whl",
-  "./pyodide/beautifulsoup4-4.15.0-py3-none-any.whl",
-  "./pyodide/python_docx-1.2.0-py3-none-any.whl",
+  "./pyodide/314.0.7/css_inline-0.21.3-cp310-abi3-pyemscripten_2026_0_wasm32.whl",
+  "./pyodide/314.0.7/beautifulsoup4-4.15.0-py3-none-any.whl",
+  "./pyodide/314.0.7/python_docx-1.2.0-py3-none-any.whl",
 ];
 
 /* The page can be framed by anyone: GitHub Pages sends no
@@ -267,8 +274,9 @@ async function boot() {
     // the toolkit treats it as optional and sends photos at full size
     // without it. Measured with the pillow wheel missing: "Ready to send",
     // and a real issue's .eml grew from 2.53 MB to 3.23 MB. A partial
-    // deploy or the service-worker version mix described in sw.js can
-    // cause that, so any load error stops the boot here.
+    // deploy can cause that (as could the old service-worker version
+    // mix, before each runtime had its own directory), so any load
+    // error stops the boot here.
     //
     // `checkIntegrity` is spelled out because an options object replaces
     // the default one, `{ checkIntegrity: true }`. 314.0.7 happens to
@@ -315,8 +323,14 @@ async function boot() {
      * hurts most.
      *
      * Fire-and-forget: the editor is not waiting on it, and a failure
-     * just means the next visit fetches normally. */
-    navigator.serviceWorker?.controller?.postMessage({ type: "warm" });
+     * just means the next visit fetches normally.
+     *
+     * The worker is told WHICH runtime: it holds only the filenames, and
+     * the directory they live in changes with every Pyodide version. */
+    navigator.serviceWorker?.controller?.postMessage({
+      type: "warm",
+      indexURL: new URL(PYODIDE_INDEX_URL, location.href).href,
+    });
   } catch (err) {
     bootBox.classList.add("verdict", "bad");
     // Stop the spinner: leaving it turning next to a failure message

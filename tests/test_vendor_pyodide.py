@@ -143,6 +143,35 @@ def test_every_file_has_the_mirror_as_its_second_source(vendor, monkeypatch):
         assert urls[-1] == vendor.mirror_base() + name, name
 
 
+# ---------- where the files land ----------
+def test_the_runtime_lands_in_its_version_directory_and_nothing_else_stays(
+        vendor, monkeypatch, tmp_path):
+    """The page loads the runtime from `./pyodide/<version>/`, so a new
+    version has URLs that no service-worker or HTTP cache has seen. The
+    whole of `web/pyodide/` is replaced, not just that directory: whatever
+    is left there -- a version from before a bump, or the flat layout of
+    older checkouts -- would be deployed and mirrored beside the pin."""
+    assert vendor.VENDOR_ROOT == REPO_ROOT / "web" / "pyodide"
+    assert vendor.VENDOR_DIR == vendor.VENDOR_ROOT / vendor.PYODIDE_VERSION
+
+    root = tmp_path / "pyodide"
+    (root / "0.29.4").mkdir(parents=True)
+    (root / "0.29.4" / "pyodide.js").write_text("previous version")
+    (root / "pyodide.js").write_text("flat layout")
+    monkeypatch.setattr(vendor, "VENDOR_ROOT", root)
+    monkeypatch.setattr(vendor, "VENDOR_DIR", root / vendor.PYODIDE_VERSION)
+    monkeypatch.setattr(vendor, "_recorded_hashes", lambda: {})
+    monkeypatch.setattr(vendor, "collect", lambda expected: {
+        "pyodide.js": b"loader", "pyodide.asm.wasm": b"wasm"})
+    monkeypatch.setattr(vendor, "verify", lambda assets: [])
+
+    assert vendor.main([]) == 0
+    written = sorted(p.relative_to(root).as_posix()
+                     for p in root.rglob("*") if p.is_file())
+    assert written == [f"{vendor.PYODIDE_VERSION}/pyodide.asm.wasm",
+                       f"{vendor.PYODIDE_VERSION}/pyodide.js"]
+
+
 # ---------- the workflow that fills the mirror ----------
 def test_the_mirror_workflow_publishes_verified_files_as_a_prerelease():
     workflow = (REPO_ROOT / ".github" / "workflows" / "mirror-runtime.yml").read_text(
@@ -151,7 +180,11 @@ def test_the_mirror_workflow_publishes_verified_files_as_a_prerelease():
     assert "permissions:\n  contents: write\n" in workflow
     # The files are fetched AND checked against the committed hashes first.
     assert "python web/vendor_pyodide.py" in workflow
-    assert "web/pyodide/*" in workflow
+    # From the version's own directory, which is where the script writes
+    # (VENDOR_DIR). The flat `web/pyodide/*` it used to name would now
+    # match that directory instead of the files in it.
+    assert '"web/pyodide/$version/"*' in workflow
+    assert "web/pyodide/*" not in workflow
     # A pre-release is never shown as MERIDIAN's "Latest" release, so the
     # README's release badge and link keep pointing at real releases.
     assert "--prerelease" in workflow
