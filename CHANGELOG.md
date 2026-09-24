@@ -10,7 +10,8 @@ is preserved in `git log` for archaeology.
 
 The website no longer runs an update together with the copy of the
 previous version that a returning editor's browser kept. The desktop is
-unchanged. **694 tests passing** on Linux, macOS and Windows.
+unchanged. **694 tests passing** on Linux, macOS and Windows, now under
+Python 3.14 as well as 3.12.
 
 ### Fixed — the first visit after a website update could run the previous version (MEDIUM)
 - **What happened.** The website keeps an offline copy of its Python
@@ -51,6 +52,13 @@ unchanged. **694 tests passing** on Linux, macOS and Windows.
   `tests/test_web_bundle.py` and `tests/test_vendor_pyodide.py`. Each of
   22 deliberate breakages of the code they guard (#44 lists them) made
   one of them fail.
+
+### Changed — the tests also run on Python 3.14 (#46)
+- CI runs the suite on Python 3.12 and 3.14 on each of Ubuntu, Windows
+  and macOS: 3.12 because the README asks IT departments to install it,
+  3.14 because it is the Python the website runs (Pyodide 314.x) and the
+  newest release. One test string that relied on an invalid escape
+  sequence is now a raw string, with the same value.
 
 ### For maintainers
 - A Pyodide update now also means moving every `./pyodide/<version>/` in
