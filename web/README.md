@@ -149,6 +149,12 @@ compare the result with the desktop build. Tests check that the script and
 the hash file agree and that every compiled wheel is built for one ABI.
 Expect a returning editor's first load after the deploy to boot the
 previous runtime from the service worker's cache; `sw.js` explains why.
+If a wheel fails to load, in that mix or after a partial deploy, the page
+stops at boot with "could not start" rather than running without it:
+`loadPackage` does not throw on a failed wheel, so `app.js` collects its
+`errorCallback` messages and throws. Without that, a missing Pillow wheel
+gave full-size photos under "Ready to send", since the toolkit treats
+Pillow as optional.
 
 **Keep the vendored wheels at the desktop's versions.** `css-inline`,
 `beautifulsoup4` and `python-docx` are each pinned in three places:
