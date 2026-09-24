@@ -25,16 +25,18 @@ unchanged. **694 tests passing** on Linux, macOS and Windows.
   for another (#44).
 - **The page and its script always come from the same update.** Within
   ten minutes of a visit, a reload could reuse the browser's copy of the
-  page's script alongside the new page. Measured: the new runtime then
-  read the old one's files and the page could not start. The script's
-  address now changes with every update. The offline copy also checks
-  with the site before using the page's own files: without that, a new
-  tab opened within ten minutes of a visit ran the whole previous version.
+  page's script alongside the new page. Measured with the folders alone:
+  the new runtime then read the old one's files and the page could not
+  start. The script's address now changes with every update. The offline
+  copy also checks with the site before using the page's own files:
+  without that, a new tab opened within ten minutes of a visit ran the
+  whole previous version.
 - **Measured in Chrome,** updating from Pyodide 0.29.4 to 314.0.7 against
   a server sending GitHub Pages' caching headers. After the update, one
   reload started 314.0.7 from its own files only, and the page then
-  worked offline. The live site was checked the same way after the
-  deploy. The alternative, spotting the wrong version after start-up and
+  worked offline. After the deploy, the live site started in Chrome from
+  `pyodide/314.0.7/` alone on a first visit, a second one and offline.
+  The alternative, spotting the wrong version after start-up and
   reloading, was measured and rejected: within ten minutes of a visit it
   never ran, and otherwise the page took 19.6 s to be ready instead of
   about 6 s.
@@ -44,9 +46,11 @@ unchanged. **694 tests passing** on Linux, macOS and Windows.
   314.0.7, so it works, and later visits use the new version.
 - Pinned by `test_every_runtime_url_carries_the_pinned_pyodide_version`,
   `test_the_page_never_runs_an_app_js_from_another_deploy`,
-  `test_network_first_means_the_server_not_the_http_cache`, and a test
-  that runs the offline copy's folder check under Node. All 22 deliberate
-  breakages of these checks were caught.
+  `test_network_first_means_the_server_not_the_http_cache` and a test
+  that runs the offline copy's folder check under Node, among others in
+  `tests/test_web_bundle.py` and `tests/test_vendor_pyodide.py`. Each of
+  22 deliberate breakages of the code they guard (#44 lists them) made
+  one of them fail.
 
 ### For maintainers
 - A Pyodide update now also means moving every `./pyodide/<version>/` in
