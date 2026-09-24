@@ -112,24 +112,62 @@ def test_bundled_text_is_lf_normalised():
     assert offenders == [], offenders
 
 
+# The Pyodide ABI in a compiled wheel's filename: `2026_0` in
+# `lxml-6.1.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl`. Older
+# lockfiles spelled the platform `pyodide_<abi>`.
+_WHEEL_ABI = re.compile(r"-(?:pyemscripten|pyodide)_(\d{4}_\d+)_wasm32\.whl$")
+
+
 def test_pyodide_version_is_pinned_to_a_css_inline_capable_line():
-    """`css_inline` is the one Rust-backed dependency and the whole
-    email layout depends on it. It ships in Pyodide's 0.29.x
-    distribution; the 314.x line moved to ABI `2026_0` and has no
-    build yet, so an unreviewed version bump breaks the page at
-    install time with a message that points at micropip, not at us."""
+    """`css_inline` is the one Rust-backed dependency the page vendors,
+    and the whole email layout depends on it. A compiled wheel loads only
+    into the Pyodide ABI it was built for, and Pyodide changes ABI about
+    once a year (0.29.x is `2025_0`, 314.x is `2026_0`). A version bump
+    that leaves css-inline on the previous line's build breaks the page
+    at install time, with a message that points at the loader, not at us.
+
+    The runtime's own ABI shows in the wheels its lockfile supplies (lxml,
+    markupsafe, pillow). So every compiled wheel in the hash file has to
+    carry one and the same ABI; `--write-hashes` after a bump that forgot
+    css-inline records two."""
     src = (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(encoding="utf-8")
-    assert re.search(r'PYODIDE_VERSION = "0\.29\.\d+"', src), (
-        "Pyodide must stay pinned to the 0.29.x line until css_inline "
-        "publishes a build for the newer ABI."
-    )
+    pinned = re.search(r'^PYODIDE_VERSION = "([^"]+)"', src, re.M).group(1)
+    assert re.fullmatch(r"\d+\.\d+\.\d+", pinned), (
+        f"PYODIDE_VERSION {pinned!r} is not a final release")
     # The script and the hash file must agree, or the deploy fetches one
     # version and checks it against another. That fails closed, but only
     # after someone has already pushed to main.
     assets = json.loads(
         (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
-    pinned = re.search(r'PYODIDE_VERSION = "([^"]+)"', src).group(1)
     assert assets["pyodide_version"] == pinned
+
+    abis = {name: m.group(1) for name in assets["files"]
+            if (m := _WHEEL_ABI.search(name))}
+    assert any(name.startswith("css_inline-") for name in abis), (
+        "no compiled css_inline wheel is vendored")
+    assert any(not name.startswith("css_inline-") for name in abis), (
+        "no lockfile wheel shows the runtime's own ABI")
+    assert len(set(abis.values())) == 1, (
+        f"the vendored wheels are built for different Pyodide ABIs: {abis}. "
+        f"Switch css-inline in PYPI_WHEELS and PY_PACKAGES to its build for "
+        f"Pyodide {pinned}'s ABI.")
+
+
+def test_the_page_loads_only_wheels_the_deploy_vendors():
+    """A wheel loaded by path that the deploy does not vendor is a 404 at
+    boot -- and Pyodide logs a failed package and carries on, so the page
+    can still report ready. Each path in `PY_PACKAGES` has to be a file
+    the hash file pins; that also carries the ABI check above over to
+    what the page actually loads."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    assets = json.loads(
+        (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
+    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
+    loaded = re.findall(r'"\./pyodide/([^"]+\.whl)"', packages.group(1))
+    assert loaded, "PY_PACKAGES loads no wheel by path"
+    missing = [wheel for wheel in loaded if wheel not in assets["files"]]
+    assert not missing, (
+        f"web/app.js loads wheels the deploy does not vendor: {missing}")
 
 
 def test_the_runtime_is_served_from_this_origin():
@@ -548,6 +586,28 @@ def test_the_service_worker_never_serves_a_stale_bundle():
 
     guard = re.search(r"function isRuntimeAsset\(url\) \{.*?\n\}", sw, re.S)
     assert guard and "/pyodide/" in guard.group(0)
+
+
+def test_the_worker_warms_the_runtime_core_the_deploy_vendors():
+    """The page asks the worker to cache the core runtime once it has
+    booted, because on a first visit those files load before the worker
+    takes control. A name the deploy does not vendor fails that
+    `cache.add` silently, and offline then works only from the second
+    visit. Pyodide 314 renamed `pyodide.asm.js` to `pyodide.asm.mjs`,
+    which is how the two lists can drift apart."""
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+    sys.path.insert(0, str(REPO_ROOT / "web"))
+    try:
+        import vendor_pyodide
+    finally:
+        sys.path.pop(0)
+
+    warmed = re.search(r"const RUNTIME_CORE = \[(.*?)\];", sw, re.S)
+    assert warmed, "RUNTIME_CORE not found in web/sw.js"
+    paths = re.findall(r'"([^"]+)"', warmed.group(1))
+    assert all(p.startswith("./pyodide/") for p in paths), paths
+    assert sorted(p.removeprefix("./pyodide/") for p in paths) == sorted(
+        vendor_pyodide.CORE_FILES)
 
 
 def test_the_service_worker_is_same_origin_only():

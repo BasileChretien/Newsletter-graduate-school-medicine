@@ -12,9 +12,17 @@
  *
  *   ./pyodide/*   CACHE FIRST. Immutable for a given Pyodide version:
  *                 every byte is pinned by SHA-256 in
- *                 `pyodide-assets.json` and fetched at deploy time. If
- *                 the version changes, the filenames and the cache
- *                 version change with it.
+ *                 `pyodide-assets.json` and fetched at deploy time.
+ *                 Every deploy changes the cache name, so a new worker
+ *                 drops the old runtime when it activates. Until then
+ *                 the previous worker still answers: a wheel's filename
+ *                 changes with the Pyodide version, but the core files
+ *                 keep theirs, so a returning visitor's first load after
+ *                 a runtime upgrade can boot the runtime it cached. The
+ *                 move from 0.29.4 to 314 did exactly that in a test --
+ *                 0.29.4's runtime with 314's css-inline wheel -- and
+ *                 still built the email. Serving each version from its
+ *                 own path would close the gap.
  *
  *   everything    NETWORK FIRST, falling back to cache when offline.
  *   else          This is the deliberate part. `meridian-bundle.zip` is
@@ -90,10 +98,13 @@ self.addEventListener("activate", (event) => {
  *
  * Precaching them during `install` instead would block the worker
  * becoming ready on ~12 MB, on exactly the slow connection where that
- * hurts most. */
+ * hurts most.
+ *
+ * The same files as CORE_FILES in `web/vendor_pyodide.py`; a test keeps
+ * the two lists equal. */
 const RUNTIME_CORE = [
   "./pyodide/pyodide.js",
-  "./pyodide/pyodide.asm.js",
+  "./pyodide/pyodide.asm.mjs",
   "./pyodide/pyodide.asm.wasm",
   "./pyodide/python_stdlib.zip",
   "./pyodide/pyodide-lock.json",

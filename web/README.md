@@ -59,7 +59,7 @@ place that has to stay accurate:
 
 - **Your own origin, and nothing else.** `index.html`, `app.js`,
   `style.css`, `meridian-bundle.zip`, and `./pyodide/` — the whole
-  runtime: `pyodide.js`, `pyodide.asm.js`, `pyodide.asm.wasm`,
+  runtime: `pyodide.js`, `pyodide.asm.mjs`, `pyodide.asm.wasm`,
   `python_stdlib.zip`, `pyodide-lock.json`, and the wheels for
   `css_inline`, `jinja2` (with `markupsafe`), `beautifulsoup4` (with
   `soupsieve` and `typing-extensions`), `lxml`, `pillow` and
@@ -133,24 +133,31 @@ fails the suite when the two diverge — do not skip it.
 **Do not bump Pyodide without checking `css_inline`.** The entire email
 layout depends on `css_inline`, which is Rust-backed rather than pure
 Python, so it only works where a WebAssembly build exists for the
-runtime's ABI. The page vendors css-inline's own PyPI wheel for Pyodide
-**0.29.x** (ABI `pyemscripten_2025_0`). Pyodide now changes ABI about once
-a year -- the 314.x line moved to `2026_0` -- and css-inline has no build
-for it yet (requested upstream in Stranger6667/css-inline#786), so a
-version bump breaks the page at install time, with an error that points at
-the loader rather than at us. The weekly update report says when a newer
-Pyodide can run the page. Then: bump `PYODIDE_VERSION` in
-`web/vendor_pyodide.py`, switch the css-inline wheel to its build for the
-new ABI, re-run the script with `--write-hashes`, commit the new
-`pyodide-assets.json`, and let the `web-engine` workflow compare the
-result with the desktop build. Tests pin the version and check that the
-script and the hash file agree.
+runtime's ABI. The page runs Pyodide **314.x** (ABI `pyemscripten_2026_0`)
+with css-inline's own PyPI wheel for that ABI, which it publishes from
+0.21.3 on. Pyodide changes ABI about once a year, and a runtime paired
+with a wheel built for another line breaks the page at install time, with
+an error that points at the loader rather than at us. The weekly update
+report says when a newer Pyodide can run the page. Then: bump
+`PYODIDE_VERSION` in `web/vendor_pyodide.py`; switch the css-inline wheel
+to its build for the new ABI in `PYPI_WHEELS` and in `PY_PACKAGES` in
+`app.js`; check the runtime's own filenames against the new release (314
+renamed `pyodide.asm.js` to `pyodide.asm.mjs`), which `CORE_FILES` and
+`RUNTIME_CORE` in `sw.js` list; re-run the script with `--write-hashes`,
+commit the new `pyodide-assets.json`, and let the `web-engine` workflow
+compare the result with the desktop build. Tests check that the script and
+the hash file agree and that every compiled wheel is built for one ABI.
+Expect a returning editor's first load after the deploy to boot the
+previous runtime from the service worker's cache; `sw.js` explains why.
 
 **Keep the vendored wheels at the desktop's versions.** `css-inline`,
 `beautifulsoup4` and `python-docx` are each pinned in three places:
 `requirements.txt`, `PYPI_WHEELS` in `vendor_pyodide.py`, and
 `PY_PACKAGES` in `app.js`. A Dependabot bump of `requirements.txt` alone
 fails `tests/test_web_bundle.py` on purpose, with the steps to finish it.
+`jinja2`, `lxml` and `pillow` come from Pyodide's lockfile instead, so
+they move only with Pyodide: 314.0.7 ships Pillow 12.2.0 against the
+desktop's 12.3.0, because Pillow publishes no WebAssembly wheel on PyPI.
 
 ## Testing the real engine
 
@@ -168,6 +175,14 @@ MERIDIAN_WEB_ENGINE=1 python -m pytest tests/test_web_engine.py
 
 It compares against the Python you run it with, so install
 `requirements.txt` first: an older desktop css-inline is a real mismatch.
+
+It compares the email's HTML and text, not its photos, and that is
+deliberate: a JPEG the toolkit re-encodes comes out with different bytes
+in the browser whatever the Pillow versions, because Pyodide's Pillow
+encodes with libjpeg 9 and the desktop wheels with libjpeg-turbo. On a
+real issue, desktop Pillow 11.3.0, 12.2.0 and 12.3.0 all gave one set of
+bytes and the browser's 11.3.0 and 12.2.0 another, 945 B apart on a
+146 KB photo.
 
 ## Deliberate limits
 

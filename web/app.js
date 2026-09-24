@@ -8,11 +8,11 @@
  * is made by the same Python the desktop launcher runs -- there is no
  * second implementation here to drift out of sync.
  *
- * Pyodide is pinned to 0.29.x on purpose: `css_inline` (the Rust-backed
- * CSS inliner the whole email layout depends on) ships in that line's
- * distribution. The 314.x line moved to ABI 2026_0 and has no
- * `css_inline` build yet, so bumping the version in index.html without
- * checking will break the page at install time.
+ * Pyodide is pinned to the 314.x line (ABI 2026_0) in
+ * `web/vendor_pyodide.py`. `css_inline` (the Rust-backed CSS inliner the
+ * whole email layout depends on) is compiled, and its wheel below must be
+ * the build for that ABI: a runtime and a wheel from different lines fail
+ * at install time. Moving to the next line means switching this path too.
  */
 
 // The one address that is legitimate. Shown in the footer and used by
@@ -31,8 +31,8 @@ const SOURCE_URL =
  * `indexURL` the runtime resolves names straight out of the vendored
  * lockfile, so micropip and its network access are not needed at all.
  * Three packages are vendored from PyPI as wheels and loaded by path
- * instead: python-docx (absent from Pyodide's lockfile), and css-inline
- * and beautifulsoup4 (present there, but older than the desktop pins). */
+ * instead: python-docx and css-inline (absent from Pyodide's lockfile),
+ * and beautifulsoup4 (present there, but older than the desktop pin). */
 const PYODIDE_INDEX_URL = "./pyodide/";
 
 const PY_PACKAGES = [
@@ -48,7 +48,7 @@ const PY_PACKAGES = [
   // Exactly the versions requirements.txt pins, so the page and the
   // desktop build render the same Word file with the same libraries
   // (tests/test_web_bundle.py keeps them in step).
-  "./pyodide/css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
+  "./pyodide/css_inline-0.21.3-cp310-abi3-pyemscripten_2026_0_wasm32.whl",
   "./pyodide/beautifulsoup4-4.15.0-py3-none-any.whl",
   "./pyodide/python_docx-1.2.0-py3-none-any.whl",
 ];
