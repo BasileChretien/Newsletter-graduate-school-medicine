@@ -359,10 +359,12 @@ def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
                     f"Pyodide {tag} has every package the page loads (pinned: {pinned})",
                     "This crosses a compatibility line: bump PYODIDE_VERSION, "
                     "switch the vendored compiled wheels (css-inline) to their "
-                    "builds for the new ABI, relax the 0.29.x pin in "
-                    "tests/test_web_bundle.py, run `python web/vendor_pyodide.py "
-                    "--write-hashes`, and let the web-engine workflow compare "
-                    "the result with the desktop build before merging."))
+                    "builds for the new ABI in web/vendor_pyodide.py and "
+                    "web/app.js, check the runtime's own filenames (CORE_FILES, "
+                    "and RUNTIME_CORE in web/sw.js), run `python "
+                    "web/vendor_pyodide.py --write-hashes`, and let the "
+                    "web-engine workflow compare the result with the desktop "
+                    "build before merging. web/README.md has the details."))
     return findings
 
 

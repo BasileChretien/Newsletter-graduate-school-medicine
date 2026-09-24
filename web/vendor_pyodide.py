@@ -68,18 +68,22 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_DIR = REPO_ROOT / "web" / "pyodide"
 HASH_FILE = REPO_ROOT / "web" / "pyodide-assets.json"
 
-# Pinned to the 0.29.x line: css-inline -- the Rust-backed CSS inliner the
-# whole email layout depends on -- publishes a wheel for this line's ABI
-# (`pyemscripten_2025_0`). Pyodide 314.x moved to ABI 2026_0 and has no
-# css-inline build yet; the weekly update check reports when one appears
-# (tools/check_updates.py).
-PYODIDE_VERSION = "0.29.4"
+# Pinned to the 314.x line (ABI `pyemscripten_2026_0`). css-inline -- the
+# Rust-backed CSS inliner the whole email layout depends on -- is compiled,
+# so the page can only move to a line it publishes a wheel for: 0.21.3 is
+# the first release built for 2026_0. Pyodide changes ABI about once a
+# year; the weekly update check (tools/check_updates.py) reports when the
+# next line has every package the page loads, and tests/test_web_bundle.py
+# fails if the compiled wheels do not all match the runtime's ABI.
+PYODIDE_VERSION = "314.0.7"
 PYODIDE_BASE = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full/"
 
-# The runtime itself.
+# The runtime itself. `web/sw.js` warms the same list (RUNTIME_CORE). Since
+# 314.0.0 the loader imports `pyodide.asm.mjs`, an ES module, where it used
+# to inject `pyodide.asm.js` as a classic script.
 CORE_FILES = (
     "pyodide.js",
-    "pyodide.asm.js",
+    "pyodide.asm.mjs",
     "pyodide.asm.wasm",
     "python_stdlib.zip",
     "pyodide-lock.json",
@@ -103,17 +107,17 @@ PACKAGES = ("jinja2", "pillow", "lxml", "soupsieve", "typing-extensions")
 # reserves filenames, so an exact artifact can never be re-uploaded with
 # different bytes.
 #
-# * `python-docx` is absent from Pyodide's lockfile altogether.
-# * `css-inline` and `beautifulsoup4` are in it, but at older versions
-#   (0.16.0 and 4.13.3) than the desktop pins. css-inline publishes its own
-#   wheel for this runtime's ABI from 0.21.0 on.
+# * `python-docx` and `css-inline` are absent from Pyodide's lockfile.
+#   css-inline publishes its own wheel for each ABI instead: `2025_0`
+#   (Pyodide 0.29.x) from 0.21.0 on, `2026_0` (314.x) from 0.21.3 on.
+# * `beautifulsoup4` is in it, but older (4.14.3) than the desktop pin.
 PYPI_WHEELS = {
     "python_docx-1.2.0-py3-none-any.whl":
         "https://files.pythonhosted.org/packages/py3/p/python-docx/"
         "python_docx-1.2.0-py3-none-any.whl",
-    "css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl":
+    "css_inline-0.21.3-cp310-abi3-pyemscripten_2026_0_wasm32.whl":
         "https://files.pythonhosted.org/packages/cp310/c/css-inline/"
-        "css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
+        "css_inline-0.21.3-cp310-abi3-pyemscripten_2026_0_wasm32.whl",
     "beautifulsoup4-4.15.0-py3-none-any.whl":
         "https://files.pythonhosted.org/packages/py3/b/beautifulsoup4/"
         "beautifulsoup4-4.15.0-py3-none-any.whl",
