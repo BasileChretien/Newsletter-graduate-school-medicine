@@ -260,7 +260,27 @@ async function boot() {
     // One call with the whole list so the runtime resolves shared
     // dependencies once (jinja2/MarkupSafe, beautifulsoup4/soupsieve,
     // python-docx/lxml).
-    await pyodide.loadPackage(PY_PACKAGES);
+    //
+    // A wheel that fails to load does not make this reject: Pyodide
+    // reports it through `errorCallback` and carries on. Most losses then
+    // fail at `from scripts.webapp import ...` anyway, but not Pillow --
+    // the toolkit treats it as optional and sends photos at full size
+    // without it. Measured with the pillow wheel missing: "Ready to send",
+    // and a real issue's .eml grew from 2.53 MB to 3.23 MB. A partial
+    // deploy or the service-worker version mix described in sw.js can
+    // cause that, so any load error stops the boot here.
+    //
+    // `checkIntegrity` is spelled out because an options object replaces
+    // the default one, `{ checkIntegrity: true }`. 314.0.7 happens to
+    // default the flag to true again further in, but that is internal.
+    const loadErrors = [];
+    await pyodide.loadPackage(PY_PACKAGES, {
+      checkIntegrity: true,
+      errorCallback: (msg) => loadErrors.push(msg),
+    });
+    if (loadErrors.length) {
+      throw new Error(`packages failed to load:\n${loadErrors.join("\n")}`);
+    }
 
     setBoot("bootBundle");
     const res = await fetch("meridian-bundle.zip");

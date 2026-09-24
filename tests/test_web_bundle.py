@@ -170,6 +170,42 @@ def test_the_page_loads_only_wheels_the_deploy_vendors():
         f"web/app.js loads wheels the deploy does not vendor: {missing}")
 
 
+def test_a_package_that_fails_to_load_stops_the_boot():
+    """`pyodide.loadPackage` does not reject when a wheel fails: it
+    reports the failure through `errorCallback` and resolves. Most losses
+    still kill the boot at `from scripts.webapp import ...`, but Pillow is
+    optional in the toolkit -- without it photos go out at full size. With
+    the pillow wheel deleted, the page said "Ready to send" and a real
+    issue's .eml grew from 2.53 MB to 3.23 MB, with no warning anywhere.
+
+    So the boot has to collect those errors and throw before the page
+    reports ready, which lands in the catch that shows `bootFailed`."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    boot = re.search(r"async function boot\(\) \{.*?\n\}", app_js, re.S)
+    assert boot, "boot() not found in web/app.js"
+    body = re.sub(r"/\*.*?\*/|//[^\n]*", "", boot.group(0), flags=re.S)
+
+    call = re.search(r"await pyodide\.loadPackage\(PY_PACKAGES,\s*\{(.*?)\}\);",
+                     body, re.S)
+    assert call, "loadPackage must be given an options object"
+    collector = re.search(r"errorCallback:\s*\(?(\w+)\)?\s*=>\s*(\w+)\.push\(\1\)",
+                          call.group(1))
+    assert collector, "load errors are not collected through errorCallback"
+    # An options object replaces the default `{ checkIntegrity: true }`.
+    assert re.search(r"checkIntegrity:\s*true", call.group(1)), (
+        "passing options must not switch off the lockfile hash check")
+
+    errors = re.escape(collector.group(2))
+    stop = re.search(rf"if \({errors}\.length\) \{{\s*throw new Error\(", body)
+    assert stop, "collected load errors never stop the boot"
+    assert call.end() < stop.start() < body.index("buildFn = pyodide.runPython"), (
+        "load errors must be checked after loadPackage and before the page "
+        "reports ready")
+    catch = re.search(r"\} catch \(err\) \{.*", body, re.S).group(0)
+    assert re.search(r'"bootFailed",\s*String\(err\)\)', catch), (
+        "a boot failure must show bootFailed with the error as its detail")
+
+
 def test_the_runtime_is_served_from_this_origin():
     """Every executed byte comes from our own host. The previous
     arrangement loaded ~10 MB from `cdn.jsdelivr.net`, which also serves
