@@ -6,6 +6,59 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [v1.5.3] — the website moves to Pyodide 314 (2026-09-24)
+
+The website now runs on Pyodide 314.0.7, which brings it lxml 6.1.3 (the
+desktop's security floor) and Pillow 12.2.0. It also refuses to start when
+one of its packages fails to load, instead of quietly sending photos at
+full size. css-inline 0.21.3 on both the desktop and the website; the
+desktop is otherwise unchanged. **688 tests passing** on Linux, macOS and
+Windows.
+
+### Fixed — the website could send full-size photos without a warning (HIGH)
+- **A package that failed to load did not stop the page.** The website's
+  Python runtime logs a package it cannot load and carries on, so the page
+  still said it was ready. Most missing packages stopped it a moment later
+  anyway, but not Pillow, which resizes photos: the toolkit treats it as
+  optional, so without it photos went out at full size. With the Pillow
+  file missing, the page said "Ready to send" and a real issue's `.eml`
+  grew from 2.53 MB to 3.23 MB, with no warning. An incomplete deploy, or
+  a returning visitor's offline copy mixing two versions (below), can
+  cause that.
+- **The page now stops at start-up** with its usual "could not start …
+  reload the page" message, and the detail underneath names the package
+  (#42). Checked in a browser: with the Pillow file removed the page
+  stops; with it present the page starts and builds the same issue with
+  resized photos. The desktop is unaffected: there Pillow stays optional.
+- Pinned by `test_a_package_that_fails_to_load_stops_the_boot` in
+  `tests/test_web_bundle.py`.
+
+### Changed — the website runs on Pyodide 314.0.7 (#41)
+- **lxml 6.1.3** (was 6.0.2), which meets the desktop's ≥ 6.1.3 security
+  floor (CVE-2026-41066).
+- **Pillow 12.2.0** (was 11.3.0). The desktop pins 12.3.0, and Pillow
+  publishes no WebAssembly build of its own, so the website moves only
+  when Pyodide ships it. Resized JPEGs already differed by a few bytes
+  between the two builds for another reason: the website's Pillow encodes
+  them with libjpeg 9, the desktop's with libjpeg-turbo, whatever the
+  Pillow version.
+- css-inline's wheel is its first build for Pyodide 314. Every runtime
+  file was checked against an independent source (npm, the Pyodide
+  lockfile, PyPI), and the permanent copy of this runtime is published as
+  the `pyodide-runtime-314.0.7` pre-release. The 0.29.4 and 314.0.7
+  runtimes built byte-identical emails from the Word template and a real
+  issue.
+- **First visit after the update.** An editor who used the website before
+  may, on their first visit after this release, still start the previous
+  runtime from the browser's offline copy; later visits use the new one.
+  If that mix leaves a package unloaded, the page now stops and asks for
+  a reload (above).
+
+### Changed — dependency updates
+- **css-inline 0.21.3** (#40) on the desktop and the website, up from
+  0.21.2. Emails built with it were byte-identical to 0.21.2's for the
+  template and a real issue.
+
 ## [v1.5.2] — dependency updates (2026-09-14)
 
 Dependency updates only. **685 tests passing** on Linux, macOS and Windows.
@@ -707,6 +760,7 @@ for the full archaeology.
 
 ---
 
+[v1.5.3]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.3
 [v1.5.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.2
 [v1.5.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.1
 [v1.5.0]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.0
