@@ -577,7 +577,7 @@ def test_vendor_script_refuses_filenames_that_escape_the_vendor_dir():
         sys.path.pop(0)
 
     for hostile in ("../../.github/workflows/deploy-web.yml",
-                    "..\..\evil.py", "/etc/passwd", "a/b.whl", "..", ""):
+                    r"..\..\evil.py", "/etc/passwd", "a/b.whl", "..", ""):
         with pytest.raises(ValueError):
             vendor_pyodide._safe_name(hostile)
 
