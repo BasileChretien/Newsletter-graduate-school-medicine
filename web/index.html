@@ -151,8 +151,17 @@
 <!-- Local loader. SRI is no longer the integrity mechanism: every byte
      is verified against `pyodide-assets.json` at deploy time, which
      covers the whole runtime rather than the 18.5 KB loader that SRI
-     reached. -->
-<script src="./pyodide/pyodide.js"></script>
-<script src="app.js" type="module"></script>
+     reached. The directory is the Pyodide version, the same one as
+     PYODIDE_INDEX_URL in app.js: see VENDOR_DIR in vendor_pyodide.py. -->
+<script src="./pyodide/314.0.7/pyodide.js"></script>
+<!-- `?v=` is stamped with the commit at deploy time, like sw.js. This
+     page and app.js both name the runtime's directory, so they must come
+     from the same deploy. On a reload the browser revalidates only this
+     document: an app.js fetched less than ten minutes earlier (GitHub
+     Pages sends max-age=600) came from its cache without reaching the
+     service worker, and a test of the 0.29.4 -> 314 upgrade then booted
+     314's loader against 0.29.4's files. A new URL per deploy cannot be
+     answered by any cache. -->
+<script src="app.js?v=__MERIDIAN_VERSION__" type="module"></script>
 </body>
 </html>

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -163,7 +164,8 @@ def test_the_page_loads_only_wheels_the_deploy_vendors():
     assets = json.loads(
         (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
     packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
-    loaded = re.findall(r'"\./pyodide/([^"]+\.whl)"', packages.group(1))
+    loaded = [path.rsplit("/", 1)[-1] for path in
+              re.findall(r'"\./pyodide/([^"]+\.whl)"', packages.group(1))]
     assert loaded, "PY_PACKAGES loads no wheel by path"
     missing = [wheel for wheel in loaded if wheel not in assets["files"]]
     assert not missing, (
@@ -228,13 +230,93 @@ def test_the_runtime_is_served_from_this_origin():
             f"{src} is loaded from a third-party host; `script-src "
             f"'self'` exists precisely to forbid that"
         )
-    assert "./pyodide/pyodide.js" in tags
+    assert any(re.fullmatch(r"\./pyodide/[^/]+/pyodide\.js", src) for src in tags)
 
     # Without an explicit indexURL the loader falls back to the CDN for
     # the wasm, the stdlib and every wheel -- the <script> tag alone
     # moves only 18.5 KB of the 16 MB.
     assert "loadPyodide({ indexURL: PYODIDE_INDEX_URL })" in app_js
-    assert re.search(r'PYODIDE_INDEX_URL = "\./pyodide/"', app_js)
+    assert re.search(r'PYODIDE_INDEX_URL = "\./pyodide/[^"/]+/"', app_js)
+
+
+def _pinned_pyodide_version() -> str:
+    src = (REPO_ROOT / "web" / "vendor_pyodide.py").read_text(encoding="utf-8")
+    return re.search(r'^PYODIDE_VERSION = "([^"]+)"', src, re.M).group(1)
+
+
+# A string literal (kept) or an HTML / JavaScript comment (dropped). Strings
+# are tried first at each position, so a `//` inside one -- a URL, a path --
+# is never taken for the start of a comment and the rest of its line lost.
+_STRING_OR_COMMENT = re.compile(
+    r"""("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)"""
+    r"|<!--.*?-->|/\*.*?\*/|//[^\n]*", re.S)
+
+
+def _code(path: str) -> str:
+    """A file with its HTML and JavaScript comments removed: those may
+    mention `./pyodide/` in prose, and only code decides what the page
+    fetches."""
+    text = (REPO_ROOT / path).read_text(encoding="utf-8")
+    return _STRING_OR_COMMENT.sub(lambda m: m.group(1) or "", text)
+
+
+def test_every_runtime_url_carries_the_pinned_pyodide_version():
+    """The service worker answers runtime URLs from its cache first, and
+    the runtime's own filenames (`pyodide.js`, `pyodide.asm.wasm`, ...)
+    are the same in every Pyodide version. While all versions shared
+    `./pyodide/`, the first visit after an upgrade -- still controlled by
+    the previous worker, with the previous runtime in its cache -- booted
+    that runtime: a test of the 0.29.4 -> 314 move ran 0.29.4 with 314's
+    css-inline wheel. Each version is now served from
+    `./pyodide/<version>/`, URLs that no cache has seen.
+
+    That holds only while every URL the page loads the runtime by moves
+    with the pin: the loader in index.html, PYODIDE_INDEX_URL and each
+    wheel loaded by path. One left behind is a 404 on the new deploy or,
+    for the loader, one version's runtime reading another's files. The
+    worker names no version at all; the page tells it which to warm."""
+    pinned = _pinned_pyodide_version()
+    assets = json.loads(
+        (REPO_ROOT / "web" / "pyodide-assets.json").read_text(encoding="utf-8"))
+    assert assets["pyodide_version"] == pinned, (
+        "web/pyodide-assets.json and PYODIDE_VERSION name different versions")
+    directory = f"./pyodide/{pinned}/"
+    html, app_js, sw = (_code(f"web/{name}")
+                        for name in ("index.html", "app.js", "sw.js"))
+    fix = (f"Move every `./pyodide/<version>/` in web/index.html and "
+           f"web/app.js to {directory} (PYODIDE_VERSION in "
+           f"web/vendor_pyodide.py).")
+
+    # Where it has to be...
+    assert f"{directory}pyodide.js" in re.findall(
+        r'<script[^>]*\ssrc="([^"]+)"', html), f"index.html's loader. {fix}"
+    assert f'const PYODIDE_INDEX_URL = "{directory}";' in app_js, (
+        f"PYODIDE_INDEX_URL in app.js. {fix}")
+    packages = re.search(r"const PY_PACKAGES = \[(.*?)\];", app_js, re.S)
+    by_path = [e for e in re.findall(r'"([^"]+)"', packages.group(1)) if "/" in e]
+    assert by_path, "PY_PACKAGES loads no wheel by path"
+    assert all(e.startswith(directory) for e in by_path), (
+        f"wheels in PY_PACKAGES outside {directory}: {by_path}. {fix}")
+
+    # ...and nothing names another: a version left behind, or the flat
+    # `./pyodide/` of before.
+    runtime_url = re.compile(r"""["'`](\./pyodide/[^"'`]*)["'`]""")
+    elsewhere = [
+        f"web/{name}: {url}"
+        for name, text in (("index.html", html), ("app.js", app_js))
+        for url in runtime_url.findall(text)
+        if not url.startswith(directory) or "/" in url[len(directory):]]
+    assert not elsewhere, f"runtime URLs outside {directory}: {elsewhere}. {fix}"
+    assert runtime_url.findall(sw) == ["./pyodide/"], (
+        "web/sw.js names a runtime directory; it must take the version from "
+        "the page's warm message, or one release's worker warms another's "
+        "runtime")
+
+    # The engine test loads what the page names, not a path of its own.
+    runner = _code("tests/web_engine/run.cjs")
+    assert "PYODIDE_INDEX_URL" in runner
+    assert not re.search(r'"pyodide"|\./pyodide/', runner), (
+        "tests/web_engine/run.cjs builds its own runtime path")
 
 
 def test_no_package_is_resolved_over_the_network_at_runtime():
@@ -413,7 +495,7 @@ def test_desktop_and_browser_parse_with_the_same_python_docx():
     # with the third is the silent divergence this test exists for.
     fetched = re.search(r'"python_docx-([\d.]+)-py3-none-any\.whl"', vendor)
     browser = re.search(
-        r'"\./pyodide/python_docx-([\d.]+)-py3-none-any\.whl"', app_js)
+        r'"\./pyodide/(?:[^"/]+/)*python_docx-([\d.]+)-py3-none-any\.whl"', app_js)
     assert desktop and browser and fetched, "could not find all three pins"
     assert desktop.group(1) == browser.group(1) == fetched.group(1), (
         f"requirements.txt pins {desktop.group(1)}, web/app.js loads "
@@ -438,7 +520,8 @@ def test_desktop_and_browser_render_with_the_same_version(project, wheel_name):
 
     desktop = re.search(rf"^{re.escape(project)}==([\d.]+)", reqs, re.M)
     fetched = re.search(rf'"{wheel_name}-([\d.]+)-[^"/]+\.whl"\s*:', vendor)
-    browser = re.search(rf'"\./pyodide/{wheel_name}-([\d.]+)-[^"/]+\.whl"', app_js)
+    browser = re.search(
+        rf'"\./pyodide/(?:[^"/]+/)*{wheel_name}-([\d.]+)-[^"/]+\.whl"', app_js)
     assert desktop and fetched and browser, (
         f"could not find all three pins for {project}: requirements.txt "
         f"{bool(desktop)}, PYPI_WHEELS {bool(fetched)}, PY_PACKAGES {bool(browser)}")
@@ -640,10 +723,93 @@ def test_the_worker_warms_the_runtime_core_the_deploy_vendors():
 
     warmed = re.search(r"const RUNTIME_CORE = \[(.*?)\];", sw, re.S)
     assert warmed, "RUNTIME_CORE not found in web/sw.js"
-    paths = re.findall(r'"([^"]+)"', warmed.group(1))
-    assert all(p.startswith("./pyodide/") for p in paths), paths
-    assert sorted(p.removeprefix("./pyodide/") for p in paths) == sorted(
-        vendor_pyodide.CORE_FILES)
+    names = re.findall(r'"([^"]+)"', warmed.group(1))
+    # Bare filenames. Their directory is the Pyodide version, which the
+    # page names when it asks; a path here would be one version's.
+    assert not any("/" in name for name in names), names
+    assert sorted(names) == sorted(vendor_pyodide.CORE_FILES)
+
+
+def test_the_page_tells_the_worker_which_runtime_to_warm():
+    """The worker holds only the core filenames; their directory changes
+    with every Pyodide version, and only the page knows which one it
+    booted. The directory it names has to be checked before anything is
+    fetched into the cache (see the Node test below for the check)."""
+    app_js = (REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+
+    post = re.search(r"controller\?\.postMessage\(\{(.*?)\}\)", app_js, re.S)
+    assert post, "the page no longer asks the worker to warm the runtime"
+    assert "indexURL: new URL(PYODIDE_INDEX_URL, location.href).href" in post.group(1)
+
+    handler = re.search(r'self\.addEventListener\("message".*?\n\}\);', sw, re.S)
+    assert handler, "the worker's message handler was not found"
+    body = handler.group(0)
+    check = body.index("runtimeDirectory(event.data.indexURL)")
+    assert check < body.index("caches.open"), (
+        "the worker opens its cache before checking the directory it was sent")
+    assert "if (!directory) return;" in body
+
+
+_WORKER_DIRECTORY_CHECK = """
+const self = { location: new URL(process.argv[2]) };
+%s
+%s
+const cases = JSON.parse(require("fs").readFileSync(0, "utf8"));
+process.stdout.write(JSON.stringify(cases.map((value) => {
+  const url = runtimeDirectory(value);
+  return url === null ? null : url.href;
+})));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node")
+def test_the_worker_warms_only_a_version_directory_of_its_own_runtime(tmp_path):
+    """Runs `runtimeDirectory` from web/sw.js under Node. Whatever a
+    "warm" message names, the worker may only fetch into its cache from
+    one directory below its own `./pyodide/` -- never another origin,
+    another part of the site, or a URL that normalises its way out."""
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+    root_decl = re.search(r"^const RUNTIME_ROOT = .*?;\n", sw, re.M)
+    check = re.search(r"^function runtimeDirectory\(value\) \{.*?^\}\n",
+                      sw, re.M | re.S)
+    assert root_decl and check, "RUNTIME_ROOT / runtimeDirectory not found"
+    script = tmp_path / "check.cjs"
+    script.write_text(_WORKER_DIRECTORY_CHECK % (root_decl.group(0), check.group(0)),
+                      encoding="utf-8")
+
+    root = "https://example.org/meridian/pyodide/"
+    accepted = [root + "314.0.7/", root + "0.29.4/", root + "315.0.0a1/"]
+    refused = [
+        "https://evil.example/meridian/pyodide/314.0.7/",   # another origin
+        "http://example.org/meridian/pyodide/314.0.7/",     # another scheme
+        "https://example.org/other/pyodide/314.0.7/",       # outside the site
+        "https://example.org/meridian/PYODIDE/314.0.7/",
+        root,                                               # no version
+        root + "314.0.7",                                   # a file, not a directory
+        root + "314.0.7/pyodide.js",
+        root + "314.0.7/nested/",
+        root + "../meridian-bundle.zip",                    # normalises out
+        root + "%2e%2e/",
+        root + "..%2f/",
+        root + ".hidden/",
+        root + "314.0.7/?v=2",
+        root + "314.0.7/#x",
+        "https://user@example.org/meridian/pyodide/314.0.7/",
+        "./pyodide/314.0.7/",                               # not absolute
+        "javascript:alert(1)//",
+        None, 42, {}, [],
+    ]
+    run = subprocess.run(
+        [shutil.which("node"), str(script), "https://example.org/meridian/sw.js"],
+        input=json.dumps(accepted + refused), capture_output=True, text=True,
+        encoding="utf-8", timeout=60)
+    assert run.returncode == 0, run.stderr
+    verdicts = json.loads(run.stdout)
+    assert verdicts[:len(accepted)] == accepted
+    let_through = [case for case, verdict in zip(refused, verdicts[len(accepted):])
+                   if verdict is not None]
+    assert not let_through, f"the worker would warm from: {let_through}"
 
 
 def test_the_service_worker_is_same_origin_only():
@@ -665,6 +831,49 @@ def test_a_new_deploy_invalidates_every_previous_cache():
     assert "github.sha" in wf
     assert re.search(r"caches\.delete", sw), "old caches are never dropped"
     assert wf.index("__MERIDIAN_VERSION__") < wf.index("upload-pages-artifact")
+
+
+def test_the_page_never_runs_an_app_js_from_another_deploy():
+    """index.html and app.js both name the runtime's directory, so they
+    have to come from one deploy. Measured in Chrome against a server
+    sending GitHub Pages' `max-age=600`: on the first reload after a
+    0.29.4 -> 314.0.7 deploy the browser revalidated the document only,
+    and took app.js -- fetched minutes earlier -- from its own cache
+    without asking the worker. 314's loader then read 0.29.4's lockfile,
+    stdlib and wasm, asked for a `0.29.4/pyodide.asm.mjs` that never
+    existed, and the boot failed. With `app.js?v=<commit>` the fresh
+    document names a URL no cache holds, and the same reload booted
+    314.0.7 from 314.0.7's files alone."""
+    html = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+    wf = (REPO_ROOT / ".github" / "workflows" / "deploy-web.yml").read_text(
+        encoding="utf-8")
+
+    modules = re.findall(r'<script src="([^"]+)" type="module">', html)
+    assert modules == ["app.js?v=__MERIDIAN_VERSION__"], modules
+    # The deploy stamps the page as well as the worker, before publishing.
+    stamp = re.search(r'for name in \(([^)]*)\):', wf)
+    assert stamp and {"web/sw.js", "web/index.html"} <= set(
+        re.findall(r'"([^"]+)"', stamp.group(1))), "index.html is not stamped"
+    assert wf.index('"web/index.html"') < wf.index("upload-pages-artifact")
+    # Offline, the page asks for the stamped URL; the shell has to hold it.
+    shell = re.search(r"const SHELL = \[(.*?)\];", sw, re.S).group(1)
+    assert "`./app.js?v=${VERSION}`" in shell
+    assert '"./app.js"' not in shell
+
+
+def test_network_first_means_the_server_not_the_http_cache():
+    """GitHub Pages sends `max-age=600`, so a plain `fetch()` returns any
+    copy under ten minutes old -- "network first" in name only. Measured
+    in Chrome: after a 0.29.4 -> 314.0.7 deploy, a new tab opened within
+    ten minutes of a visit got the previous index.html through the worker
+    and ran the whole previous release; revalidating, the same tab ran
+    314.0.7 from 314.0.7's files."""
+    sw = (REPO_ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+    network_first = sw[sw.index("if (isRuntimeAsset(url))"):]
+    network_first = network_first[network_first.index("    return;"):]
+    assert 'fetch(request, { cache: "no-cache" })' in network_first
+    assert re.search(r"fetch\(request\)", network_first) is None
 
 
 def test_the_csp_allows_the_worker_it_registers():

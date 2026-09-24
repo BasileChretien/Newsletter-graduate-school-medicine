@@ -10,19 +10,22 @@
  * The strategy is deliberately split, and the split is the important
  * part of this file.
  *
- *   ./pyodide/*   CACHE FIRST. Immutable for a given Pyodide version:
- *                 every byte is pinned by SHA-256 in
- *                 `pyodide-assets.json` and fetched at deploy time.
- *                 Every deploy changes the cache name, so a new worker
- *                 drops the old runtime when it activates. Until then
- *                 the previous worker still answers: a wheel's filename
- *                 changes with the Pyodide version, but the core files
- *                 keep theirs, so a returning visitor's first load after
- *                 a runtime upgrade can boot the runtime it cached. The
- *                 move from 0.29.4 to 314 did exactly that in a test --
- *                 0.29.4's runtime with 314's css-inline wheel -- and
- *                 still built the email. Serving each version from its
- *                 own path would close the gap.
+ *   ./pyodide/*   CACHE FIRST. Immutable: every byte is pinned by
+ *                 SHA-256 in `pyodide-assets.json` and fetched at deploy
+ *                 time, and each Pyodide version is served from its own
+ *                 directory, `./pyodide/<version>/`. That directory is
+ *                 what makes cache-first safe across an upgrade. The
+ *                 runtime's filenames are the same in every version, and
+ *                 on the first visit after a deploy the PREVIOUS worker
+ *                 still controls the page, with the previous runtime in
+ *                 its cache. While every version shared `./pyodide/`, a
+ *                 returning editor's page booted that cached runtime --
+ *                 a test of the 0.29.4 -> 314 upgrade ran 0.29.4 with
+ *                 314's css-inline wheel -- and a new worker activating
+ *                 mid-boot could delete files the old loader had yet to
+ *                 ask for. A new version's URLs have never been cached,
+ *                 by any worker or by the browser's HTTP cache, so the
+ *                 first visit after an upgrade fetches all of them.
  *
  *   everything    NETWORK FIRST, falling back to cache when offline.
  *   else          This is the deliberate part. `meridian-bundle.zip` is
@@ -34,6 +37,18 @@
  *                 always gets current code; offline, they get the last
  *                 version they successfully loaded.
  *
+ *                 "Network" means the server, not the browser's HTTP
+ *                 cache: GitHub Pages sends `max-age=600`, and a plain
+ *                 fetch returns any copy under ten minutes old. Measured
+ *                 in Chrome: after a deploy, a new tab opened within ten
+ *                 minutes of a visit ran the previous release; with
+ *                 these requests revalidating (`cache: "no-cache"`, a
+ *                 304 per file on GitHub Pages) it ran the new one. A
+ *                 reload is different: measured the same way, the
+ *                 browser reused its copy of app.js without asking this
+ *                 worker at all, which is why index.html loads it as
+ *                 `app.js?v=<commit>`.
+ *
  * Nothing derived from the editor is ever cached. The DOCX never
  * reaches the network (there is no endpoint), and the `.eml` and the
  * built HTML are blob: URLs, which are not fetch events this worker
@@ -44,17 +59,20 @@
 /* Replaced at deploy time with the commit SHA -- see deploy-web.yml.
  * A new deploy changes these bytes, the browser sees a byte-different
  * worker, installs it, and `activate` drops every previous cache. That
- * is what stops an old bundle outliving a release. */
+ * is what stops an old bundle outliving a release. index.html carries
+ * the same stamp in app.js's URL. */
 const VERSION = "__MERIDIAN_VERSION__";
 const CACHE = `meridian-${VERSION}`;
 
-/* The app shell. `./pyodide/` is NOT precached: it is ~16 MB, and
- * forcing it down during install would block the worker becoming ready
- * on a slow connection. It populates on first real use instead. */
+/* The app shell. `./pyodide/<version>/` is NOT precached: it is ~16 MB,
+ * and forcing it down during install would block the worker becoming
+ * ready on a slow connection. It populates on first real use instead.
+ * app.js under the URL index.html loads it by: stamped with the same
+ * commit, so the page still finds it offline. */
 const SHELL = [
   "./",
   "./index.html",
-  "./app.js",
+  `./app.js?v=${VERSION}`,
   "./style.css",
   "./meridian-bundle.zip",
 ];
@@ -100,21 +118,45 @@ self.addEventListener("activate", (event) => {
  * becoming ready on ~12 MB, on exactly the slow connection where that
  * hurts most.
  *
- * The same files as CORE_FILES in `web/vendor_pyodide.py`; a test keeps
- * the two lists equal. */
+ * Filenames only, the same as CORE_FILES in `web/vendor_pyodide.py` (a
+ * test keeps the two lists equal). The directory they live in changes
+ * with every Pyodide version, and only the page knows which one it
+ * booted, so it sends that directory along with its request. */
 const RUNTIME_CORE = [
-  "./pyodide/pyodide.js",
-  "./pyodide/pyodide.asm.mjs",
-  "./pyodide/pyodide.asm.wasm",
-  "./pyodide/python_stdlib.zip",
-  "./pyodide/pyodide-lock.json",
+  "pyodide.js",
+  "pyodide.asm.mjs",
+  "pyodide.asm.wasm",
+  "python_stdlib.zip",
+  "pyodide-lock.json",
 ];
+
+const RUNTIME_ROOT = new URL("./pyodide/", self.location).href;
+
+/* The directory named in a "warm" message, or null. It arrives in a
+ * message, so it is checked rather than trusted: exactly one directory --
+ * the version -- below this worker's own `./pyodide/`. RUNTIME_ROOT is
+ * absolute, so the prefix pins the origin as well as the path, and the
+ * pattern leaves no room for another segment, a query or a fragment.
+ * Anything else is ignored, and the next visit just fetches as usual.
+ * A worker from the previous deploy can be sent the new version's
+ * directory; it warms it into its own cache, with its own list of names,
+ * and the next worker deletes that cache when it activates. */
+function runtimeDirectory(value) {
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  if (!url.href.startsWith(RUNTIME_ROOT)) return null;
+  const version = url.href.slice(RUNTIME_ROOT.length);
+  return /^[0-9A-Za-z][0-9A-Za-z.+-]*\/$/.test(version) ? url : null;
+}
 
 self.addEventListener("message", (event) => {
   if (!event.data || event.data.type !== "warm") return;
+  const directory = runtimeDirectory(event.data.indexURL);
+  if (!directory) return;
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await Promise.all(RUNTIME_CORE.map(async (url) => {
+    await Promise.all(RUNTIME_CORE.map(async (name) => {
+      const url = new URL(name, directory).href;
       if (await cache.match(url)) return;
       try { await cache.add(url); } catch { /* offline already; fine */ }
     }));
@@ -148,7 +190,9 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith((async () => {
     try {
-      const res = await fetch(request);
+      // For a navigation, the init turns mode "navigate" into
+      // "same-origin" (as specified); redirect stays "manual".
+      const res = await fetch(request, { cache: "no-cache" });
       if (res.ok) (await caches.open(CACHE)).put(request, res.clone());
       return res;
     } catch (err) {

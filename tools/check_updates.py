@@ -321,9 +321,10 @@ def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
             f"Pyodide {tag} is out on the pinned {'.'.join(map(str, line))} line "
             f"(pinned: {pinned})",
             "Same compatibility line, so every package keeps its build. Set "
-            "PYODIDE_VERSION in web/vendor_pyodide.py, run "
-            "`python web/vendor_pyodide.py --write-hashes`, and commit "
-            "web/pyodide-assets.json."))
+            "PYODIDE_VERSION in web/vendor_pyodide.py, move the "
+            "./pyodide/<version>/ paths in web/index.html and web/app.js to "
+            "it, run `python web/vendor_pyodide.py --write-hashes`, and "
+            "commit web/pyodide-assets.json."))
 
     other_line = [f for f in newer if _line(f[1]) != line]
     if other_line:
@@ -357,9 +358,11 @@ def check_pyodide(pinned: str, packages: Iterable[str], releases: object,
                 findings.append(Finding(
                     "pyodide", "action",
                     f"Pyodide {tag} has every package the page loads (pinned: {pinned})",
-                    "This crosses a compatibility line: bump PYODIDE_VERSION, "
-                    "switch the vendored compiled wheels (css-inline) to their "
-                    "builds for the new ABI in web/vendor_pyodide.py and "
+                    "This crosses a compatibility line: bump PYODIDE_VERSION "
+                    "and the ./pyodide/<version>/ paths in web/index.html and "
+                    "web/app.js, switch the vendored compiled wheels "
+                    "(css-inline) to their builds for the new ABI in "
+                    "web/vendor_pyodide.py and "
                     "web/app.js, check the runtime's own filenames (CORE_FILES, "
                     "and RUNTIME_CORE in web/sw.js), run `python "
                     "web/vendor_pyodide.py --write-hashes`, and let the "

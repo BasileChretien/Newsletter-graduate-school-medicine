@@ -1,11 +1,11 @@
 """The website builds the same newsletter as the desktop toolkit.
 
 The page runs the real `scripts/` package inside Pyodide, with its own
-copies of the libraries loaded from `web/pyodide/`. Nothing in the rest of
-the suite executes that runtime -- so a broken or missing wheel, a
-dependency the page forgot to name, a runtime the CDN stopped serving, or
-a library version that renders differently would reach editors before any
-test noticed.
+copies of the libraries loaded from `web/pyodide/<version>/`. Nothing in
+the rest of the suite executes that runtime -- so a broken or missing
+wheel, a dependency the page forgot to name, a runtime the CDN stopped
+serving, or a library version that renders differently would reach
+editors before any test noticed.
 
 These run the actual engine under Node: the vendored runtime, the
 packages `web/app.js` loads and the committed bundle. They compare its
@@ -72,8 +72,11 @@ def _fixture_docx(path: Path) -> Path:
 def engine(tmp_path_factory):
     node = shutil.which("node")
     assert node, "MERIDIAN_WEB_ENGINE=1, but Node is not installed"
-    assert (REPO_ROOT / "web" / "pyodide" / "pyodide.js").exists(), (
-        "run `python web/vendor_pyodide.py` first")
+    version = json.loads((REPO_ROOT / "web" / "pyodide-assets.json").read_text(
+        encoding="utf-8"))["pyodide_version"]
+    assert (REPO_ROOT / "web" / "pyodide" / version / "pyodide.js").exists(), (
+        f"run `python web/vendor_pyodide.py` first (no Pyodide {version} "
+        f"in web/pyodide/)")
     work = tmp_path_factory.mktemp("engine")
     documents = {
         "template": REPO_ROOT / "Meridian_Newsletter_Template.docx",

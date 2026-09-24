@@ -55,4 +55,8 @@ jobs:
               --title "Pyodide runtime $version (mirror for the website)" \
               --notes "A verbatim copy of the files web/vendor_pyodide.py vendors for the browser build: the Pyodide $version runtime (MPL-2.0) and the wheels the page loads, each under its own licence. It is only a fallback source for web/vendor_pyodide.py, which checks every file against web/pyodide-assets.json. Not a MERIDIAN release."
           fi
-          gh release upload "$tag" web/pyodide/* web/pyodide-assets.json --clobber
+          # The files sit in a directory named for the version (see
+          # VENDOR_DIR in web/vendor_pyodide.py); the asset names are their
+          # bare filenames, which is what the vendor script's mirror
+          # fallback asks for.
+          gh release upload "$tag" "web/pyodide/$version/"* web/pyodide-assets.json --clobber

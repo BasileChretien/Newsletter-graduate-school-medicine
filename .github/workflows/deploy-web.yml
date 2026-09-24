@@ -72,17 +72,20 @@ jobs:
       # Stamp the service worker with this commit. The bytes of sw.js
       # change on every deploy, so the browser installs the new worker
       # and `activate` drops every previous cache -- which is what stops
-      # a stale `meridian-bundle.zip` outliving a release.
-      - name: Version the service worker
+      # a stale `meridian-bundle.zip` outliving a release. index.html
+      # gets the same stamp in app.js's URL, so the page never runs with
+      # an app.js from another deploy: both name the runtime's directory.
+      - name: Version the service worker and the page
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path("web/sw.js")
-          s = p.read_text(encoding="utf-8")
-          assert "__MERIDIAN_VERSION__" in s, "sw.js version placeholder is gone"
-          p.write_text(s.replace("__MERIDIAN_VERSION__", "${{ github.sha }}"),
-                       encoding="utf-8")
-          print("sw.js stamped with ${{ github.sha }}")
+          for name in ("web/sw.js", "web/index.html"):
+              p = Path(name)
+              s = p.read_text(encoding="utf-8")
+              assert "__MERIDIAN_VERSION__" in s, f"{name}: version placeholder is gone"
+              p.write_text(s.replace("__MERIDIAN_VERSION__", "${{ github.sha }}"),
+                           encoding="utf-8")
+              print(f"{name} stamped with ${{ github.sha }}")
           PY
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
