@@ -1,7 +1,7 @@
 {
   "files": {
     "beautifulsoup4-4.15.0-py3-none-any.whl": "d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9",
-    "css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl": "15657248f4167c23ff553c33989f1d2a1855141643db56bb5accab9392342006",
+    "css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl": "06dc3d56eefb76103112e61174068cd8d7d66c0853ead139a64c9d3470f08279",
     "jinja2-3.1.6-py3-none-any.whl": "8b25d9206c928a267f6bc0dfe43bbc5a96f1ab037e81fbad5eff620eec3ac45d",
     "lxml-6.0.2-cp313-cp313-pyemscripten_2025_0_wasm32.whl": "726fd93726e98fb9472d6ded592bc1a564e7e1bf1895bd51fb86cd0b03aac43f",
     "markupsafe-3.0.2-cp313-cp313-pyemscripten_2025_0_wasm32.whl": "7f8172d16b54068024b72cf38e4090b21c0e98715856ac8487b7608c8d62613b",

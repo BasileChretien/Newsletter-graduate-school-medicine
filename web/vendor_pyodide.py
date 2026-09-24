@@ -111,9 +111,9 @@ PYPI_WHEELS = {
     "python_docx-1.2.0-py3-none-any.whl":
         "https://files.pythonhosted.org/packages/py3/p/python-docx/"
         "python_docx-1.2.0-py3-none-any.whl",
-    "css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl":
+    "css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl":
         "https://files.pythonhosted.org/packages/cp310/c/css-inline/"
-        "css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
+        "css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
     "beautifulsoup4-4.15.0-py3-none-any.whl":
         "https://files.pythonhosted.org/packages/py3/b/beautifulsoup4/"
         "beautifulsoup4-4.15.0-py3-none-any.whl",

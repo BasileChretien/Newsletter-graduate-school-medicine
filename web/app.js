@@ -48,7 +48,7 @@ const PY_PACKAGES = [
   // Exactly the versions requirements.txt pins, so the page and the
   // desktop build render the same Word file with the same libraries
   // (tests/test_web_bundle.py keeps them in step).
-  "./pyodide/css_inline-0.21.2-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
+  "./pyodide/css_inline-0.21.3-cp310-abi3-pyemscripten_2025_0_wasm32.whl",
   "./pyodide/beautifulsoup4-4.15.0-py3-none-any.whl",
   "./pyodide/python_docx-1.2.0-py3-none-any.whl",
 ];
