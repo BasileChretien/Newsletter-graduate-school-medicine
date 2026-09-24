@@ -6,6 +6,54 @@ The toolkit follows [Semantic Versioning](https://semver.org). The detailed
 per-bundle commit history (29 fix bundles across 10 specialist-review rounds)
 is preserved in `git log` for archaeology.
 
+## [v1.5.4] — website updates no longer mix with the previous version (2026-09-24)
+
+The website no longer runs an update together with the copy of the
+previous version that a returning editor's browser kept. The desktop is
+unchanged. **694 tests passing** on Linux, macOS and Windows.
+
+### Fixed — the first visit after a website update could run the previous version (MEDIUM)
+- **What happened.** The website keeps an offline copy of its Python
+  runtime in the browser, and the runtime's files have the same names in
+  every version. On a returning editor's first visit after an update,
+  that copy could answer for the new runtime. v1.5.3 described it: on
+  the move to Pyodide 314, the previous runtime started with one of the
+  new packages. Depending on timing, the page ran the previous version,
+  mixed the two, or stopped with "could not start" (since #42).
+- **Each runtime version now has its own folder** on the site,
+  `pyodide/<version>/`, so the copy of one version can never be served
+  for another (#44).
+- **The page and its script always come from the same update.** Within
+  ten minutes of a visit, a reload could reuse the browser's copy of the
+  page's script alongside the new page. Measured: the new runtime then
+  read the old one's files and the page could not start. The script's
+  address now changes with every update. The offline copy also checks
+  with the site before using the page's own files: without that, a new
+  tab opened within ten minutes of a visit ran the whole previous version.
+- **Measured in Chrome,** updating from Pyodide 0.29.4 to 314.0.7 against
+  a server sending GitHub Pages' caching headers. After the update, one
+  reload started 314.0.7 from its own files only, and the page then
+  worked offline. The live site was checked the same way after the
+  deploy. The alternative, spotting the wrong version after start-up and
+  reloading, was measured and rejected: within ten minutes of a visit it
+  never ran, and otherwise the page took 19.6 s to be ready instead of
+  about 6 s.
+- **The first visit after this release** may show the previous page once
+  to an editor who used the website in the last ten minutes, because
+  their browser's offline copy predates this fix. It is the same Pyodide
+  314.0.7, so it works, and later visits use the new version.
+- Pinned by `test_every_runtime_url_carries_the_pinned_pyodide_version`,
+  `test_the_page_never_runs_an_app_js_from_another_deploy`,
+  `test_network_first_means_the_server_not_the_http_cache`, and a test
+  that runs the offline copy's folder check under Node. All 22 deliberate
+  breakages of these checks were caught.
+
+### For maintainers
+- A Pyodide update now also means moving every `./pyodide/<version>/` in
+  `web/index.html` and `web/app.js`; a test names any left behind, and
+  the weekly update report says so. `web/vendor_pyodide.py` writes to
+  `web/pyodide/<version>/` and clears the rest of `web/pyodide/`.
+
 ## [v1.5.3] — the website moves to Pyodide 314 (2026-09-24)
 
 The website now runs on Pyodide 314.0.7, which brings it lxml 6.1.3 (the
@@ -760,6 +808,7 @@ for the full archaeology.
 
 ---
 
+[v1.5.4]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.4
 [v1.5.3]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.3
 [v1.5.2]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.2
 [v1.5.1]: https://github.com/BasileChretien/Newsletter-graduate-school-medicine/releases/tag/v1.5.1
