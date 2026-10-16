@@ -29,6 +29,7 @@ concurrency:
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # slowest healthy run ~0.2 min, network-bound
     steps:
       - uses: actions/checkout@v7
 

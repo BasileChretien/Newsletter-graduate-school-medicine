@@ -41,6 +41,7 @@ concurrency:
 jobs:
   verify-bundle:
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # healthy run ~6s
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -53,6 +54,7 @@ jobs:
   deploy:
     needs: verify-bundle
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # healthy ~0.4 min, but a slow Pages deploy has been seen at ~10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
