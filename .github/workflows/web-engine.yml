@@ -44,9 +44,16 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref -- only the newest push to a PR
+# needs a verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   engine:
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # slowest healthy run ~0.6 min
     steps:
       - uses: actions/checkout@v7
 

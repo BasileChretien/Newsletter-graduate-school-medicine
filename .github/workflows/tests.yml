@@ -14,10 +14,17 @@ on:
   # Manual trigger for releases / debugging.
   workflow_dispatch:
 
+# Cancel superseded runs on the same ref -- only the newest push to a PR
+# needs a verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: pytest (${{ matrix.os }} / Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10 # slowest healthy run ~2.6 min (windows)
     strategy:
       fail-fast: false
       matrix:
